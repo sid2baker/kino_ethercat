@@ -42,7 +42,7 @@ defmodule KinoEtherCAT.SetupCell do
   end
 
   def handle_event("stop", _params, ctx) do
-    EtherCAT.stop()
+    _ = EtherCAT.stop()
     broadcast_event(ctx, "status", %{status: "idle"})
     {:noreply, assign(ctx, status: :idle, error: nil)}
   end
@@ -156,7 +156,7 @@ defmodule KinoEtherCAT.SetupCell do
         slaves =
           EtherCAT.slaves()
           |> Enum.with_index(1)
-          |> Enum.map(fn {{name, station, _pid}, idx} ->
+          |> Enum.map(fn {%{name: name, station: station}, idx} ->
             identity =
               case EtherCAT.slave_info(name) do
                 {:ok, %{identity: id}} when not is_nil(id) -> id

@@ -66,19 +66,16 @@ defmodule KinoEtherCAT do
     inputs =
       bit1
       |> Enum.filter(&(&1.direction == :input))
-      |> Enum.sort_by(& &1.bit_offset)
       |> Enum.map(&LED.new(slave_name, &1.name))
 
     outputs =
       bit1
       |> Enum.filter(&(&1.direction == :output))
-      |> Enum.sort_by(& &1.bit_offset)
       |> Enum.map(&Switch.new(slave_name, &1.name))
 
     values =
       multi
       |> Enum.filter(&(&1.direction == :input))
-      |> Enum.sort_by(& &1.bit_offset)
       |> Enum.map(&Value.new(slave_name, &1.name))
 
     sections =
@@ -92,7 +89,6 @@ defmodule KinoEtherCAT do
   defp build_layout(slave_name, signals, :list) do
     widgets =
       signals
-      |> Enum.sort_by(& &1.bit_offset)
       |> Enum.flat_map(fn
         %{direction: :input, bit_size: 1, name: name} -> [LED.new(slave_name, name)]
         %{direction: :output, bit_size: 1, name: name} -> [Switch.new(slave_name, name)]
