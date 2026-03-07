@@ -8,7 +8,7 @@ defmodule KinoEtherCAT.Switch do
 
   @impl true
   def init({slave, signal, opts}, ctx) do
-    label = Keyword.get(opts, :label, "#{slave}.#{signal}")
+    label = Keyword.get(opts, :label, "#{signal}")
     initial = Keyword.get(opts, :initial, 0)
 
     {:ok, assign(ctx, slave: slave, signal: signal, value: initial, label: label)}

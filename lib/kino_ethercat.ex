@@ -12,7 +12,7 @@ defmodule KinoEtherCAT do
 
   ## Options
 
-    * `:label` — text label shown next to the LED (default: `"slave.signal"`)
+    * `:label` — text label shown next to the LED (default: `"signal"`)
     * `:color` — LED color when on: `"green"` | `"red"` | `"yellow"` | `"blue"` (default: `"green"`)
   """
   @spec led(atom(), atom(), keyword()) :: Kino.JS.Live.t()
@@ -25,7 +25,7 @@ defmodule KinoEtherCAT do
 
   ## Options
 
-    * `:label` — text label shown next to the switch (default: `"slave.signal"`)
+    * `:label` — text label shown next to the switch (default: `"signal"`)
     * `:initial` — initial value, `0` or `1` (default: `0`)
   """
   @spec switch(atom(), atom(), keyword()) :: Kino.JS.Live.t()

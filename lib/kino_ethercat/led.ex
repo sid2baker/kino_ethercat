@@ -10,7 +10,7 @@ defmodule KinoEtherCAT.LED do
   def init({slave, signal, opts}, ctx) do
     case EtherCAT.subscribe(slave, signal) do
       :ok ->
-        label = Keyword.get(opts, :label, "#{slave}.#{signal}")
+        label = Keyword.get(opts, :label, "#{signal}")
         color = Keyword.get(opts, :color, "green")
         {:ok, assign(ctx, slave: slave, signal: signal, value: 0, label: label, color: color)}
 
