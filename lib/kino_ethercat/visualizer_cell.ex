@@ -39,7 +39,7 @@ defmodule KinoEtherCAT.VisualizerCell do
     if already do
       {:noreply, ctx}
     else
-      entry = %{"name" => name, "layout" => "columns"}
+      entry = %{"name" => name, "columns" => nil}
       selected = ctx.assigns.selected ++ [entry]
       {:noreply, assign(ctx, selected: selected)}
     end
@@ -50,10 +50,10 @@ defmodule KinoEtherCAT.VisualizerCell do
     {:noreply, assign(ctx, selected: selected)}
   end
 
-  def handle_event("update_opts", %{"name" => name, "layout" => layout}, ctx) do
+  def handle_event("update_opts", %{"name" => name, "columns" => columns}, ctx) do
     selected =
       Enum.map(ctx.assigns.selected, fn entry ->
-        if entry["name"] == name, do: Map.put(entry, "layout", layout), else: entry
+        if entry["name"] == name, do: Map.put(entry, "columns", columns), else: entry
       end)
 
     {:noreply, assign(ctx, selected: selected)}
@@ -71,17 +71,22 @@ defmodule KinoEtherCAT.VisualizerCell do
 
   def to_source(%{"selected" => selected}) do
     render_asts =
-      Enum.map(selected, fn %{"name" => name, "layout" => layout} ->
+      Enum.map(selected, fn %{"name" => name, "columns" => columns} ->
         name_atom = String.to_atom(name)
-        layout_atom = String.to_atom(layout)
 
-        quote do
-          KinoEtherCAT.render(unquote(name_atom),
-            layout: unquote(layout_atom),
-            on_error: :placeholder
-          )
-          |> Kino.render()
-        end
+        render_call =
+          if columns do
+            quote do
+              KinoEtherCAT.render(unquote(name_atom), columns: unquote(columns))
+              |> Kino.render()
+            end
+          else
+            quote do
+              KinoEtherCAT.render(unquote(name_atom)) |> Kino.render()
+            end
+          end
+
+        render_call
       end)
 
     ast = {:__block__, [], render_asts ++ [quote(do: Kino.nothing())]}

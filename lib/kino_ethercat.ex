@@ -32,23 +32,27 @@ defmodule KinoEtherCAT do
   def switch(slave, signal, opts \\ []), do: Switch.new(slave, signal, opts)
 
   @doc """
-  Auto-render all bit-width 1 signals for a slave.
+  Auto-render all signals for a slave.
 
-  Calls `EtherCAT.slave_info/1`, filters to `bit_size: 1` signals, and
-  renders `:input` signals as LEDs and `:output` signals as Switches.
+  Calls `EtherCAT.slave_info/1` and renders:
+  - 1-bit input signals as LEDs
+  - 1-bit output signals as Switches
+  - Multi-bit input signals as Value displays
 
   ## Options
 
-    * `:layout` — `:columns` (inputs left, outputs right) | `:list` (flat, top-to-bottom). Default: `:columns`
+    * `:columns` — max signals per row (default: auto, up to 8)
+    * `:layout` — `:columns` (inputs/outputs in separate groups) | `:list` (flat). Default: `:columns`
     * `:on_error` — `:raise` | `:placeholder` (markdown cell). Default: `:placeholder`
   """
   @spec render(atom(), keyword()) :: Kino.JS.Live.t() | Kino.Layout.t() | Kino.Markdown.t()
   def render(slave_name, opts \\ []) do
     layout = Keyword.get(opts, :layout, :columns)
     on_error = Keyword.get(opts, :on_error, :placeholder)
+    columns = Keyword.get(opts, :columns, nil)
 
     case fetch_signals(slave_name) do
-      {:ok, signals} -> build_layout(slave_name, signals, layout)
+      {:ok, signals} -> build_layout(slave_name, signals, layout, columns)
       {:error, reason} -> handle_error(slave_name, reason, on_error)
     end
   end
@@ -60,7 +64,7 @@ defmodule KinoEtherCAT do
     end
   end
 
-  defp build_layout(slave_name, signals, :columns) do
+  defp build_layout(slave_name, signals, :columns, columns) do
     {bit1, multi} = Enum.split_with(signals, &(&1.bit_size == 1))
 
     inputs =
@@ -81,12 +85,12 @@ defmodule KinoEtherCAT do
     sections =
       [inputs, outputs, values]
       |> Enum.reject(&Enum.empty?/1)
-      |> Enum.map(&Kino.Layout.grid(&1, columns: grid_columns(length(&1))))
+      |> Enum.map(&Kino.Layout.grid(&1, columns: columns || grid_columns(length(&1))))
 
     Kino.Layout.grid(sections, columns: 1)
   end
 
-  defp build_layout(slave_name, signals, :list) do
+  defp build_layout(slave_name, signals, :list, columns) do
     widgets =
       signals
       |> Enum.flat_map(fn
@@ -96,7 +100,7 @@ defmodule KinoEtherCAT do
         _ -> []
       end)
 
-    Kino.Layout.grid(widgets, columns: grid_columns(length(widgets)))
+    Kino.Layout.grid(widgets, columns: columns || grid_columns(length(widgets)))
   end
 
   defp grid_columns(0), do: 1

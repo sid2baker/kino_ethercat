@@ -9,16 +9,18 @@ export async function init(ctx, data) {
   root.render(<VisualizerCell ctx={ctx} data={data} />);
 }
 
-const LAYOUT_OPTIONS = [
-  { value: "columns", label: "Side by side" },
-  { value: "list", label: "Top to bottom" },
-];
-
 // ── Slave row ─────────────────────────────────────────────────────────────────
 
 function SlaveRow({ name, checked, opts, stale, onToggle, onOptsChange }) {
+  const [columnsInput, setColumnsInput] = useState(opts.columns ?? "");
+
+  const commitColumns = () => {
+    const val = columnsInput === "" ? null : Math.max(1, Math.min(16, Number(columnsInput)));
+    onOptsChange(name, { columns: val });
+  };
+
   return (
-    <li className="flex flex-col gap-1 py-1.5 border-t border-gray-100 first:border-t-0">
+    <li className="py-1.5 border-t border-gray-100 first:border-t-0">
       <div className="flex items-center gap-2">
         <input
           type="checkbox"
@@ -32,18 +34,27 @@ function SlaveRow({ name, checked, opts, stale, onToggle, onOptsChange }) {
           className={`font-mono text-sm cursor-pointer ${stale ? "text-gray-400 line-through" : "text-gray-700"}`}
         >
           {name}
-          {stale && <span className="ml-2 text-xs font-sans normal-case no-underline text-gray-400">(not running)</span>}
+          {stale && (
+            <span className="ml-2 text-xs font-sans normal-case no-underline text-gray-400">
+              (not running)
+            </span>
+          )}
         </label>
         {checked && (
-          <select
-            className="ml-auto border border-gray-300 rounded px-1.5 py-0.5 text-xs focus:outline-none focus:border-blue-400 bg-white text-gray-500"
-            value={opts.layout}
-            onChange={(e) => onOptsChange(name, { layout: e.target.value })}
-          >
-            {LAYOUT_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
+          <label className="ml-auto flex items-center gap-1 text-xs text-gray-400">
+            <span>per row</span>
+            <input
+              type="number"
+              min="1"
+              max="16"
+              placeholder="auto"
+              className="w-16 border border-gray-300 rounded px-1.5 py-0.5 font-mono focus:outline-none focus:border-blue-400 text-gray-700"
+              value={columnsInput}
+              onChange={(e) => setColumnsInput(e.target.value)}
+              onBlur={commitColumns}
+              onKeyDown={(e) => e.key === "Enter" && commitColumns()}
+            />
+          </label>
         )}
       </div>
     </li>
@@ -67,32 +78,26 @@ function VisualizerCell({ ctx, data }) {
   const handleRefresh = () => ctx.pushEvent("refresh");
 
   const selectedNames = new Set(selected.map((s) => s.name));
-
-  // All names to show: available + stale selected entries no longer in available
   const staleNames = selected.map((s) => s.name).filter((n) => !available.includes(n));
   const allNames = [...available, ...staleNames];
 
   const handleToggle = (name, checked) => {
     if (checked) {
-      const entry = { name, layout: "columns", on_error: "placeholder" };
-      const next = [...selected, entry];
+      const next = [...selected, { name, columns: null }];
       setSelected(next);
       ctx.pushEvent("select", { name });
     } else {
-      const next = selected.filter((s) => s.name !== name);
-      setSelected(next);
+      setSelected(selected.filter((s) => s.name !== name));
       ctx.pushEvent("deselect", { name });
     }
   };
 
   const handleOptsChange = (name, opts) => {
-    const next = selected.map((s) => (s.name === name ? { ...s, ...opts } : s));
-    setSelected(next);
-    ctx.pushEvent("update_opts", { name, layout: opts.layout });
+    setSelected(selected.map((s) => (s.name === name ? { ...s, ...opts } : s)));
+    ctx.pushEvent("update_opts", { name, columns: opts.columns });
   };
 
-  const getOpts = (name) =>
-    selected.find((s) => s.name === name) ?? { layout: "columns" };
+  const getOpts = (name) => selected.find((s) => s.name === name) ?? { columns: null };
 
   return (
     <div className="p-3 space-y-3 font-sans text-sm select-none">
@@ -131,7 +136,6 @@ function VisualizerCell({ ctx, data }) {
         </ul>
       )}
 
-      {/* Hint */}
       {allNames.length > 0 && selectedNames.size === 0 && (
         <p className="text-xs text-gray-400">Select at least one slave to generate code.</p>
       )}
