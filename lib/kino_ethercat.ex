@@ -73,13 +73,12 @@ defmodule KinoEtherCAT do
       |> Enum.sort_by(& &1.bit_offset)
       |> Enum.map(&Switch.new(slave_name, &1.name))
 
-    Kino.Layout.grid(
-      [
-        Kino.Layout.grid(inputs, columns: grid_columns(length(inputs))),
-        Kino.Layout.grid(outputs, columns: grid_columns(length(outputs)))
-      ],
-      columns: 1
-    )
+    sections =
+      [inputs, outputs]
+      |> Enum.reject(&Enum.empty?/1)
+      |> Enum.map(&Kino.Layout.grid(&1, columns: grid_columns(length(&1))))
+
+    Kino.Layout.grid(sections, columns: 1)
   end
 
   defp build_layout(slave_name, signals, :list) do
