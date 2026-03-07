@@ -1,7 +1,7 @@
-defmodule KinoEtherCAT.StartCell do
-  use Kino.JS, assets_path: "lib/assets/start_cell/build"
+defmodule KinoEtherCAT.SetupCell do
+  use Kino.JS, assets_path: "lib/assets/setup_cell/build"
   use Kino.JS.Live
-  use Kino.SmartCell, name: "EtherCAT Start"
+  use Kino.SmartCell, name: "EtherCAT Setup"
 
   @impl true
   def init(attrs, ctx) do
@@ -106,6 +106,8 @@ defmodule KinoEtherCAT.StartCell do
           alias EtherCAT.Slave.Config, as: SlaveConfig
           alias EtherCAT.Domain.Config, as: DomainConfig
 
+          EtherCAT.stop()
+
           EtherCAT.start(
             interface: unquote(interface),
             domains: [unquote(domain_struct)],
@@ -164,18 +166,13 @@ defmodule KinoEtherCAT.StartCell do
             }
           end)
 
-        EtherCAT.stop()
         {:ok, slaves}
       else
-        {:error, reason} ->
-          EtherCAT.stop()
-          {:error, inspect(reason)}
+        {:error, reason} -> {:error, inspect(reason)}
       end
 
     send(server, {:scan_complete, result})
   rescue
-    e ->
-      EtherCAT.stop()
-      send(server, {:scan_complete, {:error, Exception.message(e)}})
+    e -> send(server, {:scan_complete, {:error, Exception.message(e)}})
   end
 end
