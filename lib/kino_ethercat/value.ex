@@ -25,7 +25,8 @@ defmodule KinoEtherCAT.Value do
 
   @impl true
   def handle_info({:ethercat, :signal, _slave, _signal, value}, ctx) do
-    broadcast_event(ctx, "value_updated", %{value: inspect(value)})
-    {:noreply, assign(ctx, value: value)}
+    inspected = inspect(value)
+    broadcast_event(ctx, "value_updated", %{value: inspected})
+    {:noreply, assign(ctx, value: inspected)}
   end
 end
