@@ -41,6 +41,12 @@ defmodule KinoEtherCAT.SetupCell do
     {:noreply, assign(ctx, status: :scanning, error: nil)}
   end
 
+  def handle_event("stop", _params, ctx) do
+    EtherCAT.stop()
+    broadcast_event(ctx, "status", %{status: "idle"})
+    {:noreply, assign(ctx, status: :idle, error: nil)}
+  end
+
   def handle_event("update_interface", %{"interface" => iface}, ctx) do
     {:noreply, assign(ctx, interface: iface)}
   end

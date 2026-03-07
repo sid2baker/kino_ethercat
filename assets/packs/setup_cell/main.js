@@ -122,6 +122,8 @@ function StartCell({ ctx, data }) {
     ctx.pushEvent("scan");
   };
 
+  const handleStop = () => ctx.pushEvent("stop");
+
   const handleIfaceChange = (e) => {
     setIface(e.target.value);
     ctx.pushEvent("update_interface", { interface: e.target.value });
@@ -158,6 +160,12 @@ function StartCell({ ctx, data }) {
           className="px-3 py-1 bg-blue-500 hover:bg-blue-600 active:bg-blue-700 disabled:bg-gray-300 text-white rounded text-sm font-medium transition-colors"
         >
           {status === "discovered" ? "Re-scan" : "Scan Bus"}
+        </button>
+        <button
+          onClick={handleStop}
+          className="px-3 py-1 bg-red-500 hover:bg-red-600 active:bg-red-700 text-white rounded text-sm font-medium transition-colors"
+        >
+          Stop
         </button>
         {scanning && (
           <span className="text-gray-400 text-xs animate-pulse">Scanning…</span>
