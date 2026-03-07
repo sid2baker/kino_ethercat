@@ -3,6 +3,8 @@ defmodule KinoEtherCAT do
   Livebook Kino widgets for EtherCAT bus signals.
   """
 
+  alias KinoEtherCAT.{LED, Switch}
+
   @doc """
   Render a read-only LED indicator driven by an EtherCAT input signal.
 
@@ -14,7 +16,7 @@ defmodule KinoEtherCAT do
     * `:color` — LED color when on: `"green"` | `"red"` | `"yellow"` | `"blue"` (default: `"green"`)
   """
   @spec led(atom(), atom(), keyword()) :: Kino.JS.Live.t()
-  def led(slave, signal, opts \\ []), do: KinoEtherCAT.LED.new(slave, signal, opts)
+  def led(slave, signal, opts \\ []), do: LED.new(slave, signal, opts)
 
   @doc """
   Render a toggle switch that writes an EtherCAT output signal.
@@ -27,5 +29,65 @@ defmodule KinoEtherCAT do
     * `:initial` — initial value, `0` or `1` (default: `0`)
   """
   @spec switch(atom(), atom(), keyword()) :: Kino.JS.Live.t()
-  def switch(slave, signal, opts \\ []), do: KinoEtherCAT.Switch.new(slave, signal, opts)
+  def switch(slave, signal, opts \\ []), do: Switch.new(slave, signal, opts)
+
+  @doc """
+  Auto-render all bit-width 1 signals for a slave.
+
+  Calls `EtherCAT.slave_info/1`, filters to `bit_size: 1` signals, and
+  renders `:input` signals as LEDs and `:output` signals as Switches.
+
+  ## Options
+
+    * `:layout` — `:columns` (inputs left, outputs right) | `:list` (flat, top-to-bottom). Default: `:columns`
+    * `:on_error` — `:raise` | `:placeholder` (markdown cell). Default: `:placeholder`
+  """
+  @spec render(atom(), keyword()) :: Kino.JS.Live.t() | Kino.Layout.t() | Kino.Markdown.t()
+  def render(slave_name, opts \\ []) do
+    layout = Keyword.get(opts, :layout, :columns)
+    on_error = Keyword.get(opts, :on_error, :placeholder)
+
+    case fetch_bit1_signals(slave_name) do
+      {:ok, signals} -> build_layout(slave_name, signals, layout)
+      {:error, reason} -> handle_error(slave_name, reason, on_error)
+    end
+  end
+
+  defp fetch_bit1_signals(slave_name) do
+    case EtherCAT.slave_info(slave_name) do
+      {:ok, info} -> {:ok, Enum.filter(info.signals, &(&1.bit_size == 1))}
+      {:error, _} = err -> err
+    end
+  end
+
+  defp build_layout(slave_name, signals, :columns) do
+    inputs =
+      signals |> Enum.filter(&(&1.direction == :input)) |> Enum.map(&LED.new(slave_name, &1.name))
+
+    outputs =
+      signals
+      |> Enum.filter(&(&1.direction == :output))
+      |> Enum.map(&Switch.new(slave_name, &1.name))
+
+    Kino.Layout.grid(
+      [Kino.Layout.grid(inputs, columns: 1), Kino.Layout.grid(outputs, columns: 1)],
+      columns: 2
+    )
+  end
+
+  defp build_layout(slave_name, signals, :list) do
+    widgets =
+      Enum.map(signals, fn
+        %{direction: :input, name: name} -> LED.new(slave_name, name)
+        %{direction: :output, name: name} -> Switch.new(slave_name, name)
+      end)
+
+    Kino.Layout.grid(widgets, columns: 1)
+  end
+
+  defp handle_error(slave_name, reason, :raise),
+    do: raise("KinoEtherCAT.render failed for #{slave_name}: #{reason}")
+
+  defp handle_error(slave_name, reason, :placeholder),
+    do: Kino.Markdown.new("`KinoEtherCAT` — `#{slave_name}` unavailable: `#{reason}`")
 end

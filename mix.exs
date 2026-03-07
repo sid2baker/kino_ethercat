@@ -7,22 +7,29 @@ defmodule KinoEtherCAT.MixProject do
       version: "0.1.0",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      usage_rules: usage_rules()
     ]
   end
 
-  # Run "mix help compile.app" to learn about applications.
   def application do
     [
       extra_applications: [:logger]
     ]
   end
 
-  # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
       {:kino, "~> 0.18.0"},
-      {:ethercat, github: "sid2baker/ethercat"}
+      {:ethercat, github: "sid2baker/ethercat"},
+      {:usage_rules, "~> 1.1", only: [:dev]}
+    ]
+  end
+
+  defp usage_rules do
+    [
+      file: "AGENTS.md",
+      usage_rules: []
     ]
   end
 end
