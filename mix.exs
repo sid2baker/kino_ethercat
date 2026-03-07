@@ -59,7 +59,7 @@ defmodule KinoEtherCAT.MixProject do
       main: "KinoEtherCAT",
       source_url: @source_url,
       source_ref: "v#{@version}",
-      extras: ["README.md", "CHANGELOG.md"],
+      extras: ["README.md", "CHANGELOG.md", "LICENSE"],
       groups_for_modules: [
         Widgets: [KinoEtherCAT, KinoEtherCAT.LED, KinoEtherCAT.Switch, KinoEtherCAT.Value],
         "Smart Cells": [KinoEtherCAT.SetupCell, KinoEtherCAT.VisualizerCell],
