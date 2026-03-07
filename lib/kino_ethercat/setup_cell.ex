@@ -7,7 +7,7 @@ defmodule KinoEtherCAT.SetupCell do
   def init(attrs, ctx) do
     slaves = attrs["slaves"] || []
     status = if slaves == [], do: :idle, else: :discovered
-    Process.send_after(self(), :poll_phase, 2_000)
+    Process.send_after(self(), :poll_phase, 500)
 
     {:ok,
      assign(ctx,
