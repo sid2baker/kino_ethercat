@@ -1,13 +1,20 @@
 defmodule KinoEtherCAT.MixProject do
   use Mix.Project
 
+  @version "0.1.0"
+  @source_url "https://github.com/sid2baker/kino_ethercat"
+
   def project do
     [
       app: :kino_ethercat,
-      version: "0.1.0",
-      elixir: "~> 1.18",
+      version: @version,
+      elixir: "~> 1.19",
       start_permanent: Mix.env() == :prod,
+      description: description(),
+      package: package(),
       deps: deps(),
+      docs: docs(),
+      source_url: @source_url,
       usage_rules: usage_rules()
     ]
   end
@@ -22,8 +29,47 @@ defmodule KinoEtherCAT.MixProject do
   defp deps do
     [
       {:kino, "~> 0.18"},
-      {:ethercat, github: "sid2baker/ethercat"},
+      {:ethercat, "~> 0.1"},
+      {:ex_doc, "~> 0.36", only: :dev, runtime: false},
       {:usage_rules, "~> 1.1", only: [:dev]}
+    ]
+  end
+
+  defp description do
+    "Livebook Kino widgets for EtherCAT bus signals — SmartCells for bus setup and " <>
+      "visualization, plus LED, switch, and value display widgets."
+  end
+
+  defp package do
+    [
+      licenses: ["Apache-2.0"],
+      links: %{"GitHub" => @source_url},
+      files: ~w(lib/kino_ethercat* lib/kino_ethercat.ex
+           lib/assets/led/build
+           lib/assets/setup_cell/build
+           lib/assets/switch/build
+           lib/assets/value/build
+           lib/assets/visualizer_cell/build
+           mix.exs README.md LICENSE CHANGELOG.md usage-rules.md)
+    ]
+  end
+
+  defp docs do
+    [
+      main: "KinoEtherCAT",
+      source_url: @source_url,
+      source_ref: "v#{@version}",
+      extras: ["README.md", "CHANGELOG.md"],
+      groups_for_modules: [
+        Widgets: [KinoEtherCAT, KinoEtherCAT.LED, KinoEtherCAT.Switch, KinoEtherCAT.Value],
+        "Smart Cells": [KinoEtherCAT.SetupCell, KinoEtherCAT.VisualizerCell],
+        Drivers: [
+          KinoEtherCAT.Driver,
+          KinoEtherCAT.Driver.EL1809,
+          KinoEtherCAT.Driver.EL2809,
+          KinoEtherCAT.Driver.EL3202
+        ]
+      ]
     ]
   end
 
