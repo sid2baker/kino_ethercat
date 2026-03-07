@@ -39,7 +39,7 @@ defmodule KinoEtherCAT.VisualizerCell do
     if already do
       {:noreply, ctx}
     else
-      entry = %{"name" => name, "layout" => "columns", "on_error" => "placeholder"}
+      entry = %{"name" => name, "layout" => "columns"}
       selected = ctx.assigns.selected ++ [entry]
       {:noreply, assign(ctx, selected: selected)}
     end
@@ -50,16 +50,10 @@ defmodule KinoEtherCAT.VisualizerCell do
     {:noreply, assign(ctx, selected: selected)}
   end
 
-  def handle_event(
-        "update_opts",
-        %{"name" => name, "layout" => layout, "on_error" => on_error},
-        ctx
-      ) do
+  def handle_event("update_opts", %{"name" => name, "layout" => layout}, ctx) do
     selected =
       Enum.map(ctx.assigns.selected, fn entry ->
-        if entry["name"] == name,
-          do: Map.merge(entry, %{"layout" => layout, "on_error" => on_error}),
-          else: entry
+        if entry["name"] == name, do: Map.put(entry, "layout", layout), else: entry
       end)
 
     {:noreply, assign(ctx, selected: selected)}
@@ -71,23 +65,27 @@ defmodule KinoEtherCAT.VisualizerCell do
   end
 
   @impl true
+  def to_source(%{"selected" => []}) do
+    ""
+  end
+
   def to_source(%{"selected" => selected}) do
-    Enum.map(selected, fn %{"name" => name, "layout" => layout, "on_error" => on_error} ->
-      name_atom = String.to_atom(name)
-      layout_atom = String.to_atom(layout)
-      on_error_atom = String.to_atom(on_error)
+    render_asts =
+      Enum.map(selected, fn %{"name" => name, "layout" => layout} ->
+        name_atom = String.to_atom(name)
+        layout_atom = String.to_atom(layout)
 
-      ast =
         quote do
-          KinoEtherCAT.render(
-            unquote(name_atom),
+          KinoEtherCAT.render(unquote(name_atom),
             layout: unquote(layout_atom),
-            on_error: unquote(on_error_atom)
+            on_error: :placeholder
           )
+          |> Kino.render()
         end
+      end)
 
-      Kino.SmartCell.quoted_to_string(ast)
-    end)
+    ast = {:__block__, [], render_asts ++ [quote(do: Kino.nothing())]}
+    Kino.SmartCell.quoted_to_string(ast)
   end
 
   defp fetch_slaves do

@@ -10,13 +10,8 @@ export async function init(ctx, data) {
 }
 
 const LAYOUT_OPTIONS = [
-  { value: "columns", label: "Columns" },
-  { value: "list", label: "List" },
-];
-
-const ON_ERROR_OPTIONS = [
-  { value: "placeholder", label: "Placeholder" },
-  { value: "raise", label: "Raise" },
+  { value: "columns", label: "Side by side" },
+  { value: "list", label: "Top to bottom" },
 ];
 
 // ── Slave row ─────────────────────────────────────────────────────────────────
@@ -39,36 +34,18 @@ function SlaveRow({ name, checked, opts, stale, onToggle, onOptsChange }) {
           {name}
           {stale && <span className="ml-2 text-xs font-sans normal-case no-underline text-gray-400">(not running)</span>}
         </label>
+        {checked && (
+          <select
+            className="ml-auto border border-gray-300 rounded px-1.5 py-0.5 text-xs focus:outline-none focus:border-blue-400 bg-white text-gray-500"
+            value={opts.layout}
+            onChange={(e) => onOptsChange(name, { layout: e.target.value })}
+          >
+            {LAYOUT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        )}
       </div>
-
-      {checked && (
-        <div className="ml-6 flex items-center gap-4 text-xs text-gray-500">
-          <label className="flex items-center gap-1">
-            <span>layout:</span>
-            <select
-              className="border border-gray-300 rounded px-1.5 py-0.5 font-mono focus:outline-none focus:border-blue-400 bg-white text-gray-700"
-              value={opts.layout}
-              onChange={(e) => onOptsChange(name, { ...opts, layout: e.target.value })}
-            >
-              {LAYOUT_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </label>
-          <label className="flex items-center gap-1">
-            <span>on_error:</span>
-            <select
-              className="border border-gray-300 rounded px-1.5 py-0.5 font-mono focus:outline-none focus:border-blue-400 bg-white text-gray-700"
-              value={opts.on_error}
-              onChange={(e) => onOptsChange(name, { ...opts, on_error: e.target.value })}
-            >
-              {ON_ERROR_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </label>
-        </div>
-      )}
     </li>
   );
 }
@@ -111,11 +88,11 @@ function VisualizerCell({ ctx, data }) {
   const handleOptsChange = (name, opts) => {
     const next = selected.map((s) => (s.name === name ? { ...s, ...opts } : s));
     setSelected(next);
-    ctx.pushEvent("update_opts", { name, layout: opts.layout, on_error: opts.on_error });
+    ctx.pushEvent("update_opts", { name, layout: opts.layout });
   };
 
   const getOpts = (name) =>
-    selected.find((s) => s.name === name) ?? { layout: "columns", on_error: "placeholder" };
+    selected.find((s) => s.name === name) ?? { layout: "columns" };
 
   return (
     <div className="p-3 space-y-3 font-sans text-sm select-none">
