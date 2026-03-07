@@ -96,6 +96,25 @@ function DomainConfig({ domainId, cycleTimeUs, onChange }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+const PHASE_STYLES = {
+  idle: { dot: "bg-gray-400", label: "text-gray-500", text: "idle" },
+  scanning: { dot: "bg-blue-400 animate-pulse", label: "text-blue-600", text: "scanning" },
+  configuring: { dot: "bg-yellow-400 animate-pulse", label: "text-yellow-600", text: "configuring" },
+  preop_ready: { dot: "bg-yellow-400", label: "text-yellow-600", text: "pre-op ready" },
+  operational: { dot: "bg-green-500", label: "text-green-700", text: "operational" },
+  degraded: { dot: "bg-red-500", label: "text-red-700", text: "degraded" },
+};
+
+function PhaseBadge({ phase }) {
+  const s = PHASE_STYLES[phase] ?? PHASE_STYLES.idle;
+  return (
+    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-gray-100 border border-gray-200">
+      <span className={`inline-block w-2 h-2 rounded-full ${s.dot}`} />
+      <span className={`text-xs font-medium font-mono ${s.label}`}>{s.text}</span>
+    </div>
+  );
+}
+
 function StartCell({ ctx, data }) {
   const [iface, setIface] = useState(data.interface);
   const [status, setStatus] = useState(data.status);
@@ -103,6 +122,7 @@ function StartCell({ ctx, data }) {
   const [slaves, setSlaves] = useState(data.slaves);
   const [domainId, setDomainId] = useState(data.domain_id);
   const [cycleTimeUs, setCycleTimeUs] = useState(data.cycle_time_us);
+  const [masterPhase, setMasterPhase] = useState(data.master_phase ?? "idle");
 
   useEffect(() => {
     ctx.handleEvent("status", ({ status }) => setStatus(status));
@@ -114,6 +134,7 @@ function StartCell({ ctx, data }) {
       setError(error);
       setStatus("error");
     });
+    ctx.handleEvent("master_phase", ({ phase }) => setMasterPhase(phase));
   }, []);
 
   const handleScan = () => {
@@ -170,6 +191,9 @@ function StartCell({ ctx, data }) {
         {scanning && (
           <span className="text-gray-400 text-xs animate-pulse">Scanning…</span>
         )}
+        <div className="ml-auto">
+          <PhaseBadge phase={masterPhase} />
+        </div>
       </div>
 
       {/* Error */}

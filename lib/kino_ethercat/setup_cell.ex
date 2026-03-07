@@ -7,6 +7,7 @@ defmodule KinoEtherCAT.SetupCell do
   def init(attrs, ctx) do
     slaves = attrs["slaves"] || []
     status = if slaves == [], do: :idle, else: :discovered
+    Process.send_after(self(), :poll_phase, 2_000)
 
     {:ok,
      assign(ctx,
@@ -15,7 +16,8 @@ defmodule KinoEtherCAT.SetupCell do
        error: nil,
        slaves: slaves,
        domain_id: attrs["domain_id"] || "main",
-       cycle_time_us: attrs["cycle_time_us"] || 1_000
+       cycle_time_us: attrs["cycle_time_us"] || 1_000,
+       master_phase: :idle
      )}
   end
 
@@ -28,7 +30,8 @@ defmodule KinoEtherCAT.SetupCell do
        error: ctx.assigns.error,
        slaves: ctx.assigns.slaves,
        domain_id: ctx.assigns.domain_id,
-       cycle_time_us: ctx.assigns.cycle_time_us
+       cycle_time_us: ctx.assigns.cycle_time_us,
+       master_phase: to_string(ctx.assigns.master_phase)
      }, ctx}
   end
 
@@ -79,6 +82,18 @@ defmodule KinoEtherCAT.SetupCell do
   def handle_info({:scan_complete, {:error, reason}}, ctx) do
     broadcast_event(ctx, "scan_error", %{error: reason})
     {:noreply, assign(ctx, status: :error, error: reason)}
+  end
+
+  def handle_info(:poll_phase, ctx) do
+    Process.send_after(self(), :poll_phase, 2_000)
+    phase = EtherCAT.phase()
+
+    if phase != ctx.assigns.master_phase do
+      broadcast_event(ctx, "master_phase", %{phase: to_string(phase)})
+      {:noreply, assign(ctx, master_phase: phase)}
+    else
+      {:noreply, ctx}
+    end
   end
 
   @impl true
