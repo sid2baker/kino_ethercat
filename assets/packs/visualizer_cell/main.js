@@ -97,7 +97,7 @@ function SlaveRow({ entry, onRemove, onOptsChange }) {
           min="1"
           max="16"
           placeholder="auto"
-          className="w-14 border border-gray-300 rounded px-1.5 py-0.5 font-mono text-xs focus:outline-none focus:border-blue-400 text-gray-700"
+          className="w-11 border border-gray-300 rounded px-1 py-0.5 font-mono text-xs focus:outline-none focus:border-blue-400 text-gray-700"
           value={columnsInput}
           onChange={(e) => setColumnsInput(e.target.value)}
           onBlur={commitColumns}
