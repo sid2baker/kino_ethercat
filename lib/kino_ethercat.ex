@@ -62,28 +62,40 @@ defmodule KinoEtherCAT do
 
   defp build_layout(slave_name, signals, :columns) do
     inputs =
-      signals |> Enum.filter(&(&1.direction == :input)) |> Enum.map(&LED.new(slave_name, &1.name))
+      signals
+      |> Enum.filter(&(&1.direction == :input))
+      |> Enum.sort_by(& &1.bit_offset)
+      |> Enum.map(&LED.new(slave_name, &1.name))
 
     outputs =
       signals
       |> Enum.filter(&(&1.direction == :output))
+      |> Enum.sort_by(& &1.bit_offset)
       |> Enum.map(&Switch.new(slave_name, &1.name))
 
     Kino.Layout.grid(
-      [Kino.Layout.grid(inputs, columns: 1), Kino.Layout.grid(outputs, columns: 1)],
-      columns: 2
+      [
+        Kino.Layout.grid(inputs, columns: grid_columns(length(inputs))),
+        Kino.Layout.grid(outputs, columns: grid_columns(length(outputs)))
+      ],
+      columns: 1
     )
   end
 
   defp build_layout(slave_name, signals, :list) do
     widgets =
-      Enum.map(signals, fn
+      signals
+      |> Enum.sort_by(& &1.bit_offset)
+      |> Enum.map(fn
         %{direction: :input, name: name} -> LED.new(slave_name, name)
         %{direction: :output, name: name} -> Switch.new(slave_name, name)
       end)
 
-    Kino.Layout.grid(widgets, columns: 1)
+    Kino.Layout.grid(widgets, columns: grid_columns(length(widgets)))
   end
+
+  defp grid_columns(0), do: 1
+  defp grid_columns(n), do: min(n, 8)
 
   defp handle_error(slave_name, reason, :raise),
     do: raise("KinoEtherCAT.render failed for #{slave_name}: #{reason}")
