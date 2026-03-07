@@ -3,7 +3,7 @@ defmodule KinoEtherCAT do
   Livebook Kino widgets for EtherCAT bus signals.
   """
 
-  alias KinoEtherCAT.{LED, Switch}
+  alias KinoEtherCAT.{LED, Switch, Value}
 
   @doc """
   Render a read-only LED indicator driven by an EtherCAT input signal.
@@ -47,34 +47,42 @@ defmodule KinoEtherCAT do
     layout = Keyword.get(opts, :layout, :columns)
     on_error = Keyword.get(opts, :on_error, :placeholder)
 
-    case fetch_bit1_signals(slave_name) do
+    case fetch_signals(slave_name) do
       {:ok, signals} -> build_layout(slave_name, signals, layout)
       {:error, reason} -> handle_error(slave_name, reason, on_error)
     end
   end
 
-  defp fetch_bit1_signals(slave_name) do
+  defp fetch_signals(slave_name) do
     case EtherCAT.slave_info(slave_name) do
-      {:ok, info} -> {:ok, Enum.filter(info.signals, &(&1.bit_size == 1))}
+      {:ok, info} -> {:ok, info.signals}
       {:error, _} = err -> err
     end
   end
 
   defp build_layout(slave_name, signals, :columns) do
+    {bit1, multi} = Enum.split_with(signals, &(&1.bit_size == 1))
+
     inputs =
-      signals
+      bit1
       |> Enum.filter(&(&1.direction == :input))
       |> Enum.sort_by(& &1.bit_offset)
       |> Enum.map(&LED.new(slave_name, &1.name))
 
     outputs =
-      signals
+      bit1
       |> Enum.filter(&(&1.direction == :output))
       |> Enum.sort_by(& &1.bit_offset)
       |> Enum.map(&Switch.new(slave_name, &1.name))
 
+    values =
+      multi
+      |> Enum.filter(&(&1.direction == :input))
+      |> Enum.sort_by(& &1.bit_offset)
+      |> Enum.map(&Value.new(slave_name, &1.name))
+
     sections =
-      [inputs, outputs]
+      [inputs, outputs, values]
       |> Enum.reject(&Enum.empty?/1)
       |> Enum.map(&Kino.Layout.grid(&1, columns: grid_columns(length(&1))))
 
@@ -85,9 +93,11 @@ defmodule KinoEtherCAT do
     widgets =
       signals
       |> Enum.sort_by(& &1.bit_offset)
-      |> Enum.map(fn
-        %{direction: :input, name: name} -> LED.new(slave_name, name)
-        %{direction: :output, name: name} -> Switch.new(slave_name, name)
+      |> Enum.flat_map(fn
+        %{direction: :input, bit_size: 1, name: name} -> [LED.new(slave_name, name)]
+        %{direction: :output, bit_size: 1, name: name} -> [Switch.new(slave_name, name)]
+        %{direction: :input, name: name} -> [Value.new(slave_name, name)]
+        _ -> []
       end)
 
     Kino.Layout.grid(widgets, columns: grid_columns(length(widgets)))
