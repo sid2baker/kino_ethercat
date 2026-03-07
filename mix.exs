@@ -14,13 +14,14 @@ defmodule KinoEtherCAT.MixProject do
 
   def application do
     [
-      extra_applications: [:logger]
+      extra_applications: [:logger],
+      mod: {KinoEtherCAT.Application, []}
     ]
   end
 
   defp deps do
     [
-      {:kino, "~> 0.18.0"},
+      {:kino, "~> 0.18"},
       {:ethercat, github: "sid2baker/ethercat"},
       {:usage_rules, "~> 1.1", only: [:dev]}
     ]
