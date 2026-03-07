@@ -15,16 +15,33 @@ function toHex(n, pad = 4) {
 
 // ── Slave row with local edit state ──────────────────────────────────────────
 
-function SlaveRow({ slave, index, onUpdate }) {
+const CUSTOM = "__custom__";
+
+function SlaveRow({ slave, index, availableDrivers, onUpdate }) {
   const [name, setName] = useState(slave.name);
   const [driver, setDriver] = useState(slave.driver);
+
+  const knownModules = availableDrivers.map((d) => d.module);
+  const isKnown = driver === "" || knownModules.includes(driver);
+  const selectValue = isKnown ? driver : CUSTOM;
 
   useEffect(() => {
     setName(slave.name);
     setDriver(slave.driver);
   }, [slave.name, slave.driver]);
 
-  const handleBlur = () => onUpdate(index, name, driver);
+  const commit = (nextDriver) => onUpdate(index, name, nextDriver);
+  const commitName = () => onUpdate(index, name, driver);
+
+  const handleSelectChange = (e) => {
+    const val = e.target.value;
+    if (val === CUSTOM) {
+      setDriver("");
+    } else {
+      setDriver(val);
+      onUpdate(index, name, val);
+    }
+  };
 
   return (
     <tr className="border-t border-gray-200">
@@ -38,20 +55,38 @@ function SlaveRow({ slave, index, onUpdate }) {
           className="w-32 border border-gray-300 rounded px-2 py-0.5 font-mono text-sm focus:outline-none focus:border-blue-400"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          onBlur={handleBlur}
-          onKeyDown={(e) => e.key === "Enter" && handleBlur()}
+          onBlur={commitName}
+          onKeyDown={(e) => e.key === "Enter" && commitName()}
           placeholder="slave_name"
         />
       </td>
       <td className="py-1">
-        <input
-          className="w-48 border border-gray-300 rounded px-2 py-0.5 font-mono text-sm focus:outline-none focus:border-blue-400 text-gray-500"
-          value={driver}
-          onChange={(e) => setDriver(e.target.value)}
-          onBlur={handleBlur}
-          onKeyDown={(e) => e.key === "Enter" && handleBlur()}
-          placeholder="MyApp.EL1809"
-        />
+        <div className="flex flex-col gap-1">
+          <select
+            className="border border-gray-300 rounded px-2 py-0.5 font-mono text-sm focus:outline-none focus:border-blue-400 text-gray-700 bg-white"
+            value={selectValue}
+            onChange={handleSelectChange}
+          >
+            <option value="">— none —</option>
+            {availableDrivers.map((d) => (
+              <option key={d.module} value={d.module}>
+                {d.name}
+              </option>
+            ))}
+            <option value={CUSTOM}>Custom…</option>
+          </select>
+          {selectValue === CUSTOM && (
+            <input
+              className="w-48 border border-gray-300 rounded px-2 py-0.5 font-mono text-sm focus:outline-none focus:border-blue-400 text-gray-500"
+              value={driver}
+              onChange={(e) => setDriver(e.target.value)}
+              onBlur={() => commit(driver)}
+              onKeyDown={(e) => e.key === "Enter" && commit(driver)}
+              placeholder="MyApp.MyDriver"
+              autoFocus
+            />
+          )}
+        </div>
       </td>
     </tr>
   );
@@ -123,6 +158,7 @@ function StartCell({ ctx, data }) {
   const [domainId, setDomainId] = useState(data.domain_id);
   const [cycleTimeUs, setCycleTimeUs] = useState(data.cycle_time_us);
   const [masterPhase, setMasterPhase] = useState(data.master_phase ?? "idle");
+  const availableDrivers = data.available_drivers ?? [];
 
   useEffect(() => {
     ctx.handleEvent("status", ({ status }) => setStatus(status));
@@ -221,6 +257,7 @@ function StartCell({ ctx, data }) {
                   key={idx}
                   slave={slave}
                   index={idx}
+                  availableDrivers={availableDrivers}
                   onUpdate={handleSlaveUpdate}
                 />
               ))}

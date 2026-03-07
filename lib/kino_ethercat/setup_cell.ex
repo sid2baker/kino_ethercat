@@ -23,6 +23,11 @@ defmodule KinoEtherCAT.SetupCell do
 
   @impl true
   def handle_connect(ctx) do
+    drivers =
+      Enum.map(KinoEtherCAT.Driver.all(), fn %{module: mod, name: name} ->
+        %{module: inspect(mod), name: name}
+      end)
+
     {:ok,
      %{
        interface: ctx.assigns.interface,
@@ -31,7 +36,8 @@ defmodule KinoEtherCAT.SetupCell do
        slaves: ctx.assigns.slaves,
        domain_id: ctx.assigns.domain_id,
        cycle_time_us: ctx.assigns.cycle_time_us,
-       master_phase: to_string(ctx.assigns.master_phase)
+       master_phase: to_string(ctx.assigns.master_phase),
+       available_drivers: drivers
      }, ctx}
   end
 
@@ -178,12 +184,18 @@ defmodule KinoEtherCAT.SetupCell do
                 _ -> %{}
               end
 
+            driver =
+              case KinoEtherCAT.Driver.lookup(identity) do
+                {:ok, %{module: mod}} -> inspect(mod)
+                :error -> ""
+              end
+
             %{
               "station" => station,
               "vendor_id" => Map.get(identity, :vendor_id, 0),
               "product_code" => Map.get(identity, :product_code, 0),
               "name" => "slave_#{idx}",
-              "driver" => ""
+              "driver" => driver
             }
           end)
 
