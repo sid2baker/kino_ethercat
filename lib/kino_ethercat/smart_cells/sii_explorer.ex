@@ -94,14 +94,11 @@ defmodule KinoEtherCAT.SmartCells.SIIExplorer do
       },
       fields:
         [
-          %{
-            name: "slave",
-            label: "Slave",
-            type: "datalist",
-            help: "Configured slave name on the active master.",
-            options: assigns.suggestions,
-            placeholder: "slave_1"
-          },
+          ExplorerSupport.slave_field(
+            "Slave",
+            assigns.suggestions,
+            "Configured slave name on the active master."
+          ),
           %{name: "operation", label: "Operation", type: "select", options: @operations}
         ] ++ maybe_word_fields(assigns.operation)
     }

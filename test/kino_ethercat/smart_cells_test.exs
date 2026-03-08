@@ -11,13 +11,11 @@ defmodule KinoEtherCAT.SmartCellsTest do
           %{
             "id" => "fast",
             "cycle_time_us" => 1_000,
-            "logical_base" => 0,
             "miss_threshold" => 1_000
           },
           %{
             "id" => "slow",
             "cycle_time_us" => 4_000,
-            "logical_base" => 4_096,
             "miss_threshold" => 250
           }
         ],
@@ -49,11 +47,9 @@ defmodule KinoEtherCAT.SmartCellsTest do
 
     assert source =~ ~s(interface: "eth0")
 
-    assert source =~
-             ~s(%DomainConfig{id: :fast, cycle_time_us: 1000, logical_base: 0, miss_threshold: 1000})
+    assert source =~ ~s(%DomainConfig{id: :fast, cycle_time_us: 1000, miss_threshold: 1000})
 
-    assert source =~
-             ~s(%DomainConfig{id: :slow, cycle_time_us: 4000, logical_base: 4096, miss_threshold: 250})
+    assert source =~ ~s(%DomainConfig{id: :slow, cycle_time_us: 4000, miss_threshold: 250})
 
     assert source =~ "slaves: ["
     assert source =~ ~s(%SlaveConfig{name: :coupler, target_state: :op})
@@ -88,8 +84,7 @@ defmodule KinoEtherCAT.SmartCellsTest do
 
     assert source =~ ~s(dc: nil)
 
-    assert source =~
-             ~s(%DomainConfig{id: :main, cycle_time_us: 1000, logical_base: 0, miss_threshold: 1000})
+    assert source =~ ~s(%DomainConfig{id: :main, cycle_time_us: 1000, miss_threshold: 1000})
 
     assert source =~
              ~s(%SlaveConfig{name: :sensor_a, driver: KinoEtherCAT.Driver.EL1809, process_data: {:all, :main}, target_state: :op})

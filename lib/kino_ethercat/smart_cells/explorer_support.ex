@@ -32,8 +32,11 @@ defmodule KinoEtherCAT.SmartCells.ExplorerSupport do
         value -> value |> to_string() |> String.trim()
       end
 
+    valid_values = MapSet.new(Enum.map(suggestions, & &1.value))
+
     cond do
-      selected != "" ->
+      selected != "" and
+          (MapSet.size(valid_values) == 0 or MapSet.member?(valid_values, selected)) ->
         selected
 
       suggestions == [] ->
@@ -44,6 +47,20 @@ defmodule KinoEtherCAT.SmartCells.ExplorerSupport do
         |> List.first()
         |> Map.fetch!(:value)
     end
+  end
+
+  @spec slave_field(String.t(), [map()], String.t()) :: map()
+  def slave_field(label, suggestions, help) do
+    field_type = if suggestions == [], do: "text", else: "select"
+
+    %{
+      name: "slave",
+      label: label,
+      type: field_type,
+      help: help,
+      options: suggestions,
+      placeholder: "slave_1"
+    }
   end
 
   defp include_slave?(_info, :all), do: true

@@ -67,7 +67,6 @@ defmodule KinoEtherCAT.SmartCells.SetupSource do
             [
               {"id", Source.atom_literal(domain.id)},
               {"cycle_time_us", Source.integer_literal(domain.cycle_time_us)},
-              {"logical_base", Source.integer_literal(domain.logical_base)},
               {"miss_threshold", Source.integer_literal(domain.miss_threshold)}
             ],
             ", ",
@@ -138,7 +137,6 @@ defmodule KinoEtherCAT.SmartCells.SetupSource do
     %{
       id: domain |> Map.get("id", "main") |> String.trim(),
       cycle_time_us: domain |> Map.get("cycle_time_us", 1_000) |> positive_integer(1_000),
-      logical_base: domain |> Map.get("logical_base", 0) |> non_negative_integer(0),
       miss_threshold: domain |> Map.get("miss_threshold", 1_000) |> positive_integer(1_000)
     }
   end
@@ -239,14 +237,13 @@ defmodule KinoEtherCAT.SmartCells.SetupSource do
       %{
         "id" => Map.get(attrs, "domain_id", "main"),
         "cycle_time_us" => Map.get(attrs, "cycle_time_us", 1_000),
-        "logical_base" => 0,
         "miss_threshold" => 1_000
       }
     ]
   end
 
   defp default_domain do
-    %{id: "main", cycle_time_us: 1_000, logical_base: 0, miss_threshold: 1_000}
+    %{id: "main", cycle_time_us: 1_000, miss_threshold: 1_000}
   end
 
   defp default_dc_cycle_ns([domain | _rest]), do: domain.cycle_time_us * 1_000

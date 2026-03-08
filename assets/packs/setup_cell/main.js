@@ -31,12 +31,10 @@ function serialize(state) {
 
 function nextDomain(domains) {
   const suffix = domains.length + 1;
-  const logicalBase = domains.length === 0 ? 0 : Number(domains[domains.length - 1].logical_base) + 4096;
 
   return {
     id: `domain_${suffix}`,
     cycle_time_us: 1000,
-    logical_base: logicalBase,
     miss_threshold: 1000,
   };
 }
@@ -153,19 +151,6 @@ function DomainCard({ domain, index, canRemove, onChange, onCommit, onRemove }) 
             value={domain.cycle_time_us}
             onChange={(event) => onChange({ cycle_time_us: Number(event.target.value) || 1000 })}
             onBlur={(event) => onCommit({ cycle_time_us: Number(event.target.value) || 1000 })}
-          />
-        </label>
-
-        <label className="ke-setup__field">
-          <span className="ke-setup__label">Logical Base</span>
-          <input
-            className="ke-setup__input"
-            type="number"
-            min="0"
-            step="1"
-            value={domain.logical_base}
-            onChange={(event) => onChange({ logical_base: Number(event.target.value) || 0 })}
-            onBlur={(event) => onCommit({ logical_base: Number(event.target.value) || 0 })}
           />
         </label>
 
@@ -384,7 +369,7 @@ function SetupCell({ ctx, data }) {
           <div className="ke-setup__domains">
             {state.domains.map((domain, index) => (
               <DomainCard
-                key={`${domain.id}-${index}`}
+                key={`domain-${index}`}
                 domain={domain}
                 index={index}
                 canRemove={state.domains.length > 1}

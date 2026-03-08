@@ -266,7 +266,6 @@ defmodule KinoEtherCAT.SmartCells.Setup do
     %{
       "id" => domain |> Map.get("id", "") |> String.trim(),
       "cycle_time_us" => domain |> Map.get("cycle_time_us", 1_000) |> positive_integer(1_000),
-      "logical_base" => domain |> Map.get("logical_base", 0) |> non_negative_integer(0),
       "miss_threshold" => domain |> Map.get("miss_threshold", 1_000) |> positive_integer(1_000)
     }
   end
@@ -324,7 +323,6 @@ defmodule KinoEtherCAT.SmartCells.Setup do
       %{
         "id" => Map.get(attrs, "domain_id", "main"),
         "cycle_time_us" => Map.get(attrs, "cycle_time_us", 1_000),
-        "logical_base" => 0,
         "miss_threshold" => 1_000
       }
     ]
@@ -334,7 +332,6 @@ defmodule KinoEtherCAT.SmartCells.Setup do
     %{
       "id" => "main",
       "cycle_time_us" => 1_000,
-      "logical_base" => 0,
       "miss_threshold" => 1_000
     }
   end

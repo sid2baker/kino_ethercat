@@ -83,14 +83,11 @@ defmodule KinoEtherCAT.SmartCells.SDOExplorer do
       },
       fields:
         [
-          %{
-            name: "slave",
-            label: "Slave",
-            type: "datalist",
-            help: "Select a CoE-capable slave or type the configured slave name.",
-            options: assigns.suggestions,
-            placeholder: "slave_1"
-          },
+          ExplorerSupport.slave_field(
+            "Slave",
+            assigns.suggestions,
+            "Select a CoE-capable slave on the active master."
+          ),
           %{
             name: "operation",
             label: "Operation",
