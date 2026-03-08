@@ -97,6 +97,7 @@ defmodule KinoEtherCAT.MixProject do
         "Smart Cells": [
           KinoEtherCAT.SmartCells.Setup,
           KinoEtherCAT.SmartCells.Visualizer,
+          KinoEtherCAT.SmartCells.Scenario,
           KinoEtherCAT.SmartCells.SDOExplorer,
           KinoEtherCAT.SmartCells.RegisterExplorer,
           KinoEtherCAT.SmartCells.SIIExplorer
