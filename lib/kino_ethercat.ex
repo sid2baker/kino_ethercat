@@ -1,9 +1,9 @@
 defmodule KinoEtherCAT do
   @moduledoc """
-  Livebook Kino widgets for EtherCAT bus signals.
+  Livebook Kino widgets for EtherCAT bus discovery, control, and diagnostics.
   """
 
-  alias KinoEtherCAT.{LED, Switch, Value, Diagnostics}
+  alias KinoEtherCAT.{Diagnostics, LED, SlavePanel, Switch}
 
   @doc """
   Render a read-only LED indicator driven by an EtherCAT input signal.
@@ -32,28 +32,48 @@ defmodule KinoEtherCAT do
   def switch(slave, signal, opts \\ []), do: Switch.new(slave, signal, opts)
 
   @doc """
-  Auto-render all signals for a slave.
+  Render a live aggregated panel for a single slave.
 
-  Calls `EtherCAT.slave_info/1` and renders:
-  - 1-bit input signals as LEDs
-  - 1-bit output signals as Switches
-  - Multi-bit input signals as Value displays
+  The panel shows live input values, bit outputs, slave metadata, and domain
+  health in a single widget. Unlike the older per-signal grid, this keeps
+  updates batched and lets the widget recover if the master is restarted.
 
   ## Options
 
-    * `:columns` — max signals per row (default: auto, up to 8)
-    * `:layout` — `:columns` (inputs/outputs in separate groups) | `:list` (flat). Default: `:columns`
-    * `:on_error` — `:raise` | `:placeholder` (markdown cell). Default: `:placeholder`
+    * `:title` — panel title override
+    * `:batch_ms` — signal update batching interval in milliseconds. Default: `100`
+    * `:show_identity?` — whether to show slave identity details. Default: `true`
+    * `:show_domains?` — whether to show domain health badges. Default: `true`
   """
-  @spec render(atom(), keyword()) :: Kino.JS.Live.t() | Kino.Layout.t() | Kino.Markdown.t()
-  def render(slave_name, opts \\ []) do
-    layout = Keyword.get(opts, :layout, :columns)
-    on_error = Keyword.get(opts, :on_error, :placeholder)
-    columns = Keyword.get(opts, :columns, nil)
+  @spec render(atom(), keyword()) :: Kino.JS.Live.t()
+  def render(slave_name, opts \\ []), do: panel(slave_name, opts)
 
-    case fetch_signals(slave_name) do
-      {:ok, signals} -> build_layout(slave_name, signals, layout, columns)
-      {:error, reason} -> handle_error(slave_name, reason, on_error)
+  @doc """
+  Render a live aggregated panel for a single EtherCAT slave.
+  """
+  @spec panel(atom(), keyword()) :: Kino.JS.Live.t()
+  def panel(slave_name, opts \\ []), do: SlavePanel.new(slave_name, opts)
+
+  @doc """
+  Render multiple slave panels in a grid.
+
+  ## Options
+
+    * `:columns` — max panels per row. Default: auto, up to 4
+
+  Any other options are forwarded to `panel/2`.
+  """
+  @spec dashboard([atom()], keyword()) :: Kino.Layout.t() | Kino.JS.Live.t() | Kino.nothing()
+  def dashboard(slaves, opts \\ []) when is_list(slaves) do
+    columns = Keyword.get(opts, :columns, nil)
+    panel_opts = Keyword.drop(opts, [:columns])
+
+    widgets = Enum.map(slaves, &panel(&1, panel_opts))
+
+    case widgets do
+      [] -> Kino.nothing()
+      [widget] -> widget
+      _ -> Kino.Layout.grid(widgets, columns: columns || panel_columns(length(widgets)))
     end
   end
 
@@ -69,58 +89,6 @@ defmodule KinoEtherCAT do
   @spec diagnostics() :: Kino.JS.Live.t()
   def diagnostics, do: Diagnostics.new()
 
-  defp fetch_signals(slave_name) do
-    case EtherCAT.slave_info(slave_name) do
-      {:ok, info} -> {:ok, info.signals}
-      {:error, _} = err -> err
-    end
-  end
-
-  defp build_layout(slave_name, signals, :columns, columns) do
-    {bit1, multi} = Enum.split_with(signals, &(&1.bit_size == 1))
-
-    inputs =
-      bit1
-      |> Enum.filter(&(&1.direction == :input))
-      |> Enum.map(&LED.new(slave_name, &1.name))
-
-    outputs =
-      bit1
-      |> Enum.filter(&(&1.direction == :output))
-      |> Enum.map(&Switch.new(slave_name, &1.name))
-
-    values =
-      multi
-      |> Enum.filter(&(&1.direction == :input))
-      |> Enum.map(&Value.new(slave_name, &1.name))
-
-    sections =
-      [inputs, outputs, values]
-      |> Enum.reject(&Enum.empty?/1)
-      |> Enum.map(&Kino.Layout.grid(&1, columns: columns || grid_columns(length(&1))))
-
-    Kino.Layout.grid(sections, columns: 1)
-  end
-
-  defp build_layout(slave_name, signals, :list, columns) do
-    widgets =
-      signals
-      |> Enum.flat_map(fn
-        %{direction: :input, bit_size: 1, name: name} -> [LED.new(slave_name, name)]
-        %{direction: :output, bit_size: 1, name: name} -> [Switch.new(slave_name, name)]
-        %{direction: :input, name: name} -> [Value.new(slave_name, name)]
-        _ -> []
-      end)
-
-    Kino.Layout.grid(widgets, columns: columns || grid_columns(length(widgets)))
-  end
-
-  defp grid_columns(0), do: 1
-  defp grid_columns(n), do: min(n, 8)
-
-  defp handle_error(slave_name, reason, :raise),
-    do: raise("KinoEtherCAT.render failed for #{slave_name}: #{reason}")
-
-  defp handle_error(slave_name, reason, :placeholder),
-    do: Kino.Markdown.new("`KinoEtherCAT` — `#{slave_name}` unavailable: `#{reason}`")
+  defp panel_columns(0), do: 1
+  defp panel_columns(n), do: min(n, 4)
 end

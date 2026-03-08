@@ -70,14 +70,14 @@ defmodule KinoEtherCAT.SmartCellsTest do
   test "visualizer cell renders string-based calls" do
     source =
       VisualizerCell.to_source(%{
+        "columns" => 2,
         "selected" => [
-          %{"name" => "sensor_a", "columns" => 4},
-          %{"name" => "output rack", "columns" => nil}
+          %{"name" => "sensor_a"},
+          %{"name" => "output rack"}
         ]
       })
 
-    assert source =~ ~s/KinoEtherCAT.render(:"sensor_a", columns: 4) |> Kino.render()/
-    assert source =~ ~s/KinoEtherCAT.render(:"output rack") |> Kino.render()/
+    assert source =~ ~s/KinoEtherCAT.dashboard([:"sensor_a", :"output rack"], columns: 2) |> Kino.render()/
     assert source =~ "Kino.nothing()"
     refute source =~ "String.to_atom"
   end

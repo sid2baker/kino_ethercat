@@ -56,19 +56,11 @@ function SlaveRow({ entry, onRemove, onOptsChange }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: entry.name });
 
-  const [columnsInput, setColumnsInput] = useState(entry.columns ?? "");
-
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.4 : 1,
     zIndex: isDragging ? 10 : undefined,
-  };
-
-  const commitColumns = () => {
-    const val =
-      columnsInput === "" ? null : Math.max(1, Math.min(16, Number(columnsInput)));
-    onOptsChange(entry.name, val);
   };
 
   return (
@@ -89,22 +81,6 @@ function SlaveRow({ entry, onRemove, onOptsChange }) {
       {/* Slave name */}
       <span className="font-mono text-sm text-gray-700 flex-1">{entry.name}</span>
 
-      {/* Per-row input */}
-      <label className="flex items-center gap-1 text-xs text-gray-400">
-        <span>per row</span>
-        <input
-          type="number"
-          min="1"
-          max="16"
-          placeholder="auto"
-          className="w-11 border border-gray-300 rounded px-1 py-0.5 font-mono text-xs focus:outline-none focus:border-blue-400 text-gray-700"
-          value={columnsInput}
-          onChange={(e) => setColumnsInput(e.target.value)}
-          onBlur={commitColumns}
-          onKeyDown={(e) => e.key === "Enter" && commitColumns()}
-        />
-      </label>
-
       {/* Remove button */}
       <button
         onClick={() => onRemove(entry.name)}
@@ -121,11 +97,13 @@ function SlaveRow({ entry, onRemove, onOptsChange }) {
 
 function VisualizerCell({ ctx, data }) {
   const [selected, setSelected] = useState(data.selected ?? []);
+  const [columnsInput, setColumnsInput] = useState(data.columns ?? "");
   const [status, setStatus] = useState(data.status ?? "ok");
 
   useEffect(() => {
-    ctx.handleEvent("refreshed", ({ selected, status }) => {
+    ctx.handleEvent("refreshed", ({ selected, columns, status }) => {
       setSelected(selected);
+      setColumnsInput(columns ?? "");
       setStatus(status);
     });
     ctx.handleSync(() => {
@@ -153,9 +131,11 @@ function VisualizerCell({ ctx, data }) {
     ctx.pushEvent("remove", { name });
   };
 
-  const handleOptsChange = (name, columns) => {
-    setSelected(selected.map((s) => (s.name === name ? { ...s, columns } : s)));
-    ctx.pushEvent("update_opts", { name, columns });
+  const commitColumns = () => {
+    const columns =
+      columnsInput === "" ? null : Math.max(1, Math.min(4, Number(columnsInput)));
+    setColumnsInput(columns ?? "");
+    ctx.pushEvent("update_columns", { columns });
   };
 
   return (
@@ -169,6 +149,20 @@ function VisualizerCell({ ctx, data }) {
         >
           Refresh
         </button>
+        <label className="ml-auto flex items-center gap-1 text-xs text-gray-400">
+          <span>panel columns</span>
+          <input
+            type="number"
+            min="1"
+            max="4"
+            placeholder="auto"
+            className="w-11 border border-gray-300 rounded px-1 py-0.5 font-mono text-xs focus:outline-none focus:border-blue-400 text-gray-700"
+            value={columnsInput}
+            onChange={(e) => setColumnsInput(e.target.value)}
+            onBlur={commitColumns}
+            onKeyDown={(e) => e.key === "Enter" && commitColumns()}
+          />
+        </label>
         {status === "not_running" && (
           <span className="text-xs text-amber-600 font-mono">EtherCAT not running</span>
         )}
@@ -198,7 +192,6 @@ function VisualizerCell({ ctx, data }) {
                   key={entry.name}
                   entry={entry}
                   onRemove={handleRemove}
-                  onOptsChange={handleOptsChange}
                 />
               ))}
             </ul>

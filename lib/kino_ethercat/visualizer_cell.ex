@@ -8,9 +8,10 @@ defmodule KinoEtherCAT.VisualizerCell do
   @impl true
   def init(attrs, ctx) do
     selected = attrs["selected"] || []
+    columns = attrs["columns"]
     {status, selected} = if selected == [], do: fetch_slaves(), else: {:ok, selected}
 
-    {:ok, assign(ctx, selected: selected, status: status)}
+    {:ok, assign(ctx, selected: selected, status: status, columns: columns)}
   end
 
   @impl true
@@ -18,6 +19,7 @@ defmodule KinoEtherCAT.VisualizerCell do
     {:ok,
      %{
        selected: ctx.assigns.selected,
+       columns: ctx.assigns.columns,
        status: to_string(ctx.assigns.status)
      }, ctx}
   end
@@ -25,7 +27,8 @@ defmodule KinoEtherCAT.VisualizerCell do
   @impl true
   def handle_event("refresh", _params, ctx) do
     {status, selected} = fetch_slaves()
-    broadcast_event(ctx, "refreshed", %{selected: selected, status: to_string(status)})
+    payload = %{selected: selected, columns: ctx.assigns.columns, status: to_string(status)}
+    broadcast_event(ctx, "refreshed", payload)
     {:noreply, assign(ctx, selected: selected, status: status)}
   end
 
@@ -40,55 +43,47 @@ defmodule KinoEtherCAT.VisualizerCell do
     {:noreply, assign(ctx, selected: selected)}
   end
 
-  def handle_event("update_opts", %{"name" => name, "columns" => columns}, ctx) do
-    selected =
-      Enum.map(ctx.assigns.selected, fn entry ->
-        if entry["name"] == name, do: Map.put(entry, "columns", columns), else: entry
-      end)
-
-    {:noreply, assign(ctx, selected: selected)}
+  def handle_event("update_columns", %{"columns" => columns}, ctx) do
+    {:noreply, assign(ctx, columns: columns)}
   end
 
   @impl true
   def to_attrs(ctx) do
-    %{"selected" => ctx.assigns.selected}
+    %{"selected" => ctx.assigns.selected, "columns" => ctx.assigns.columns}
   end
 
   @impl true
-  def to_source(%{"selected" => []}) do
-    ""
-  end
+  def to_source(%{"selected" => selected} = attrs) do
+    slaves =
+      selected
+      |> Enum.map(&String.trim(&1["name"]))
+      |> Enum.reject(&(&1 == ""))
 
-  def to_source(%{"selected" => selected}) do
-    render_calls =
-      Enum.map(selected, fn %{"name" => name, "columns" => columns} ->
-        name = String.trim(name)
+    case slaves do
+      [] ->
+        ""
 
-        if name == "" do
-          nil
-        else
-          slave_literal = Source.atom_literal(name)
+      _ ->
+        slave_literals =
+          slaves
+          |> Enum.map_join(", ", &Source.atom_literal/1)
 
-          if is_integer(columns) and columns > 0 do
-            "KinoEtherCAT.render(#{slave_literal}, columns: #{columns}) |> Kino.render()"
-          else
-            "KinoEtherCAT.render(#{slave_literal}) |> Kino.render()"
+        columns =
+          case attrs["columns"] do
+            value when is_integer(value) and value > 0 -> ", columns: #{value}"
+            _ -> ""
           end
-        end
-      end)
-      |> Enum.reject(&is_nil/1)
-      |> Enum.join("\n\n")
 
-    Source.multiline([
-      render_calls,
-      if(render_calls == "", do: "", else: "\n\n"),
-      "Kino.nothing()"
-    ])
+        Source.multiline([
+          "KinoEtherCAT.dashboard([#{slave_literals}]#{columns}) |> Kino.render()",
+          "\n\nKino.nothing()"
+        ])
+    end
   end
 
   defp fetch_slaves do
     slaves = EtherCAT.slaves()
-    entries = Enum.map(slaves, &%{"name" => to_string(&1.name), "columns" => nil})
+    entries = Enum.map(slaves, &%{"name" => to_string(&1.name)})
     {:ok, entries}
   rescue
     _ -> {:not_running, []}
