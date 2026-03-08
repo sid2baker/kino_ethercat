@@ -1,6 +1,6 @@
 import "./main.css";
 
-import React, { startTransition, useEffect, useEffectEvent, useState } from "react";
+import React, { startTransition, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 const CUSTOM = "__custom__";
@@ -258,9 +258,11 @@ function SlaveRow({ slave, index, domains, availableDrivers, updateLocal, commit
 
 function SetupCell({ ctx, data }) {
   const [state, setState] = useState(data);
-  const syncState = useEffectEvent(() => {
-    ctx.pushEvent("update", serialize(state));
-  });
+  const stateRef = useRef(state);
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   useEffect(() => {
     ctx.handleEvent("snapshot", (next) => {
@@ -274,10 +276,10 @@ function SetupCell({ ctx, data }) {
         active.dispatchEvent(new Event("change", { bubbles: true }));
         active.dispatchEvent(new Event("blur", { bubbles: true }));
       } else {
-        syncState();
+        ctx.pushEvent("update", serialize(stateRef.current));
       }
     });
-  }, [ctx, syncState]);
+  }, [ctx]);
 
   const pushUpdate = (nextState) => {
     setState(nextState);
