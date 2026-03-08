@@ -16,6 +16,9 @@ defmodule KinoEtherCAT.Testing do
       KinoEtherCAT.Testing.new(scenario)
 
   The returned `%KinoEtherCAT.Testing.Run{}` implements `Kino.Render`.
+
+  Built-in scenarios derived from the maintained validation examples live under
+  `KinoEtherCAT.Testing.Scenarios`.
   """
 
   alias KinoEtherCAT.Testing.{Run, Scenario, Step}
@@ -42,6 +45,21 @@ defmodule KinoEtherCAT.Testing do
   @spec expect_slave_state(String.t(), atom(), atom(), keyword()) :: Step.t()
   def expect_slave_state(title, slave, expected_state, opts \\ []) do
     Step.expect_slave_state(title, slave, expected_state, opts)
+  end
+
+  @spec stop_domain_cycling(String.t(), atom(), keyword()) :: Step.t()
+  def stop_domain_cycling(title, domain_id, opts \\ []) do
+    Step.stop_domain_cycling(title, domain_id, opts)
+  end
+
+  @spec start_domain_cycling(String.t(), atom(), keyword()) :: Step.t()
+  def start_domain_cycling(title, domain_id, opts \\ []) do
+    Step.start_domain_cycling(title, domain_id, opts)
+  end
+
+  @spec expect_dc_lock(String.t(), atom(), keyword()) :: Step.t()
+  def expect_dc_lock(title, expected_state, opts \\ []) do
+    Step.expect_dc_lock(title, expected_state, opts)
   end
 
   @spec new(Scenario.t(), keyword()) :: Run.t()

@@ -159,6 +159,52 @@ defmodule KinoEtherCAT.Testing.Runner do
               "expected #{inspect(step.params.expected_state)}, got #{inspect(value)}"
             end
           )
+
+        :stop_domain_cycling ->
+          case runtime.stop_domain_cycling.(step.params.domain_id) do
+            :ok ->
+              %{base | status: :passed, detail: "stopped #{inspect(step.params.domain_id)}"}
+
+            {:error, reason} ->
+              %{base | status: :failed, detail: format_reason(reason)}
+
+            other ->
+              %{base | status: :failed, detail: "unexpected stop result #{inspect(other)}"}
+          end
+
+        :start_domain_cycling ->
+          case runtime.start_domain_cycling.(step.params.domain_id) do
+            :ok ->
+              %{base | status: :passed, detail: "started #{inspect(step.params.domain_id)}"}
+
+            {:error, reason} ->
+              %{base | status: :failed, detail: format_reason(reason)}
+
+            other ->
+              %{base | status: :failed, detail: "unexpected start result #{inspect(other)}"}
+          end
+
+        :expect_dc_lock ->
+          observe_until(
+            base,
+            step.params.within_ms,
+            step.params.poll_ms,
+            runtime,
+            fn ->
+              case runtime.dc_status.() do
+                {:ok, status} -> {:ok, Map.get(status, :lock_state, :unknown)}
+                status when is_map(status) -> Map.get(status, :lock_state, :unknown)
+                status -> status
+              end
+            end,
+            fn
+              {:ok, value} -> value == step.params.expected_state
+              value -> value == step.params.expected_state
+            end,
+            fn value ->
+              "expected #{inspect(step.params.expected_state)}, got #{inspect(value)}"
+            end
+          )
       end
 
     finished_at_ms = runtime_clock_ms(runtime)
@@ -210,7 +256,10 @@ defmodule KinoEtherCAT.Testing.Runner do
       sleep: fn ms -> Process.sleep(ms) end,
       write_output: &EtherCAT.write_output/3,
       read_input: &EtherCAT.read_input/2,
-      slave_info: &EtherCAT.slave_info/1
+      slave_info: &EtherCAT.slave_info/1,
+      stop_domain_cycling: &EtherCAT.Domain.stop_cycling/1,
+      start_domain_cycling: &EtherCAT.Domain.start_cycling/1,
+      dc_status: &EtherCAT.dc_status/0
     }
   end
 

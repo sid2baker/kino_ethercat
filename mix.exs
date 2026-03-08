@@ -81,7 +81,11 @@ defmodule KinoEtherCAT.MixProject do
           KinoEtherCAT.Testing.Scenario,
           KinoEtherCAT.Testing.Step,
           KinoEtherCAT.Testing.Run,
-          KinoEtherCAT.Testing.Report
+          KinoEtherCAT.Testing.Report,
+          KinoEtherCAT.Testing.Scenarios,
+          KinoEtherCAT.Testing.Scenarios.LoopbackSmoke,
+          KinoEtherCAT.Testing.Scenarios.DCLock,
+          KinoEtherCAT.Testing.Scenarios.WatchdogRecovery
         ],
         Widgets: [
           KinoEtherCAT.Widgets,

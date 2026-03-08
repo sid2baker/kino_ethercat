@@ -3,6 +3,7 @@ defmodule KinoEtherCAT.TestingTest do
 
   alias KinoEtherCAT.Testing
   alias KinoEtherCAT.Testing.{Run, Runner}
+  alias KinoEtherCAT.Testing.Scenarios
 
   setup_all do
     Application.ensure_all_started(:telemetry)
@@ -109,6 +110,122 @@ defmodule KinoEtherCAT.TestingTest do
     assert [%{status: :failed, title: "Observe I1"}] = report.step_results
   end
 
+  test "runner supports domain control and dc lock steps" do
+    {:ok, runtime_state} =
+      Agent.start_link(fn ->
+        %{
+          clock_ms: 1_710_000_200_000,
+          monotonic_ms: 0,
+          input_reads: [],
+          writes: [],
+          domain_actions: [],
+          dc_states: [:locking, :locked]
+        }
+      end)
+
+    on_exit(fn ->
+      if Process.alive?(runtime_state), do: Agent.stop(runtime_state)
+    end)
+
+    scenario =
+      Testing.scenario("Domain controls")
+      |> Testing.add_step(Testing.stop_domain_cycling("Stop main", :main))
+      |> Testing.add_step(Testing.start_domain_cycling("Start main", :main))
+      |> Testing.add_step(
+        Testing.expect_dc_lock("Wait for lock", :locked, within_ms: 20, poll_ms: 10)
+      )
+
+    report =
+      Runner.run(
+        scenario,
+        Run.normalize_options([]),
+        [runtime: fake_runtime(runtime_state)],
+        fn _event -> :ok end
+      )
+
+    assert report.status == :passed
+
+    assert Enum.map(report.step_results, & &1.kind) == [
+             :stop_domain_cycling,
+             :start_domain_cycling,
+             :expect_dc_lock
+           ]
+
+    assert Agent.get(runtime_state, &Enum.reverse(&1.domain_actions)) == [
+             {:stop, :main},
+             {:start, :main}
+           ]
+  end
+
+  test "built in loopback smoke scenario models paired IO validation" do
+    scenario =
+      Scenarios.loopback_smoke(
+        pairs: [{:ch1, :ch1}, {:ch5, :ch5}],
+        settle_ms: 150
+      )
+
+    assert scenario.name == "Loopback smoke"
+    assert scenario.tags == ["validation", "loopback", "digital-io"]
+
+    assert Enum.map(scenario.steps, & &1.kind) == [
+             :write_output,
+             :expect_input,
+             :write_output,
+             :expect_input,
+             :write_output,
+             :expect_input,
+             :write_output,
+             :expect_input
+           ]
+
+    assert [
+             %{params: %{signal: :ch1, value: 1}},
+             %{params: %{expected: 1, signal: :ch1, within_ms: 150}},
+             %{params: %{signal: :ch1, value: 0}},
+             %{params: %{expected: 0, signal: :ch1, within_ms: 150}}
+             | _
+           ] = scenario.steps
+  end
+
+  test "built in watchdog recovery scenario includes watchdog trip and recovery phases" do
+    scenario = Scenarios.watchdog_recovery(pairs: [{:ch1, :ch1}])
+
+    assert scenario.name == "Watchdog recovery"
+
+    assert Enum.map(scenario.steps, & &1.kind) == [
+             :expect_slave_state,
+             :write_output,
+             :expect_input,
+             :stop_domain_cycling,
+             :expect_slave_state,
+             :expect_input,
+             :start_domain_cycling,
+             :expect_slave_state,
+             :write_output,
+             :expect_input,
+             :write_output,
+             :expect_input
+           ]
+  end
+
+  test "built in dc lock scenario checks slave op state before lock convergence" do
+    scenario = Scenarios.dc_lock(slaves: [:coupler, :outputs], within_ms: 2_000)
+
+    assert scenario.name == "DC lock"
+
+    assert Enum.map(scenario.steps, & &1.kind) == [
+             :expect_slave_state,
+             :expect_slave_state,
+             :expect_dc_lock
+           ]
+
+    assert List.last(scenario.steps) == %{
+             List.last(scenario.steps)
+             | kind: :expect_dc_lock,
+               params: %{expected_state: :locked, within_ms: 2_000, poll_ms: 50}
+           }
+  end
+
   defp fake_runtime(runtime_state, opts \\ []) do
     emit_bus_event? = Keyword.get(opts, :emit_bus_event?, false)
 
@@ -147,7 +264,29 @@ defmodule KinoEtherCAT.TestingTest do
           end
         end)
       end,
-      slave_info: fn slave -> {:ok, %{name: slave, al_state: :op}} end
+      slave_info: fn slave -> {:ok, %{name: slave, al_state: :op}} end,
+      stop_domain_cycling: fn domain_id ->
+        Agent.update(runtime_state, fn state ->
+          %{state | domain_actions: [{:stop, domain_id} | Map.get(state, :domain_actions, [])]}
+        end)
+
+        :ok
+      end,
+      start_domain_cycling: fn domain_id ->
+        Agent.update(runtime_state, fn state ->
+          %{state | domain_actions: [{:start, domain_id} | Map.get(state, :domain_actions, [])]}
+        end)
+
+        :ok
+      end,
+      dc_status: fn ->
+        Agent.get_and_update(runtime_state, fn state ->
+          case Map.get(state, :dc_states, [:locked]) do
+            [value | rest] -> {%{lock_state: value}, %{state | dc_states: rest}}
+            [] -> {%{lock_state: :locked}, state}
+          end
+        end)
+      end
     }
   end
 end

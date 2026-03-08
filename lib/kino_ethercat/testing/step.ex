@@ -4,7 +4,14 @@ defmodule KinoEtherCAT.Testing.Step do
   @enforce_keys [:title, :kind]
   defstruct [:title, :kind, params: %{}]
 
-  @type kind :: :wait | :write_output | :expect_input | :expect_slave_state
+  @type kind ::
+          :wait
+          | :write_output
+          | :expect_input
+          | :expect_slave_state
+          | :stop_domain_cycling
+          | :start_domain_cycling
+          | :expect_dc_lock
 
   @type t :: %__MODULE__{
           title: String.t(),
@@ -55,6 +62,37 @@ defmodule KinoEtherCAT.Testing.Step do
         expected_state: expected_state,
         within_ms: Keyword.get(opts, :within_ms, 1_000),
         poll_ms: Keyword.get(opts, :poll_ms, 20)
+      }
+    }
+  end
+
+  @spec stop_domain_cycling(String.t(), atom(), keyword()) :: t()
+  def stop_domain_cycling(title, domain_id, _opts \\ []) do
+    %__MODULE__{
+      title: title,
+      kind: :stop_domain_cycling,
+      params: %{domain_id: domain_id}
+    }
+  end
+
+  @spec start_domain_cycling(String.t(), atom(), keyword()) :: t()
+  def start_domain_cycling(title, domain_id, _opts \\ []) do
+    %__MODULE__{
+      title: title,
+      kind: :start_domain_cycling,
+      params: %{domain_id: domain_id}
+    }
+  end
+
+  @spec expect_dc_lock(String.t(), atom(), keyword()) :: t()
+  def expect_dc_lock(title, expected_state, opts \\ []) do
+    %__MODULE__{
+      title: title,
+      kind: :expect_dc_lock,
+      params: %{
+        expected_state: expected_state,
+        within_ms: Keyword.get(opts, :within_ms, 5_000),
+        poll_ms: Keyword.get(opts, :poll_ms, 50)
       }
     }
   end
