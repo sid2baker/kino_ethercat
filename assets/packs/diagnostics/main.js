@@ -565,7 +565,7 @@ function TimelineSection({ timeline }) {
       {timeline.length === 0 ? (
         <div className="rounded-xl bg-stone-50 px-3 py-4 text-center font-mono text-xs text-stone-400">No fault or recovery events yet</div>
       ) : (
-        <div className="space-y-2">
+        <div className="ke-diagnostics__timeline-scroll space-y-2 pr-1">
           {timeline.map((event) => (
             <div key={event.id} className={`rounded-xl border px-3 py-2 ${EVENT_STYLES[event.level] ?? EVENT_STYLES.info}`}>
               <div className="flex items-center justify-between gap-2">
