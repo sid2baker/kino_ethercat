@@ -53,6 +53,7 @@ defmodule KinoEtherCAT.MixProject do
            lib/assets/value/build
            lib/assets/visualizer_cell/build
            lib/assets/diagnostics/build
+           lib/assets/testing/build
            mix.exs README.md LICENSE CHANGELOG.md usage-rules.md)
     ]
   end
@@ -74,6 +75,13 @@ defmodule KinoEtherCAT.MixProject do
           KinoEtherCAT.Runtime.Domain,
           KinoEtherCAT.Runtime.Bus,
           KinoEtherCAT.Runtime.DC
+        ],
+        Testing: [
+          KinoEtherCAT.Testing,
+          KinoEtherCAT.Testing.Scenario,
+          KinoEtherCAT.Testing.Step,
+          KinoEtherCAT.Testing.Run,
+          KinoEtherCAT.Testing.Report
         ],
         Widgets: [
           KinoEtherCAT.Widgets,
