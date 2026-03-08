@@ -6,6 +6,7 @@ defmodule KinoEtherCAT.Testing.Step do
 
   @type kind ::
           :wait
+          | :manual
           | :write_output
           | :expect_input
           | :expect_slave_state
@@ -25,6 +26,19 @@ defmodule KinoEtherCAT.Testing.Step do
       title: title,
       kind: :wait,
       params: %{duration_ms: duration_ms}
+    }
+  end
+
+  @spec manual(String.t(), String.t(), keyword()) :: t()
+  def manual(title, instruction, opts \\ []) do
+    %__MODULE__{
+      title: title,
+      kind: :manual,
+      params: %{
+        instruction: instruction,
+        continue_label: Keyword.get(opts, :continue_label, "Continue"),
+        acknowledged_detail: Keyword.get(opts, :acknowledged_detail, "continued by operator")
+      }
     }
   end
 

@@ -111,6 +111,21 @@ defmodule KinoEtherCAT.Testing.Runner do
           runtime.sleep.(step.params.duration_ms)
           %{base | status: :passed, detail: "waited #{step.params.duration_ms} ms"}
 
+        :manual ->
+          case runtime.manual_gate.(step, base) do
+            :ok ->
+              %{base | status: :passed, detail: step.params.acknowledged_detail}
+
+            {:ok, detail} ->
+              %{base | status: :passed, detail: detail}
+
+            {:error, reason} ->
+              %{base | status: :failed, detail: format_reason(reason)}
+
+            other ->
+              %{base | status: :failed, detail: "unexpected manual result #{inspect(other)}"}
+          end
+
         :write_output ->
           case runtime.write_output.(step.params.slave, step.params.signal, step.params.value) do
             :ok ->
@@ -259,7 +274,10 @@ defmodule KinoEtherCAT.Testing.Runner do
       slave_info: &EtherCAT.slave_info/1,
       stop_domain_cycling: &EtherCAT.Domain.stop_cycling/1,
       start_domain_cycling: &EtherCAT.Domain.start_cycling/1,
-      dc_status: &EtherCAT.dc_status/0
+      dc_status: &EtherCAT.dc_status/0,
+      manual_gate: fn _step, _base ->
+        {:error, :manual_step_requires_interactive_runner}
+      end
     }
   end
 

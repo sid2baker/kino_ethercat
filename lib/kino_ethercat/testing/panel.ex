@@ -26,7 +26,9 @@ defmodule KinoEtherCAT.Testing.Panel do
       step_results: %{},
       telemetry_events: [],
       options: run.options,
-      execution_ref: nil
+      execution_ref: nil,
+      runner_pid: nil,
+      manual_prompt: nil
     }
 
     {:ok,
@@ -55,8 +57,9 @@ defmodule KinoEtherCAT.Testing.Panel do
     {:noreply, ctx}
   end
 
-  def handle_event("run", _params, %{assigns: %{state: %{status: :running}}} = ctx),
-    do: {:noreply, ctx}
+  def handle_event("run", _params, %{assigns: %{state: %{status: status}}} = ctx)
+      when status in [:running, :awaiting_input],
+      do: {:noreply, ctx}
 
   def handle_event("run", _params, ctx) do
     execution_ref = System.unique_integer([:positive, :monotonic])
@@ -71,38 +74,70 @@ defmodule KinoEtherCAT.Testing.Panel do
       |> Map.put(:failure, nil)
       |> Map.put(:step_results, %{})
       |> Map.put(:telemetry_events, [])
+      |> Map.put(:runner_pid, nil)
+      |> Map.put(:manual_prompt, nil)
       |> Map.put(:execution_ref, execution_ref)
 
     server = self()
     run = state.run
     options = state.options
 
-    Task.start(fn ->
-      try do
-        Runner.run(run.scenario, options, [], fn event ->
-          send(server, {:runner_event, execution_ref, event})
-        end)
-      rescue
-        exception ->
-          send(
-            server,
-            {:runner_event, execution_ref, {:run_crashed, Exception.message(exception)}}
+    {:ok, runner_pid} =
+      Task.start(fn ->
+        try do
+          Runner.run(
+            run.scenario,
+            options,
+            [runtime: runtime_overrides(execution_ref, server)],
+            fn event ->
+              send(server, {:runner_event, execution_ref, event})
+            end
           )
-      catch
-        kind, reason ->
-          send(
-            server,
-            {:runner_event, execution_ref,
-             {:run_crashed, Exception.format(kind, reason, __STACKTRACE__)}}
-          )
-      end
-    end)
+        rescue
+          exception ->
+            send(
+              server,
+              {:runner_event, execution_ref, {:run_crashed, Exception.message(exception)}}
+            )
+        catch
+          kind, reason ->
+            send(
+              server,
+              {:runner_event, execution_ref,
+               {:run_crashed, Exception.format(kind, reason, __STACKTRACE__)}}
+            )
+        end
+      end)
+
+    state = Map.put(state, :runner_pid, runner_pid)
 
     ctx = assign(ctx, state: state) |> schedule_flush()
     {:noreply, ctx}
   end
 
+  def handle_event("continue", _params, %{assigns: %{state: %{status: :awaiting_input}}} = ctx) do
+    case ctx.assigns.state do
+      %{runner_pid: runner_pid, execution_ref: execution_ref, current_step: current_step}
+      when is_pid(runner_pid) and is_integer(current_step) ->
+        send(runner_pid, {:manual_continue, execution_ref, current_step})
+
+        state =
+          ctx.assigns.state
+          |> Map.put(:status, :running)
+          |> Map.put(:manual_prompt, nil)
+
+        {:noreply, assign(ctx, state: state) |> schedule_flush()}
+
+      _state ->
+        {:noreply, ctx}
+    end
+  end
+
+  def handle_event("continue", _params, ctx), do: {:noreply, ctx}
+
   def handle_event("reset", _params, ctx) do
+    maybe_stop_runner(ctx.assigns.state.runner_pid)
+
     state =
       ctx.assigns.state
       |> Map.put(:status, :idle)
@@ -113,6 +148,8 @@ defmodule KinoEtherCAT.Testing.Panel do
       |> Map.put(:failure, nil)
       |> Map.put(:step_results, %{})
       |> Map.put(:telemetry_events, [])
+      |> Map.put(:runner_pid, nil)
+      |> Map.put(:manual_prompt, nil)
       |> Map.put(:execution_ref, nil)
 
     ctx = assign(ctx, state: state) |> schedule_flush()
@@ -157,6 +194,27 @@ defmodule KinoEtherCAT.Testing.Panel do
     {:noreply, assign(ctx, state: state) |> schedule_flush()}
   end
 
+  defp handle_runner_event({:manual_waiting, prompt}, ctx) do
+    state =
+      ctx.assigns.state
+      |> Map.put(:status, :awaiting_input)
+      |> Map.put(:current_step, prompt.index)
+      |> Map.put(:manual_prompt, prompt)
+      |> put_in([:step_results, prompt.index], %{
+        index: prompt.index,
+        title: prompt.title,
+        kind: :manual,
+        status: :awaiting_input,
+        started_at_ms: prompt.started_at_ms,
+        finished_at_ms: nil,
+        duration_ms: nil,
+        detail: prompt.instruction,
+        observations: []
+      })
+
+    {:noreply, assign(ctx, state: state) |> schedule_flush()}
+  end
+
   defp handle_runner_event({:telemetry_event, entry}, ctx) do
     state =
       update_in(ctx.assigns.state.telemetry_events, fn entries ->
@@ -178,6 +236,8 @@ defmodule KinoEtherCAT.Testing.Panel do
       |> Map.put(:failure, report.failure)
       |> Map.put(:step_results, step_results)
       |> Map.put(:telemetry_events, Enum.reverse(report.telemetry_events))
+      |> Map.put(:runner_pid, nil)
+      |> Map.put(:manual_prompt, nil)
       |> Map.put(:execution_ref, nil)
 
     {:noreply, assign(ctx, state: state) |> schedule_flush()}
@@ -193,6 +253,8 @@ defmodule KinoEtherCAT.Testing.Panel do
       |> Map.put(:finished_at_ms, now_ms)
       |> Map.put(:duration_ms, duration(ctx.assigns.state.started_at_ms, now_ms))
       |> Map.put(:failure, detail)
+      |> Map.put(:runner_pid, nil)
+      |> Map.put(:manual_prompt, nil)
       |> Map.put(:execution_ref, nil)
 
     {:noreply, assign(ctx, state: state) |> schedule_flush()}
@@ -219,7 +281,9 @@ defmodule KinoEtherCAT.Testing.Panel do
       duration_ms: state.duration_ms,
       failure: state.failure,
       running: state.status == :running,
+      busy: state.status in [:running, :awaiting_input],
       current_step: state.current_step,
+      manual_prompt: state.manual_prompt,
       options: %{
         attach_telemetry: state.options.attach_telemetry?,
         telemetry_groups: Enum.map(state.options.telemetry_groups, &Atom.to_string/1),
@@ -246,6 +310,10 @@ defmodule KinoEtherCAT.Testing.Panel do
   end
 
   defp step_status(nil, current_step, index, :running) when current_step == index, do: "running"
+
+  defp step_status(nil, current_step, index, :awaiting_input) when current_step == index,
+    do: "awaiting_input"
+
   defp step_status(nil, _current_step, _index, _run_status), do: "pending"
 
   defp step_status(step_result, _current_step, _index, _run_status),
@@ -253,4 +321,34 @@ defmodule KinoEtherCAT.Testing.Panel do
 
   defp duration(nil, _finished_at_ms), do: nil
   defp duration(started_at_ms, finished_at_ms), do: max(finished_at_ms - started_at_ms, 0)
+
+  defp maybe_stop_runner(pid) when is_pid(pid), do: Process.exit(pid, :kill)
+  defp maybe_stop_runner(_pid), do: :ok
+
+  defp runtime_overrides(execution_ref, server) do
+    %{
+      manual_gate: fn step, base ->
+        index = base.index
+        send(server, {:runner_event, execution_ref, {:manual_waiting, manual_prompt(step, base)}})
+
+        receive do
+          {:manual_continue, ^execution_ref, ^index} ->
+            {:ok, step.params.acknowledged_detail}
+        after
+          86_400_000 ->
+            {:error, :manual_step_timeout}
+        end
+      end
+    }
+  end
+
+  defp manual_prompt(step, base) do
+    %{
+      index: base.index,
+      title: step.title,
+      instruction: step.params.instruction,
+      continue_label: step.params.continue_label,
+      started_at_ms: base.started_at_ms
+    }
+  end
 end

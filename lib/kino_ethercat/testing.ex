@@ -1,8 +1,9 @@
 defmodule KinoEtherCAT.Testing do
   @moduledoc """
-  Scenario-based EtherCAT validation and diagnostics.
+  Operator-guided EtherCAT validation and diagnostics.
 
-  Build scenarios from reusable steps, then create a renderable run handle:
+  Build scenarios from reusable steps, including manual operator instructions,
+  then create a renderable run handle:
 
       scenario =
         KinoEtherCAT.Testing.scenario("Digital loopback")
@@ -11,6 +12,12 @@ defmodule KinoEtherCAT.Testing do
         )
         |> KinoEtherCAT.Testing.add_step(
           KinoEtherCAT.Testing.expect_input("Observe I1", :el1809, :i1, 1, within_ms: 100)
+        )
+        |> KinoEtherCAT.Testing.add_step(
+          KinoEtherCAT.Testing.manual(
+            "Disconnect the slave segment",
+            "Unplug the cable after :outputs, then click Continue in the UI."
+          )
         )
 
       KinoEtherCAT.Testing.new(scenario)
@@ -31,6 +38,11 @@ defmodule KinoEtherCAT.Testing do
 
   @spec wait(String.t(), non_neg_integer(), keyword()) :: Step.t()
   def wait(title, duration_ms, opts \\ []), do: Step.wait(title, duration_ms, opts)
+
+  @spec manual(String.t(), String.t(), keyword()) :: Step.t()
+  def manual(title, instruction, opts \\ []) do
+    Step.manual(title, instruction, opts)
+  end
 
   @spec write_output(String.t(), atom(), atom(), term(), keyword()) :: Step.t()
   def write_output(title, slave, signal, value, opts \\ []) do

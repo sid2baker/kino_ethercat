@@ -110,6 +110,49 @@ defmodule KinoEtherCAT.TestingTest do
     assert [%{status: :failed, title: "Observe I1"}] = report.step_results
   end
 
+  test "runner supports manual operator-gated steps" do
+    {:ok, runtime_state} =
+      Agent.start_link(fn ->
+        %{
+          clock_ms: 1_710_000_150_000,
+          monotonic_ms: 0,
+          input_reads: [],
+          writes: []
+        }
+      end)
+
+    on_exit(fn ->
+      if Process.alive?(runtime_state), do: Agent.stop(runtime_state)
+    end)
+
+    scenario =
+      Testing.scenario("Cable pull prompt")
+      |> Testing.add_step(
+        Testing.manual(
+          "Disconnect the outputs slave",
+          "Unplug the segment after :outputs, then click Continue in the UI."
+        )
+      )
+
+    report =
+      Runner.run(
+        scenario,
+        Run.normalize_options([]),
+        [
+          runtime:
+            Map.put(fake_runtime(runtime_state), :manual_gate, fn step, _base ->
+              {:ok, step.params.acknowledged_detail}
+            end)
+        ],
+        fn _event -> :ok end
+      )
+
+    assert report.status == :passed
+
+    assert [%{kind: :manual, status: :passed, detail: "continued by operator"}] =
+             report.step_results
+  end
+
   test "runner supports domain control and dc lock steps" do
     {:ok, runtime_state} =
       Agent.start_link(fn ->

@@ -20,7 +20,7 @@ defmodule KinoEtherCAT.Testing.Report do
           index: non_neg_integer(),
           title: String.t(),
           kind: atom(),
-          status: :passed | :failed,
+          status: :passed | :failed | :awaiting_input,
           started_at_ms: integer(),
           finished_at_ms: integer(),
           duration_ms: integer(),

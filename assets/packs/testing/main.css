@@ -91,6 +91,14 @@
     @apply rounded-[24px] border border-stone-200 bg-white/70 p-4;
   }
 
+  .ke-testing__manual {
+    @apply flex flex-col gap-4 rounded-[24px] border border-amber-200 bg-[linear-gradient(145deg,_rgba(254,243,199,0.78),_rgba(255,255,255,0.92))] p-4 shadow-sm md:flex-row md:items-end md:justify-between;
+  }
+
+  .ke-testing__manual-copy {
+    @apply max-w-3xl;
+  }
+
   .ke-testing__steps-header,
   .ke-testing__telemetry-header,
   .ke-testing__step-header {

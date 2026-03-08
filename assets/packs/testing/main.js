@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 const STATUS_STYLES = {
   idle: "bg-stone-200 text-stone-700",
   running: "bg-sky-100 text-sky-800",
+  awaiting_input: "bg-amber-100 text-amber-800",
   passed: "bg-emerald-100 text-emerald-800",
   failed: "bg-rose-100 text-rose-800",
   cancelled: "bg-amber-100 text-amber-800",
@@ -14,6 +15,7 @@ const STATUS_STYLES = {
 const STEP_STYLES = {
   pending: "border-stone-200 bg-white/75 text-stone-500",
   running: "border-sky-200 bg-sky-50 text-sky-800",
+  awaiting_input: "border-amber-200 bg-amber-50 text-amber-800",
   passed: "border-emerald-200 bg-emerald-50 text-emerald-800",
   failed: "border-rose-200 bg-rose-50 text-rose-800",
 };
@@ -86,7 +88,7 @@ function OptionToggle({ checked, disabled, label, description, onChange }) {
 }
 
 function Controls({ ctx, snapshot, options, setOptions }) {
-  const running = snapshot.running;
+  const busy = snapshot.busy;
   const availableGroups = snapshot.options.available_groups ?? [];
 
   const pushOptions = (nextOptions) => {
@@ -131,7 +133,7 @@ function Controls({ ctx, snapshot, options, setOptions }) {
       <div className="ke-testing__controls-grid">
         <OptionToggle
           checked={options.attach_telemetry}
-          disabled={running}
+          disabled={busy}
           label="Attach telemetry events"
           description="Subscribe to runtime telemetry while the scenario is running and keep a short event trail in the report."
           onChange={(event) => setAttachTelemetry(event.target.checked)}
@@ -144,7 +146,7 @@ function Controls({ ctx, snapshot, options, setOptions }) {
               <OptionToggle
                 key={group.id}
                 checked={options.telemetry_groups.includes(group.id)}
-                disabled={running || !options.attach_telemetry}
+                disabled={busy || !options.attach_telemetry}
                 label={group.label}
                 description={`Collect ${group.label.toLowerCase()} events during this run.`}
                 onChange={(event) => toggleGroup(group.id, event.target.checked)}
@@ -156,17 +158,17 @@ function Controls({ ctx, snapshot, options, setOptions }) {
         <div className="ke-testing__actions">
           <button
             type="button"
-            disabled={running}
-            className={`ke-testing__button ${BUTTON_STYLES.primary} ${running ? "ke-testing__button--disabled" : ""}`}
+            disabled={busy}
+            className={`ke-testing__button ${BUTTON_STYLES.primary} ${busy ? "ke-testing__button--disabled" : ""}`}
             onClick={() => ctx.pushEvent("run", {})}
           >
-            {running ? "Running…" : "Run Scenario"}
+            {snapshot.status === "awaiting_input" ? "Waiting for operator…" : busy ? "Running…" : "Run Scenario"}
           </button>
 
           <button
             type="button"
-            disabled={running}
-            className={`ke-testing__button ${BUTTON_STYLES.secondary} ${running ? "ke-testing__button--disabled" : ""}`}
+            disabled={busy}
+            className={`ke-testing__button ${BUTTON_STYLES.secondary} ${busy ? "ke-testing__button--disabled" : ""}`}
             onClick={() => ctx.pushEvent("reset", {})}
           >
             Reset View
@@ -178,6 +180,11 @@ function Controls({ ctx, snapshot, options, setOptions }) {
 }
 
 function StepCard({ step }) {
+  const emptyLabel =
+    step.kind === "manual" && step.status === "awaiting_input"
+      ? "Waiting for operator acknowledgement."
+      : "No observations captured yet.";
+
   return (
     <article className={`ke-testing__step ${badgeClass(step.status, STEP_STYLES)}`}>
       <div className="ke-testing__step-header">
@@ -206,9 +213,31 @@ function StepCard({ step }) {
           ))}
         </div>
       ) : (
-        <div className="ke-testing__step-empty">No observations captured yet.</div>
+        <div className="ke-testing__step-empty">{emptyLabel}</div>
       )}
     </article>
+  );
+}
+
+function ManualPrompt({ ctx, prompt }) {
+  if (!prompt) return null;
+
+  return (
+    <section className="ke-testing__manual">
+      <div className="ke-testing__manual-copy">
+        <div className="ke-testing__eyebrow">Operator Action</div>
+        <h3 className="ke-testing__section-title">{prompt.title}</h3>
+        <p className="ke-testing__hero-text">{prompt.instruction}</p>
+      </div>
+
+      <button
+        type="button"
+        className={`ke-testing__button ${BUTTON_STYLES.primary}`}
+        onClick={() => ctx.pushEvent("continue", {})}
+      >
+        {prompt.continue_label || "Continue"}
+      </button>
+    </section>
   );
 }
 
@@ -323,6 +352,7 @@ function TestingPanel({ ctx, data }) {
       ) : null}
 
       <Controls ctx={ctx} snapshot={snapshot} options={options} setOptions={setOptions} />
+      <ManualPrompt ctx={ctx} prompt={snapshot.manual_prompt} />
 
       <section className="ke-testing__steps">
         <div className="ke-testing__steps-header">
