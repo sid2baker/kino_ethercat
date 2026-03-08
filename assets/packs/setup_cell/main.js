@@ -1,422 +1,551 @@
 import "./main.css";
 
-import React, { useEffect, useState } from "react";
+import React, { startTransition, useEffect, useEffectEvent, useState } from "react";
 import { createRoot } from "react-dom/client";
+
+const CUSTOM = "__custom__";
 
 export async function init(ctx, data) {
   await ctx.importCSS("main.css");
   const root = createRoot(ctx.root);
-  root.render(<StartCell ctx={ctx} data={data} />);
+  root.render(<SetupCell ctx={ctx} data={data} />);
 }
 
-function toHex(n, pad = 4) {
-  return "0x" + (n >>> 0).toString(16).toUpperCase().padStart(pad, "0");
+function toHex(value, pad = 4) {
+  return "0x" + Number(value >>> 0).toString(16).toUpperCase().padStart(pad, "0");
 }
 
-// ── Slave row with local edit state ──────────────────────────────────────────
-
-const CUSTOM = "__custom__";
-
-function SlaveRow({ slave, index, availableDrivers, onUpdate }) {
-  const [name, setName] = useState(slave.name);
-  const [driver, setDriver] = useState(slave.driver);
-
-  const knownModules = availableDrivers.map((d) => d.module);
-  const isKnown = driver === "" || knownModules.includes(driver);
-  const selectValue = isKnown ? driver : CUSTOM;
-
-  useEffect(() => {
-    setName(slave.name);
-    setDriver(slave.driver);
-  }, [slave.name, slave.driver]);
-
-  const commit = (nextDriver) => onUpdate(index, name, nextDriver);
-  const commitName = () => onUpdate(index, name, driver);
-
-  const handleSelectChange = (e) => {
-    const val = e.target.value;
-    if (val === CUSTOM) {
-      setDriver("");
-    } else {
-      setDriver(val);
-      onUpdate(index, name, val);
-    }
+function serialize(state) {
+  return {
+    interface: state.interface,
+    domains: state.domains,
+    slaves: state.slaves,
+    dc_enabled: state.dc_enabled,
+    dc_cycle_ns: state.dc_cycle_ns,
+    await_lock: state.await_lock,
+    lock_threshold_ns: state.lock_threshold_ns,
+    lock_timeout_ms: state.lock_timeout_ms,
+    warmup_cycles: state.warmup_cycles,
   };
+}
+
+function nextDomain(domains) {
+  const suffix = domains.length + 1;
+  const logicalBase = domains.length === 0 ? 0 : Number(domains[domains.length - 1].logical_base) + 4096;
+
+  return {
+    id: `domain_${suffix}`,
+    cycle_time_us: 1000,
+    logical_base: logicalBase,
+    miss_threshold: 1000,
+  };
+}
+
+function applySlaveUpdate(state, index, patch) {
+  const domains = state.domains.map((domain) => domain.id);
+
+  const slaves = state.slaves.map((slave, currentIndex) => {
+    if (currentIndex !== index) return slave;
+
+    const next = { ...slave, ...patch };
+
+    if (!next.driver) {
+      return { ...next, domain_id: "" };
+    }
+
+    if (!domains.includes(next.domain_id)) {
+      return { ...next, domain_id: domains[0] ?? "" };
+    }
+
+    return next;
+  });
+
+  return { ...state, slaves };
+}
+
+function applyDomainUpdate(state, index, patch) {
+  const domains = state.domains.map((domain, currentIndex) => (currentIndex === index ? { ...domain, ...patch } : domain));
+  const validIds = domains.map((domain) => domain.id).filter(Boolean);
+  const defaultId = validIds[0] ?? "";
+
+  const slaves = state.slaves.map((slave) => {
+    if (!slave.driver) return { ...slave, domain_id: "" };
+    if (validIds.includes(slave.domain_id)) return slave;
+    return { ...slave, domain_id: defaultId };
+  });
+
+  return { ...state, domains, slaves };
+}
+
+function removeDomain(state, index) {
+  const domains = state.domains.filter((_, currentIndex) => currentIndex !== index);
+  const safeDomains = domains.length === 0 ? [nextDomain([])] : domains;
+  const validIds = safeDomains.map((domain) => domain.id);
+  const defaultId = validIds[0] ?? "";
+
+  const slaves = state.slaves.map((slave) => {
+    if (!slave.driver) return { ...slave, domain_id: "" };
+    if (validIds.includes(slave.domain_id)) return slave;
+    return { ...slave, domain_id: defaultId };
+  });
+
+  return { ...state, domains: safeDomains, slaves };
+}
+
+function knownDriverModules(availableDrivers) {
+  return availableDrivers.map((driver) => driver.module);
+}
+
+function driverSelectValue(slave, availableDrivers) {
+  const known = knownDriverModules(availableDrivers);
+  return slave.driver === "" || known.includes(slave.driver) ? slave.driver : CUSTOM;
+}
+
+function PhaseBadge({ phase }) {
+  return <span className={`ke-setup__phase ke-setup__phase--${phase ?? "idle"}`}>{phase ?? "idle"}</span>;
+}
+
+function Section({ title, eyebrow, children, actions = null }) {
+  return (
+    <section className="ke-setup__section">
+      <div className="ke-setup__section-header">
+        <div>
+          <div className="ke-setup__eyebrow">{eyebrow}</div>
+          <h3 className="ke-setup__section-title">{title}</h3>
+        </div>
+        {actions}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function DomainCard({ domain, index, canRemove, onChange, onCommit, onRemove }) {
+  return (
+    <div className="ke-setup__domain-card">
+      <div className="ke-setup__domain-card-header">
+        <div className="ke-setup__domain-name">Domain {index + 1}</div>
+        {canRemove && (
+          <button type="button" className="ke-setup__ghost-button" onClick={onRemove}>
+            Remove
+          </button>
+        )}
+      </div>
+
+      <div className="ke-setup__domain-grid">
+        <label className="ke-setup__field">
+          <span className="ke-setup__label">ID</span>
+          <input
+            className="ke-setup__input"
+            value={domain.id}
+            onChange={(event) => onChange({ id: event.target.value })}
+            onBlur={(event) => onCommit({ id: event.target.value })}
+          />
+        </label>
+
+        <label className="ke-setup__field">
+          <span className="ke-setup__label">Cycle Time (us)</span>
+          <input
+            className="ke-setup__input"
+            type="number"
+            min="1000"
+            step="1000"
+            value={domain.cycle_time_us}
+            onChange={(event) => onChange({ cycle_time_us: Number(event.target.value) || 1000 })}
+            onBlur={(event) => onCommit({ cycle_time_us: Number(event.target.value) || 1000 })}
+          />
+        </label>
+
+        <label className="ke-setup__field">
+          <span className="ke-setup__label">Logical Base</span>
+          <input
+            className="ke-setup__input"
+            type="number"
+            min="0"
+            step="1"
+            value={domain.logical_base}
+            onChange={(event) => onChange({ logical_base: Number(event.target.value) || 0 })}
+            onBlur={(event) => onCommit({ logical_base: Number(event.target.value) || 0 })}
+          />
+        </label>
+
+        <label className="ke-setup__field">
+          <span className="ke-setup__label">Miss Threshold</span>
+          <input
+            className="ke-setup__input"
+            type="number"
+            min="1"
+            step="1"
+            value={domain.miss_threshold}
+            onChange={(event) => onChange({ miss_threshold: Number(event.target.value) || 1 })}
+            onBlur={(event) => onCommit({ miss_threshold: Number(event.target.value) || 1 })}
+          />
+        </label>
+      </div>
+    </div>
+  );
+}
+
+function SlaveRow({ slave, index, domains, availableDrivers, updateLocal, commit }) {
+  const selectValue = driverSelectValue(slave, availableDrivers);
 
   return (
-    <tr className="border-t border-gray-200">
-      <td className="py-1 pr-4 text-gray-500 font-mono">{toHex(slave.station)}</td>
-      <td className="py-1 pr-4 text-gray-400 font-mono text-xs">
+    <tr>
+      <td className="ke-setup__mono">{toHex(slave.station)}</td>
+      <td className="ke-setup__identity">
         <div>VID {toHex(slave.vendor_id, 8)}</div>
         <div>PID {toHex(slave.product_code, 8)}</div>
       </td>
-      <td className="py-1 pr-2">
+      <td>
         <input
-          className="w-32 border border-gray-300 rounded px-2 py-0.5 font-mono text-sm focus:outline-none focus:border-blue-400"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onBlur={commitName}
-          onKeyDown={(e) => e.key === "Enter" && commitName()}
-          placeholder="slave_name"
+          className="ke-setup__input"
+          value={slave.name}
+          onChange={(event) => updateLocal(index, { name: event.target.value })}
+          onBlur={(event) => commit(index, { name: event.target.value })}
         />
       </td>
-      <td className="py-1 pr-4 text-gray-400 font-mono text-xs">
-        {slave.discovered_name ?? "—"}
+      <td className="ke-setup__muted">{slave.discovered_name || "—"}</td>
+      <td>
+        <select
+          className="ke-setup__input"
+          value={selectValue}
+          onChange={(event) => {
+            if (event.target.value === CUSTOM) {
+              updateLocal(index, { driver: "" });
+              return;
+            }
+
+            commit(index, { driver: event.target.value });
+          }}
+        >
+          <option value="">No driver</option>
+          {availableDrivers.map((driver) => (
+            <option key={driver.module} value={driver.module}>
+              {driver.name}
+            </option>
+          ))}
+          <option value={CUSTOM}>Custom…</option>
+        </select>
+
+        {selectValue === CUSTOM && (
+          <input
+            className="ke-setup__input ke-setup__input--stacked"
+            value={slave.driver}
+            placeholder="MyApp.Driver.Module"
+            onChange={(event) => updateLocal(index, { driver: event.target.value })}
+            onBlur={(event) => commit(index, { driver: event.target.value })}
+          />
+        )}
       </td>
-      <td className="py-1">
-        <div className="flex flex-col gap-1">
-          <select
-            className="border border-gray-300 rounded px-2 py-0.5 font-mono text-sm focus:outline-none focus:border-blue-400 text-gray-700 bg-white"
-            value={selectValue}
-            onChange={handleSelectChange}
-          >
-            <option value="">— none —</option>
-            {availableDrivers.map((d) => (
-              <option key={d.module} value={d.module}>
-                {d.name}
-              </option>
-            ))}
-            <option value={CUSTOM}>Custom…</option>
-          </select>
-          {selectValue === CUSTOM && (
-            <input
-              className="w-48 border border-gray-300 rounded px-2 py-0.5 font-mono text-sm focus:outline-none focus:border-blue-400 text-gray-500"
-              value={driver}
-              onChange={(e) => setDriver(e.target.value)}
-              onBlur={() => commit(driver)}
-              onKeyDown={(e) => e.key === "Enter" && commit(driver)}
-              placeholder="MyApp.MyDriver"
-              autoFocus
-            />
-          )}
-        </div>
+      <td>
+        <select
+          className="ke-setup__input"
+          disabled={!slave.driver}
+          value={slave.domain_id || ""}
+          onChange={(event) => commit(index, { domain_id: event.target.value })}
+        >
+          <option value="">No PDO domain</option>
+          {domains.map((domain) => (
+            <option key={domain.id} value={domain.id}>
+              {domain.id}
+            </option>
+          ))}
+        </select>
       </td>
     </tr>
   );
 }
 
-// ── Runtime config row ────────────────────────────────────────────────────────
-
-function RuntimeConfig({
-  backupInterface,
-  domainId,
-  cycleTimeUs,
-  activationMode,
-  dcEnabled,
-  awaitLock,
-  lockThresholdNs,
-  lockTimeoutMs,
-  onChange,
-}) {
-  const [backup, setBackup] = useState(backupInterface);
-  const [id, setId] = useState(domainId);
-  const [cycle, setCycle] = useState(cycleTimeUs);
-  const [activation, setActivation] = useState(activationMode);
-  const [dc, setDc] = useState(dcEnabled);
-  const [lockGate, setLockGate] = useState(awaitLock);
-  const [threshold, setThreshold] = useState(lockThresholdNs);
-  const [timeout, setTimeoutMs] = useState(lockTimeoutMs);
-
-  const push = (overrides = {}) =>
-    onChange({
-      backup_interface: backup,
-      domain_id: id,
-      cycle_time_us: Number(cycle),
-      activation_mode: activation,
-      "dc_enabled?": dc,
-      "await_lock?": lockGate,
-      lock_threshold_ns: Number(threshold),
-      lock_timeout_ms: Number(timeout),
-      ...overrides,
-    });
-
-  return (
-    <div className="space-y-2 pt-2 border-t border-gray-200 text-sm text-gray-600">
-      <div className="font-semibold text-gray-700">Runtime</div>
-      <div className="flex flex-wrap items-center gap-4">
-        <label className="flex items-center gap-1">
-          <span>backup:</span>
-          <input
-            className="w-28 border border-gray-300 rounded px-2 py-0.5 font-mono focus:outline-none focus:border-blue-400"
-            value={backup}
-            onChange={(e) => setBackup(e.target.value)}
-            onBlur={() => push()}
-            onKeyDown={(e) => e.key === "Enter" && push()}
-            placeholder="optional"
-          />
-        </label>
-        <label className="flex items-center gap-1">
-          <span>domain:</span>
-          <input
-            className="w-24 border border-gray-300 rounded px-2 py-0.5 font-mono focus:outline-none focus:border-blue-400"
-            value={id}
-            onChange={(e) => setId(e.target.value)}
-            onBlur={() => push()}
-            onKeyDown={(e) => e.key === "Enter" && push()}
-          />
-        </label>
-        <label className="flex items-center gap-1">
-          <span>cycle_time_us:</span>
-          <input
-            type="number"
-            min="1000"
-            step="1000"
-            className="w-24 border border-gray-300 rounded px-2 py-0.5 font-mono focus:outline-none focus:border-blue-400"
-            value={cycle}
-            onChange={(e) => setCycle(Number(e.target.value))}
-            onBlur={() => push()}
-            onKeyDown={(e) => e.key === "Enter" && push()}
-          />
-        </label>
-        <label className="flex items-center gap-1">
-          <span>target:</span>
-          <select
-            className="border border-gray-300 rounded px-2 py-0.5 font-mono text-sm focus:outline-none focus:border-blue-400 text-gray-700 bg-white"
-            value={activation}
-            onChange={(e) => {
-              setActivation(e.target.value);
-              push({ activation_mode: e.target.value });
-            }}
-          >
-            <option value="op">operational</option>
-            <option value="preop">pre-op only</option>
-          </select>
-        </label>
-      </div>
-      <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500">
-        <label className="flex items-center gap-1.5">
-          <input
-            type="checkbox"
-            checked={dc}
-            onChange={(e) => {
-              setDc(e.target.checked);
-              push({ "dc_enabled?": e.target.checked });
-            }}
-          />
-          <span>Enable DC</span>
-        </label>
-        <label className="flex items-center gap-1.5">
-          <input
-            type="checkbox"
-            checked={lockGate}
-            disabled={!dc}
-            onChange={(e) => {
-              setLockGate(e.target.checked);
-              push({ "await_lock?": e.target.checked });
-            }}
-          />
-          <span>Await lock</span>
-        </label>
-        <label className="flex items-center gap-1">
-          <span>lock_threshold_ns:</span>
-          <input
-            type="number"
-            min="1"
-            className="w-20 border border-gray-300 rounded px-2 py-0.5 font-mono focus:outline-none focus:border-blue-400 disabled:bg-gray-50"
-            value={threshold}
-            disabled={!dc}
-            onChange={(e) => setThreshold(Number(e.target.value))}
-            onBlur={() => push()}
-            onKeyDown={(e) => e.key === "Enter" && push()}
-          />
-        </label>
-        <label className="flex items-center gap-1">
-          <span>lock_timeout_ms:</span>
-          <input
-            type="number"
-            min="1"
-            className="w-20 border border-gray-300 rounded px-2 py-0.5 font-mono focus:outline-none focus:border-blue-400 disabled:bg-gray-50"
-            value={timeout}
-            disabled={!dc}
-            onChange={(e) => setTimeoutMs(Number(e.target.value))}
-            onBlur={() => push()}
-            onKeyDown={(e) => e.key === "Enter" && push()}
-          />
-        </label>
-      </div>
-    </div>
-  );
-}
-
-// ── Main component ────────────────────────────────────────────────────────────
-
-const PHASE_STYLES = {
-  idle: { dot: "bg-gray-400", label: "text-gray-500", text: "idle" },
-  scanning: { dot: "bg-blue-400 animate-pulse", label: "text-blue-600", text: "scanning" },
-  configuring: { dot: "bg-yellow-400 animate-pulse", label: "text-yellow-600", text: "configuring" },
-  preop_ready: { dot: "bg-yellow-400", label: "text-yellow-600", text: "pre-op ready" },
-  operational: { dot: "bg-green-500", label: "text-green-700", text: "operational" },
-  degraded: { dot: "bg-red-500", label: "text-red-700", text: "degraded" },
-};
-
-function PhaseBadge({ phase }) {
-  const s = PHASE_STYLES[phase] ?? PHASE_STYLES.idle;
-  return (
-    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-gray-100 border border-gray-200">
-      <span className={`inline-block w-2 h-2 rounded-full ${s.dot}`} />
-      <span className={`text-xs font-medium font-mono ${s.label}`}>{s.text}</span>
-    </div>
-  );
-}
-
-function StartCell({ ctx, data }) {
-  const [iface, setIface] = useState(data.interface);
-  const [status, setStatus] = useState(data.status);
-  const [error, setError] = useState(data.error);
-  const [slaves, setSlaves] = useState(data.slaves);
-  const [backupInterface, setBackupInterface] = useState(data.backup_interface ?? "");
-  const [domainId, setDomainId] = useState(data.domain_id);
-  const [cycleTimeUs, setCycleTimeUs] = useState(data.cycle_time_us);
-  const [activationMode, setActivationMode] = useState(data.activation_mode ?? "op");
-  const [dcEnabled, setDcEnabled] = useState(data["dc_enabled?"] ?? true);
-  const [awaitLock, setAwaitLock] = useState(data["await_lock?"] ?? false);
-  const [lockThresholdNs, setLockThresholdNs] = useState(data.lock_threshold_ns ?? 100);
-  const [lockTimeoutMs, setLockTimeoutMs] = useState(data.lock_timeout_ms ?? 5000);
-  const [masterPhase, setMasterPhase] = useState(data.master_phase ?? "idle");
-  const availableDrivers = data.available_drivers ?? [];
+function SetupCell({ ctx, data }) {
+  const [state, setState] = useState(data);
+  const syncState = useEffectEvent(() => {
+    ctx.pushEvent("update", serialize(state));
+  });
 
   useEffect(() => {
-    ctx.handleEvent("status", ({ status }) => setStatus(status));
-    ctx.handleEvent("scan_result", ({ slaves }) => {
-      setSlaves(slaves);
-      setStatus("discovered");
+    ctx.handleEvent("snapshot", (next) => {
+      startTransition(() => setState(next));
     });
-    ctx.handleEvent("scan_error", ({ error }) => {
-      setError(error);
-      setStatus("error");
-    });
-    ctx.handleEvent("master_phase", ({ phase }) => setMasterPhase(phase));
+
     ctx.handleSync(() => {
       const active = document.activeElement;
+
       if (active instanceof HTMLElement && ctx.root.contains(active)) {
-        active.blur();
+        active.dispatchEvent(new Event("change", { bubbles: true }));
+        active.dispatchEvent(new Event("blur", { bubbles: true }));
+      } else {
+        syncState();
       }
     });
-  }, []);
+  }, [ctx, syncState]);
 
-  const handleScan = () => {
-    setStatus("scanning");
-    setError(null);
-    ctx.pushEvent("scan");
+  const pushUpdate = (nextState) => {
+    setState(nextState);
+    ctx.pushEvent("update", serialize(nextState));
   };
 
-  const handleStop = () => ctx.pushEvent("stop");
-
-  const handleIfaceChange = (e) => {
-    setIface(e.target.value);
-    ctx.pushEvent("update_interface", { interface: e.target.value });
+  const updateLocal = (recipe) => {
+    setState((previous) => recipe(previous));
   };
 
-  const handleSlaveUpdate = (idx, name, driver) => {
-    setSlaves((prev) => prev.map((s, i) => (i === idx ? { ...s, name, driver } : s)));
-    ctx.pushEvent("update_slave", { index: idx, name, driver });
+  const commit = (recipe) => {
+    setState((previous) => {
+      const nextState = recipe(previous);
+      ctx.pushEvent("update", serialize(nextState));
+      return nextState;
+    });
   };
 
-  const handleRuntimeChange = (next) => {
-    setBackupInterface(next.backup_interface);
-    setDomainId(next.domain_id);
-    setCycleTimeUs(next.cycle_time_us);
-    setActivationMode(next.activation_mode);
-    setDcEnabled(next["dc_enabled?"]);
-    setAwaitLock(next["await_lock?"]);
-    setLockThresholdNs(next.lock_threshold_ns);
-    setLockTimeoutMs(next.lock_timeout_ms);
-    ctx.pushEvent("update_runtime", next);
+  const addDomain = () => {
+    commit((previous) => ({
+      ...previous,
+      domains: [...previous.domains, nextDomain(previous.domains)],
+    }));
   };
 
-  const scanning = status === "scanning";
+  const hasDiscovery = state.slaves.length > 0;
 
   return (
-    <div className="p-3 space-y-3 font-sans text-sm select-none">
-      {/* Interface row */}
-      <div className="flex items-center gap-2">
-        <label className="text-gray-500 font-mono text-xs">interface</label>
-        <input
-          className="w-32 border border-gray-300 rounded px-2 py-1 font-mono text-sm focus:outline-none focus:border-blue-400 disabled:bg-gray-50 disabled:text-gray-400"
-          value={iface}
-          onChange={handleIfaceChange}
-          disabled={scanning}
-          placeholder="eth0"
-        />
-        <button
-          onClick={handleScan}
-          disabled={scanning}
-          className="px-3 py-1 bg-blue-500 hover:bg-blue-600 active:bg-blue-700 disabled:bg-gray-300 text-white rounded text-sm font-medium transition-colors"
-        >
-          {status === "discovered" ? "Re-scan" : "Scan Bus"}
-        </button>
-        <button
-          onClick={handleStop}
-          className="px-3 py-1 bg-red-500 hover:bg-red-600 active:bg-red-700 text-white rounded text-sm font-medium transition-colors"
-        >
-          Stop
-        </button>
-        {scanning && (
-          <span className="text-gray-400 text-xs animate-pulse">Scanning…</span>
-        )}
-        <div className="ml-auto">
-          <PhaseBadge phase={masterPhase} />
+    <div className="ke-setup">
+      <section className="ke-setup__hero">
+        <div className="ke-setup__hero-copy">
+          <div className="ke-setup__eyebrow">EtherCAT Setup</div>
+          <h2 className="ke-setup__title">Discover live, persist static startup</h2>
+          <p className="ke-setup__description">
+            Scan the running bus, assign drivers and domains, then keep the notebook output as a single
+            static <code>EtherCAT.start/1</code> call. The generated cell returns the master pid once the
+            session is operational.
+          </p>
+        </div>
+
+        <div className="ke-setup__status-panel">
+          <div className="ke-setup__status-row">
+            <span className="ke-setup__status-label">Phase</span>
+            <PhaseBadge phase={state.master_phase} />
+          </div>
+          <div className="ke-setup__status-row">
+            <span className="ke-setup__status-label">Master PID</span>
+            <span className="ke-setup__mono">{state.master_pid ?? "not running"}</span>
+          </div>
+          <div className="ke-setup__status-row">
+            <span className="ke-setup__status-label">Scan state</span>
+            <span className="ke-setup__mono">{state.status}</span>
+          </div>
+        </div>
+      </section>
+
+      <div className="ke-setup__toolbar">
+        <label className="ke-setup__field ke-setup__field--toolbar">
+          <span className="ke-setup__label">Interface</span>
+          <input
+            className="ke-setup__input"
+            value={state.interface}
+            onChange={(event) => updateLocal((previous) => ({ ...previous, interface: event.target.value }))}
+            onBlur={(event) => commit((previous) => ({ ...previous, interface: event.target.value }))}
+          />
+        </label>
+
+        <div className="ke-setup__toolbar-actions">
+          <button
+            type="button"
+            className="ke-setup__button ke-setup__button--primary"
+            disabled={state.status === "scanning"}
+            onClick={() => {
+              setState((previous) => ({ ...previous, status: "scanning", error: null }));
+              ctx.pushEvent("scan", {});
+            }}
+          >
+            {hasDiscovery ? "Re-scan Bus" : "Scan Bus"}
+          </button>
+          <button
+            type="button"
+            className="ke-setup__button ke-setup__button--secondary"
+            onClick={() => ctx.pushEvent("stop", {})}
+          >
+            Stop Master
+          </button>
         </div>
       </div>
 
-      {/* Error */}
-      {status === "error" && (
-        <div className="text-red-600 text-xs bg-red-50 border border-red-200 rounded px-3 py-2 font-mono">
-          {error}
-        </div>
-      )}
+      {state.error && <div className="ke-setup__error">{state.error}</div>}
 
-      {/* Slave table */}
-      {status === "discovered" && slaves.length > 0 && (
-        <>
-          <div
-            className="text-xs rounded px-3 py-2 border font-mono bg-emerald-50 border-emerald-200 text-emerald-700"
-          >
-            Source mode: static startup configuration. Bus discovery stays live in
-            the Smart Cell, but persisted code is emitted as a single
-            EtherCAT.start/1 call with the full slave config.
+      <div className="ke-setup__grid">
+        <Section
+          eyebrow="Routing"
+          title="Domains"
+          actions={
+            <button type="button" className="ke-setup__button ke-setup__button--secondary" onClick={addDomain}>
+              Add Domain
+            </button>
+          }
+        >
+          <div className="ke-setup__domains">
+            {state.domains.map((domain, index) => (
+              <DomainCard
+                key={`${domain.id}-${index}`}
+                domain={domain}
+                index={index}
+                canRemove={state.domains.length > 1}
+                onChange={(patch) => updateLocal((previous) => applyDomainUpdate(previous, index, patch))}
+                onCommit={(patch) => commit((previous) => applyDomainUpdate(previous, index, patch))}
+                onRemove={() => commit((previous) => removeDomain(previous, index))}
+              />
+            ))}
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+        </Section>
+
+        <Section eyebrow="Clocking" title="Distributed Clocks">
+          <div className="ke-setup__dc-grid">
+            <label className="ke-setup__toggle">
+              <input
+                type="checkbox"
+                checked={state.dc_enabled}
+                onChange={(event) => commit((previous) => ({ ...previous, dc_enabled: event.target.checked }))}
+              />
+              <span>Enable DC runtime</span>
+            </label>
+
+            <label className="ke-setup__field">
+              <span className="ke-setup__label">Cycle (ns)</span>
+              <input
+                className="ke-setup__input"
+                type="number"
+                min="1000000"
+                step="1000000"
+                disabled={!state.dc_enabled}
+                value={state.dc_cycle_ns}
+                onChange={(event) =>
+                  updateLocal((previous) => ({ ...previous, dc_cycle_ns: Number(event.target.value) || 1000000 }))
+                }
+                onBlur={(event) =>
+                  commit((previous) => ({ ...previous, dc_cycle_ns: Number(event.target.value) || 1000000 }))
+                }
+              />
+            </label>
+
+            <label className="ke-setup__toggle">
+              <input
+                type="checkbox"
+                checked={state.await_lock}
+                disabled={!state.dc_enabled}
+                onChange={(event) => commit((previous) => ({ ...previous, await_lock: event.target.checked }))}
+              />
+              <span>Gate startup on lock</span>
+            </label>
+
+            <label className="ke-setup__field">
+              <span className="ke-setup__label">Lock Threshold (ns)</span>
+              <input
+                className="ke-setup__input"
+                type="number"
+                min="1"
+                step="1"
+                disabled={!state.dc_enabled}
+                value={state.lock_threshold_ns}
+                onChange={(event) =>
+                  updateLocal((previous) => ({
+                    ...previous,
+                    lock_threshold_ns: Number(event.target.value) || 1,
+                  }))
+                }
+                onBlur={(event) =>
+                  commit((previous) => ({
+                    ...previous,
+                    lock_threshold_ns: Number(event.target.value) || 1,
+                  }))
+                }
+              />
+            </label>
+
+            <label className="ke-setup__field">
+              <span className="ke-setup__label">Lock Timeout (ms)</span>
+              <input
+                className="ke-setup__input"
+                type="number"
+                min="1"
+                step="1"
+                disabled={!state.dc_enabled}
+                value={state.lock_timeout_ms}
+                onChange={(event) =>
+                  updateLocal((previous) => ({
+                    ...previous,
+                    lock_timeout_ms: Number(event.target.value) || 1,
+                  }))
+                }
+                onBlur={(event) =>
+                  commit((previous) => ({
+                    ...previous,
+                    lock_timeout_ms: Number(event.target.value) || 1,
+                  }))
+                }
+              />
+            </label>
+
+            <label className="ke-setup__field">
+              <span className="ke-setup__label">Warmup Cycles</span>
+              <input
+                className="ke-setup__input"
+                type="number"
+                min="0"
+                step="1"
+                disabled={!state.dc_enabled}
+                value={state.warmup_cycles}
+                onChange={(event) =>
+                  updateLocal((previous) => ({
+                    ...previous,
+                    warmup_cycles: Number(event.target.value) || 0,
+                  }))
+                }
+                onBlur={(event) =>
+                  commit((previous) => ({
+                    ...previous,
+                    warmup_cycles: Number(event.target.value) || 0,
+                  }))
+                }
+              />
+            </label>
+          </div>
+        </Section>
+      </div>
+
+      <Section eyebrow="Discovery" title="Slave Inventory">
+        {hasDiscovery ? (
+          <div className="ke-setup__table-wrap">
+            <table className="ke-setup__table">
               <thead>
-                <tr className="text-left text-gray-400 text-xs">
-                  <th className="pb-1 pr-4 font-medium">Station</th>
-                  <th className="pb-1 pr-4 font-medium">Identity</th>
-                  <th className="pb-1 pr-2 font-medium">Name</th>
-                  <th className="pb-1 pr-4 font-medium">Discovered</th>
-                  <th className="pb-1 font-medium">Driver</th>
+                <tr>
+                  <th>Station</th>
+                  <th>Identity</th>
+                  <th>Name</th>
+                  <th>Discovered</th>
+                  <th>Driver</th>
+                  <th>Domain</th>
                 </tr>
               </thead>
               <tbody>
-                {slaves.map((slave, idx) => (
+                {state.slaves.map((slave, index) => (
                   <SlaveRow
-                    key={idx}
+                    key={`${slave.discovered_name}-${index}`}
                     slave={slave}
-                    index={idx}
-                    availableDrivers={availableDrivers}
-                    onUpdate={handleSlaveUpdate}
+                    index={index}
+                    domains={state.domains}
+                    availableDrivers={state.available_drivers}
+                    updateLocal={(rowIndex, patch) =>
+                      updateLocal((previous) => applySlaveUpdate(previous, rowIndex, patch))
+                    }
+                    commit={(rowIndex, patch) => commit((previous) => applySlaveUpdate(previous, rowIndex, patch))}
                   />
                 ))}
               </tbody>
             </table>
           </div>
-        </>
-      )}
-
-      {/* Runtime config */}
-      {status === "discovered" && (
-        <RuntimeConfig
-          backupInterface={backupInterface}
-          domainId={domainId}
-          cycleTimeUs={cycleTimeUs}
-          activationMode={activationMode}
-          dcEnabled={dcEnabled}
-          awaitLock={awaitLock}
-          lockThresholdNs={lockThresholdNs}
-          lockTimeoutMs={lockTimeoutMs}
-          onChange={handleRuntimeChange}
-        />
-      )}
+        ) : (
+          <div className="ke-setup__empty">
+            Scan the bus to discover slaves, auto-match drivers, and assign each driven slave to a process-data
+            domain.
+          </div>
+        )}
+      </Section>
     </div>
   );
 }
