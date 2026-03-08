@@ -1,7 +1,7 @@
 defmodule KinoEtherCAT.SourceTest do
   use ExUnit.Case, async: true
 
-  alias KinoEtherCAT.Source
+  alias KinoEtherCAT.SmartCells.Source
 
   test "atom_literal only quotes atoms when required" do
     assert Source.atom_literal("slave_1") == ":slave_1"

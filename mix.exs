@@ -66,21 +66,24 @@ defmodule KinoEtherCAT.MixProject do
       groups_for_modules: [
         Runtime: [
           KinoEtherCAT,
+          KinoEtherCAT.Diagnostics,
+          KinoEtherCAT.Diagnostics.Panel,
           KinoEtherCAT.Runtime,
-          KinoEtherCAT.Runtime.Panel,
-          KinoEtherCAT.Diagnostics
+          KinoEtherCAT.Runtime.Panel
         ],
         Widgets: [
-          KinoEtherCAT.LED,
-          KinoEtherCAT.Switch,
-          KinoEtherCAT.Value
+          KinoEtherCAT.Widgets,
+          KinoEtherCAT.Widgets.LED,
+          KinoEtherCAT.Widgets.Switch,
+          KinoEtherCAT.Widgets.Value,
+          KinoEtherCAT.Widgets.SlavePanel
         ],
         "Smart Cells": [
-          KinoEtherCAT.SetupCell,
-          KinoEtherCAT.VisualizerCell,
-          KinoEtherCAT.SDOExplorer,
-          KinoEtherCAT.RegisterExplorer,
-          KinoEtherCAT.SIIExplorer
+          KinoEtherCAT.SmartCells.Setup,
+          KinoEtherCAT.SmartCells.Visualizer,
+          KinoEtherCAT.SmartCells.SDOExplorer,
+          KinoEtherCAT.SmartCells.RegisterExplorer,
+          KinoEtherCAT.SmartCells.SIIExplorer
         ],
         Drivers: [
           KinoEtherCAT.Driver,

@@ -1,30 +1,30 @@
 defmodule KinoEtherCAT.DiagnosticsStateTest do
   use ExUnit.Case, async: true
 
-  alias KinoEtherCAT.DiagnosticsState
+  alias KinoEtherCAT.Diagnostics.State
 
   test "records realtime transaction latency and queue depth history" do
     state =
-      DiagnosticsState.new(history_limit: 5)
-      |> DiagnosticsState.apply_poll_snapshot(%{
+      State.new(history_limit: 5)
+      |> State.apply_poll_snapshot(%{
         phase: "operational",
         last_failure: nil,
         slaves: [],
         domains: [],
         dc: nil
       })
-      |> DiagnosticsState.apply_telemetry(
+      |> State.apply_telemetry(
         [:ethercat, :bus, :submission, :enqueued],
         %{queue_depth: 3},
         %{class: :realtime, link: "eth0", state: :awaiting}
       )
-      |> DiagnosticsState.apply_telemetry(
+      |> State.apply_telemetry(
         [:ethercat, :bus, :transact, :stop],
         %{duration: System.convert_time_unit(240, :microsecond, :native)},
         %{class: :realtime, total_wkc: 7, datagram_count: 2}
       )
 
-    payload = DiagnosticsState.payload(state)
+    payload = State.payload(state)
 
     assert payload.phase == "operational"
     assert payload.slice_ms == 1_000
@@ -37,14 +37,14 @@ defmodule KinoEtherCAT.DiagnosticsStateTest do
 
   test "accepts transaction stop telemetry without total_wkc" do
     state =
-      DiagnosticsState.new(history_limit: 5)
-      |> DiagnosticsState.apply_telemetry(
+      State.new(history_limit: 5)
+      |> State.apply_telemetry(
         [:ethercat, :bus, :transact, :stop],
         %{duration: System.convert_time_unit(125, :microsecond, :native)},
         %{class: :realtime, datagram_count: 1}
       )
 
-    payload = DiagnosticsState.payload(state)
+    payload = State.payload(state)
 
     assert payload.bus.transactions.realtime.last_latency_us == 125
     assert payload.bus.transactions.realtime.last_wkc == nil
@@ -53,24 +53,24 @@ defmodule KinoEtherCAT.DiagnosticsStateTest do
 
   test "builds slice payloads for DC and domain telemetry" do
     state =
-      DiagnosticsState.new(history_limit: 4)
-      |> DiagnosticsState.apply_telemetry(
+      State.new(history_limit: 4)
+      |> State.apply_telemetry(
         [:ethercat, :dc, :sync_diff, :observed],
         %{max_sync_diff_ns: 140},
         %{ref_station: 4096}
       )
-      |> DiagnosticsState.apply_telemetry(
+      |> State.apply_telemetry(
         [:ethercat, :domain, :cycle, :done],
         %{duration_us: 900, cycle_count: 1},
         %{domain: :main}
       )
-      |> DiagnosticsState.apply_telemetry(
+      |> State.apply_telemetry(
         [:ethercat, :domain, :cycle, :missed],
         %{miss_count: 1},
         %{domain: :main, reason: :deadline}
       )
 
-    payload = DiagnosticsState.payload(state)
+    payload = State.payload(state)
     [domain] = payload.domains
 
     assert_in_delta List.last(payload.dc.sync_diff_slices).value, 140.0, 0.1
@@ -82,19 +82,19 @@ defmodule KinoEtherCAT.DiagnosticsStateTest do
 
   test "records link and slave fault events into the timeline" do
     state =
-      DiagnosticsState.new(event_limit: 5)
-      |> DiagnosticsState.apply_telemetry(
+      State.new(event_limit: 5)
+      |> State.apply_telemetry(
         [:ethercat, :bus, :link, :down],
         %{},
         %{link: "eth0", reason: :timeout}
       )
-      |> DiagnosticsState.apply_telemetry(
+      |> State.apply_telemetry(
         [:ethercat, :slave, :health, :fault],
         %{al_state: 8, error_code: 16},
         %{slave: :rack, station: 0x1001}
       )
 
-    payload = DiagnosticsState.payload(state)
+    payload = State.payload(state)
 
     assert [%{name: "eth0", status: "down"}] = payload.bus.links
     assert [%{title: "Slave fault"} | _] = payload.timeline

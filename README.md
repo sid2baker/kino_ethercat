@@ -1,6 +1,6 @@
 # KinoEtherCAT
 
-[Livebook](https://livebook.dev) [Kino](https://github.com/livebook-dev/kino) widgets for [EtherCAT](https://github.com/sid2baker/ethercat) bus signals.
+[Livebook](https://livebook.dev) and [Kino](https://github.com/livebook-dev/kino) tools for [EtherCAT](https://github.com/sid2baker/ethercat) discovery, runtime inspection, diagnostics, and hardware bring-up.
 
 ## Installation
 
@@ -8,7 +8,7 @@ Add to your Livebook notebook:
 
 ```elixir
 Mix.install([
-  {:kino_ethercat, "~> 0.1"}
+  {:kino_ethercat, "~> 0.2"}
 ])
 ```
 
@@ -24,80 +24,114 @@ Mix.install([
 
 ## Smart Cells
 
-KinoEtherCAT registers two Smart Cells in Livebook (available via **+ Smart** in the cell menu).
+KinoEtherCAT registers multiple Smart Cells in Livebook (available via **+ Smart** in the cell menu).
 
 ### EtherCAT Setup
 
-Scans the bus, discovers connected slaves, lets you assign names and drivers, and generates the `EtherCAT.start/1` call.
+Scans the bus, discovers connected slaves, lets you assign names and drivers, and generates a static `EtherCAT.start/1` call that returns the running master pid.
 
 - Set the network interface and click **Scan Bus**
 - Assign a human-readable name to each slave
 - Pick a built-in driver from the dropdown (auto-detected by vendor/product ID) or type a custom module name
-- Configure the domain ID and cycle time
+- Configure multiple domains and assign each slave to a domain
+- Tune grouped DC settings without leaving the cell
 - The master phase badge (top-right) shows live EtherCAT state
 
 ### EtherCAT Visualizer
 
-Picks running slaves and generates `KinoEtherCAT.render/2` calls — one output cell per slave.
+Picks running slaves and generates `KinoEtherCAT.Widgets.dashboard/2` calls for focused operator panels.
 
 - Click **Refresh** to load the current slave list
 - Drag rows to reorder render output
 - Click the trash icon to exclude a slave
-- Set **per row** to control how many signals appear per grid row (blank = auto)
+- Set **columns** to control dashboard layout
 
----
+### EtherCAT SDO Explorer
+
+Generates repeatable CoE upload and download code against the selected configured slave.
+
+### EtherCAT Register Explorer
+
+Generates ESC register reads and writes, with presets for common AL, DL, watchdog, and sync manager diagnostics.
+
+### EtherCAT SII Explorer
+
+Generates EEPROM and ESC reload calls for identity, mailbox, sync manager, PDO, and raw word access.
 
 ## Programmatic API
 
-### LED
+### Runtime Resources
+
+The preferred runtime API returns renderable EtherCAT structs:
+
+```elixir
+KinoEtherCAT.master()
+KinoEtherCAT.slave(:io_1)
+KinoEtherCAT.domain(:main)
+KinoEtherCAT.dc()
+KinoEtherCAT.bus()
+```
+
+In Livebook these render as interactive resource views via `Kino.Render`.
+
+### Diagnostics
+
+```elixir
+KinoEtherCAT.diagnostics()
+KinoEtherCAT.Diagnostics.panel()
+```
+
+### Widgets
+
+Signal-level and slave-panel widgets live under `KinoEtherCAT.Widgets`.
+
+#### LED
 
 Read-only indicator driven by a 1-bit EtherCAT input signal. Lights up when the value is `1`.
 
 ```elixir
-KinoEtherCAT.led(:my_slave, :ch1)
-KinoEtherCAT.led(:my_slave, :ch2, label: "Fault", color: "red")
+KinoEtherCAT.Widgets.led(:my_slave, :ch1)
+KinoEtherCAT.Widgets.led(:my_slave, :ch2, label: "Fault", color: "red")
 ```
 
 **Options:** `:label` (default: signal name), `:color` — `"green"` | `"red"` | `"yellow"` | `"blue"` (default: `"green"`)
 
-### Switch
+#### Switch
 
 Toggle switch that writes a 1-bit EtherCAT output signal.
 
 ```elixir
-KinoEtherCAT.switch(:my_slave, :ch1)
-KinoEtherCAT.switch(:my_slave, :ch1, label: "Pump EN", initial: 0)
+KinoEtherCAT.Widgets.switch(:my_slave, :ch1)
+KinoEtherCAT.Widgets.switch(:my_slave, :ch1, label: "Pump EN", initial: 0)
 ```
 
 **Options:** `:label` (default: signal name), `:initial` — `0` or `1` (default: `0`)
 
-### Value
+#### Value
 
 Live display for multi-bit input signals (e.g. temperature readings, analog inputs).
 
 ```elixir
-KinoEtherCAT.value(:rtd, :channel1)
-KinoEtherCAT.value(:rtd, :channel1, label: "PT100 CH1")
+KinoEtherCAT.Widgets.value(:rtd, :channel1)
+KinoEtherCAT.Widgets.value(:rtd, :channel1, label: "PT100 CH1")
 ```
 
 **Options:** `:label` (default: signal name)
 
-### render/2
+#### Slave Panels
 
-Auto-renders all signals for a slave. Inspects the slave via `EtherCAT.slave_info/1` and creates:
-- LEDs for 1-bit inputs
-- Switches for 1-bit outputs
-- Value displays for multi-bit inputs
+Aggregate one or more configured slaves into focused dashboard panels.
 
 ```elixir
-KinoEtherCAT.render(:my_slave)
-KinoEtherCAT.render(:my_slave, columns: 8)
+KinoEtherCAT.Widgets.panel(:my_slave)
+KinoEtherCAT.Widgets.dashboard([:left_io, :right_io], columns: 2)
 ```
 
 **Options:**
-- `:columns` — signals per row (default: auto, up to 8)
-- `:layout` — `:columns` (inputs/outputs in separate groups) | `:list` (flat). Default: `:columns`
-- `:on_error` — `:placeholder` (markdown cell) | `:raise`. Default: `:placeholder`
+- `:columns` — max panels per row on `dashboard/2`
+- `:batch_ms` — signal update batching interval on `panel/2`
+- `:show_identity?` — whether `panel/2` shows slave identity details
+- `:show_domains?` — whether `panel/2` shows domain health badges
 
 ---
 

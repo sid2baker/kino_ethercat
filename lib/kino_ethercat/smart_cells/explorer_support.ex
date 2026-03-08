@@ -1,4 +1,4 @@
-defmodule KinoEtherCAT.ExplorerSupport do
+defmodule KinoEtherCAT.SmartCells.ExplorerSupport do
   @moduledoc false
 
   @spec slave_suggestions(:all | :coe) :: [map()]

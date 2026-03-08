@@ -1,4 +1,4 @@
-defmodule KinoEtherCAT.SlaveSnapshot do
+defmodule KinoEtherCAT.Widgets.SlaveSnapshot do
   @moduledoc false
 
   @spec build(atom(), map() | nil, map(), [map()], map() | nil, term() | nil, keyword()) :: map()

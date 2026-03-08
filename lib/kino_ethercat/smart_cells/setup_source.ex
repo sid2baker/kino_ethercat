@@ -1,7 +1,7 @@
-defmodule KinoEtherCAT.SetupSource do
+defmodule KinoEtherCAT.SmartCells.SetupSource do
   @moduledoc false
 
-  alias KinoEtherCAT.Source
+  alias KinoEtherCAT.SmartCells.Source
 
   @spec render(map()) :: String.t()
   def render(attrs) when is_map(attrs) do

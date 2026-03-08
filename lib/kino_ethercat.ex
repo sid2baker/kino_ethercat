@@ -1,8 +1,8 @@
 defmodule KinoEtherCAT do
   @moduledoc """
-  Livebook integration for EtherCAT discovery, control, and diagnostics.
+  Livebook integration for EtherCAT runtime inspection and diagnostics.
 
-  The notebook-facing API is centered on renderable runtime resources:
+  The primary notebook-facing API is centered on renderable runtime resources:
 
       KinoEtherCAT.master()
       KinoEtherCAT.slave(:io_1)
@@ -13,11 +13,12 @@ defmodule KinoEtherCAT do
   Each returns a renderable EtherCAT struct. In Livebook those structs render
   as interactive resource views via `Kino.Render`.
 
-  Legacy signal widgets remain available for narrow signal-level notebooks, but
-  the primary surface is the resource-oriented runtime API above.
+  For live dashboards and signal-oriented widgets, use `KinoEtherCAT.Widgets`.
+  For the telemetry dashboard, use `KinoEtherCAT.diagnostics/0` or
+  `KinoEtherCAT.Diagnostics.panel/0`.
   """
 
-  alias KinoEtherCAT.{Diagnostics, LED, Runtime, SlavePanel, Switch}
+  alias KinoEtherCAT.Runtime
 
   @spec master() :: EtherCAT.Master.t()
   def master, do: Runtime.master()
@@ -28,96 +29,15 @@ defmodule KinoEtherCAT do
   @spec domain(atom()) :: EtherCAT.Domain.t()
   def domain(id), do: Runtime.domain(id)
 
-  @spec dc() :: EtherCAT.DC.Status.t()
+  @spec dc() :: struct()
   def dc, do: Runtime.dc()
 
   @spec bus() :: EtherCAT.Bus.t()
   def bus, do: Runtime.bus()
 
   @doc """
-  Legacy read-only LED indicator driven by an EtherCAT input signal.
-
-  Subscribes to `{slave, signal}` and lights up when the value is `1`.
-
-  ## Options
-
-    * `:label` — text label shown next to the LED (default: `"signal"`)
-    * `:color` — LED color when on: `"green"` | `"red"` | `"yellow"` | `"blue"` (default: `"green"`)
-  """
-  @spec led(atom(), atom(), keyword()) :: Kino.JS.Live.t()
-  def led(slave, signal, opts \\ []), do: LED.new(slave, signal, opts)
-
-  @doc """
-  Legacy toggle switch that writes an EtherCAT output signal.
-
-  Clicking the switch calls `EtherCAT.write_output/3` with `0` or `1`.
-
-  ## Options
-
-    * `:label` — text label shown next to the switch (default: `"signal"`)
-    * `:initial` — initial value, `0` or `1` (default: `0`)
-  """
-  @spec switch(atom(), atom(), keyword()) :: Kino.JS.Live.t()
-  def switch(slave, signal, opts \\ []), do: Switch.new(slave, signal, opts)
-
-  @doc """
-  Legacy aggregated live panel for a single slave.
-
-  The panel shows live input values, bit outputs, slave metadata, and domain
-  health in a single widget. Unlike the older per-signal grid, this keeps
-  updates batched and lets the widget recover if the master is restarted.
-
-  ## Options
-
-    * `:title` — panel title override
-    * `:batch_ms` — signal update batching interval in milliseconds. Default: `100`
-    * `:show_identity?` — whether to show slave identity details. Default: `true`
-    * `:show_domains?` — whether to show domain health badges. Default: `true`
-  """
-  @spec render(atom(), keyword()) :: Kino.JS.Live.t()
-  def render(slave_name, opts \\ []), do: panel(slave_name, opts)
-
-  @doc """
-  Legacy aggregated live panel for a single EtherCAT slave.
-  """
-  @spec panel(atom(), keyword()) :: Kino.JS.Live.t()
-  def panel(slave_name, opts \\ []), do: SlavePanel.new(slave_name, opts)
-
-  @doc """
-  Render multiple slave panels in a grid.
-
-  ## Options
-
-    * `:columns` — max panels per row. Default: auto, up to 4
-
-  Any other options are forwarded to `panel/2`.
-  """
-  @spec dashboard([atom()], keyword()) :: Kino.Layout.t() | Kino.JS.Live.t() | Kino.nothing()
-  def dashboard(slaves, opts \\ []) when is_list(slaves) do
-    columns = Keyword.get(opts, :columns, nil)
-    panel_opts = Keyword.drop(opts, [:columns])
-
-    widgets = Enum.map(slaves, &panel(&1, panel_opts))
-
-    case widgets do
-      [] -> Kino.nothing()
-      [widget] -> widget
-      _ -> Kino.Layout.grid(widgets, columns: columns || panel_columns(length(widgets)))
-    end
-  end
-
-  @doc """
-  Render a live diagnostic dashboard for the EtherCAT master.
-
-  Polls every 500 ms and displays:
-  - Master phase
-  - Per-slave ESM state and AL error codes
-  - Domain cycle statistics (cycle count, miss count, working counter)
-  - Distributed Clocks lock status (when configured)
+  Render the telemetry-driven EtherCAT diagnostic dashboard.
   """
   @spec diagnostics() :: Kino.JS.Live.t()
-  def diagnostics, do: Diagnostics.new()
-
-  defp panel_columns(0), do: 1
-  defp panel_columns(n), do: min(n, 4)
+  def diagnostics, do: KinoEtherCAT.Diagnostics.panel()
 end

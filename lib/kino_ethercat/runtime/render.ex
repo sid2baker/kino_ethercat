@@ -1,39 +1,29 @@
-defimpl Kino.Render, for: EtherCAT.Master do
-  def to_livebook(master) do
-    overview = KinoEtherCAT.Runtime.Panel.new(master)
-    raw = Kino.Inspect.new(master)
-    Kino.Render.to_livebook(Kino.Layout.tabs(Overview: overview, Raw: raw))
+defmodule KinoEtherCAT.Runtime.Render do
+  @moduledoc false
+
+  def to_livebook(resource) do
+    overview = KinoEtherCAT.Runtime.Panel.new(resource)
+    raw = Kino.Inspect.new(resource)
+    kino = Kino.Layout.tabs(Overview: overview, Raw: raw)
+    Kino.Render.to_livebook(kino)
   end
 end
 
-defimpl Kino.Render, for: EtherCAT.Slave do
-  def to_livebook(slave) do
-    overview = KinoEtherCAT.Runtime.Panel.new(slave)
-    raw = Kino.Inspect.new(slave)
-    Kino.Render.to_livebook(Kino.Layout.tabs(Overview: overview, Raw: raw))
+for module <- [EtherCAT.Master, EtherCAT.Slave, EtherCAT.Domain, EtherCAT.Bus] do
+  defimpl Kino.Render, for: module do
+    def to_livebook(resource), do: KinoEtherCAT.Runtime.Render.to_livebook(resource)
   end
 end
 
-defimpl Kino.Render, for: EtherCAT.Domain do
-  def to_livebook(domain) do
-    overview = KinoEtherCAT.Runtime.Panel.new(domain)
-    raw = Kino.Inspect.new(domain)
-    Kino.Render.to_livebook(Kino.Layout.tabs(Overview: overview, Raw: raw))
+if Code.ensure_loaded?(EtherCAT.DC.Status) and
+     function_exported?(EtherCAT.DC.Status, :__struct__, 0) do
+  defimpl Kino.Render, for: EtherCAT.DC.Status do
+    def to_livebook(resource), do: KinoEtherCAT.Runtime.Render.to_livebook(resource)
   end
 end
 
-defimpl Kino.Render, for: EtherCAT.Bus do
-  def to_livebook(bus) do
-    overview = KinoEtherCAT.Runtime.Panel.new(bus)
-    raw = Kino.Inspect.new(bus)
-    Kino.Render.to_livebook(Kino.Layout.tabs(Overview: overview, Raw: raw))
-  end
-end
-
-defimpl Kino.Render, for: EtherCAT.DC.Status do
-  def to_livebook(status) do
-    overview = KinoEtherCAT.Runtime.Panel.new(status)
-    raw = Kino.Inspect.new(status)
-    Kino.Render.to_livebook(Kino.Layout.tabs(Overview: overview, Raw: raw))
+if function_exported?(EtherCAT.DC, :__struct__, 0) do
+  defimpl Kino.Render, for: EtherCAT.DC do
+    def to_livebook(resource), do: KinoEtherCAT.Runtime.Render.to_livebook(resource)
   end
 end

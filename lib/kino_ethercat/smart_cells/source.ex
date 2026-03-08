@@ -1,4 +1,4 @@
-defmodule KinoEtherCAT.Source do
+defmodule KinoEtherCAT.SmartCells.Source do
   @moduledoc false
 
   @module_pattern ~r/^(Elixir\.)?[A-Z][A-Za-z0-9_]*(\.[A-Z][A-Za-z0-9_]*)*$/

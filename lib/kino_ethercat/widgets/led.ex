@@ -1,4 +1,4 @@
-defmodule KinoEtherCAT.LED do
+defmodule KinoEtherCAT.Widgets.LED do
   use Kino.JS, assets_path: "lib/assets/led/build"
   use Kino.JS.Live
 

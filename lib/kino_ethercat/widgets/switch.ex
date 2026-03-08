@@ -1,4 +1,4 @@
-defmodule KinoEtherCAT.Switch do
+defmodule KinoEtherCAT.Widgets.Switch do
   use Kino.JS, assets_path: "lib/assets/switch/build"
   use Kino.JS.Live
 

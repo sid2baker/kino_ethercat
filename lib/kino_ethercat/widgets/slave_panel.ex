@@ -1,4 +1,4 @@
-defmodule KinoEtherCAT.SlavePanel do
+defmodule KinoEtherCAT.Widgets.SlavePanel do
   @moduledoc """
   Aggregated live panel for one EtherCAT slave.
 
@@ -10,7 +10,7 @@ defmodule KinoEtherCAT.SlavePanel do
   use Kino.JS, assets_path: "lib/assets/slave_panel/build"
   use Kino.JS.Live
 
-  alias KinoEtherCAT.SlaveSnapshot
+  alias KinoEtherCAT.Widgets.SlaveSnapshot
 
   @default_batch_ms 100
 

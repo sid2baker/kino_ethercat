@@ -1,4 +1,4 @@
-defmodule KinoEtherCAT.Diagnostics do
+defmodule KinoEtherCAT.Diagnostics.Panel do
   @moduledoc """
   Live diagnostic dashboard for an EtherCAT master.
 
@@ -6,13 +6,13 @@ defmodule KinoEtherCAT.Diagnostics do
   can show current master state, rolling latency and cycle trends, and a fault
   timeline in a single widget.
 
-  Use `KinoEtherCAT.diagnostics/0` to create one.
+  Use `KinoEtherCAT.Diagnostics.panel/0` to create one.
   """
 
   use Kino.JS, assets_path: "lib/assets/diagnostics/build"
   use Kino.JS.Live
 
-  alias KinoEtherCAT.DiagnosticsState
+  alias KinoEtherCAT.Diagnostics.State
 
   @poll_ms 1_000
   @flush_ms 250
@@ -53,14 +53,14 @@ defmodule KinoEtherCAT.Diagnostics do
     schedule_poll()
 
     diagnostics_state =
-      DiagnosticsState.new()
-      |> DiagnosticsState.apply_poll_snapshot(fetch_snapshot())
+      State.new()
+      |> State.apply_poll_snapshot(fetch_snapshot())
 
     {:ok,
      assign(ctx,
        handler_id: handler_id,
        diagnostics_state: diagnostics_state,
-       payload: DiagnosticsState.payload(diagnostics_state),
+       payload: State.payload(diagnostics_state),
        flush_scheduled?: false
      )}
   end
@@ -76,7 +76,7 @@ defmodule KinoEtherCAT.Diagnostics do
 
     diagnostics_state =
       ctx.assigns.diagnostics_state
-      |> DiagnosticsState.apply_poll_snapshot(fetch_snapshot())
+      |> State.apply_poll_snapshot(fetch_snapshot())
 
     ctx =
       ctx
@@ -88,7 +88,7 @@ defmodule KinoEtherCAT.Diagnostics do
 
   def handle_info({:telemetry_event, event, measurements, metadata}, ctx) do
     diagnostics_state =
-      DiagnosticsState.apply_telemetry(
+      State.apply_telemetry(
         ctx.assigns.diagnostics_state,
         event,
         measurements,
@@ -104,7 +104,7 @@ defmodule KinoEtherCAT.Diagnostics do
   end
 
   def handle_info(:flush, ctx) do
-    payload = DiagnosticsState.payload(ctx.assigns.diagnostics_state)
+    payload = State.payload(ctx.assigns.diagnostics_state)
     broadcast_event(ctx, "snapshot", payload)
 
     {:noreply, assign(ctx, payload: payload, flush_scheduled?: false)}

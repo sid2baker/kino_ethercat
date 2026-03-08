@@ -1,11 +1,11 @@
 defmodule KinoEtherCAT.SmartCellsTest do
   use ExUnit.Case, async: true
 
-  alias KinoEtherCAT.{SetupCell, VisualizerCell}
+  alias KinoEtherCAT.SmartCells.{Setup, Visualizer}
 
   test "setup cell persists static startup code from discovered slaves" do
     source =
-      SetupCell.to_source(%{
+      Setup.to_source(%{
         "interface" => "eth0",
         "domains" => [
           %{
@@ -71,7 +71,7 @@ defmodule KinoEtherCAT.SmartCellsTest do
 
   test "setup cell migrates legacy single-domain attrs into multi-domain startup config" do
     source =
-      SetupCell.to_source(%{
+      Setup.to_source(%{
         "interface" => "eth0",
         "domain_id" => "main",
         "cycle_time_us" => 1_000,
@@ -100,7 +100,7 @@ defmodule KinoEtherCAT.SmartCellsTest do
 
   test "visualizer cell renders string-based calls" do
     source =
-      VisualizerCell.to_source(%{
+      Visualizer.to_source(%{
         "columns" => 2,
         "selected" => [
           %{"name" => "sensor_a"},
@@ -109,7 +109,7 @@ defmodule KinoEtherCAT.SmartCellsTest do
       })
 
     assert source =~
-             ~s/KinoEtherCAT.dashboard([:sensor_a, :"output rack"], columns: 2) |> Kino.render()/
+             ~s/KinoEtherCAT.Widgets.dashboard([:sensor_a, :"output rack"], columns: 2) |> Kino.render()/
 
     assert source =~ "Kino.nothing()"
     refute source =~ "String.to_atom"

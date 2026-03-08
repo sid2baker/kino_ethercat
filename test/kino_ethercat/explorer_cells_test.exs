@@ -1,7 +1,7 @@
 defmodule KinoEtherCAT.ExplorerCellsTest do
   use ExUnit.Case, async: true
 
-  alias KinoEtherCAT.{RegisterExplorer, SDOExplorer, SIIExplorer}
+  alias KinoEtherCAT.SmartCells.{RegisterExplorer, SDOExplorer, SIIExplorer}
 
   test "sdo explorer renders upload and download source" do
     upload =

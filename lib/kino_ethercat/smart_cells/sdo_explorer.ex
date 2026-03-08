@@ -1,9 +1,9 @@
-defmodule KinoEtherCAT.SDOExplorer do
+defmodule KinoEtherCAT.SmartCells.SDOExplorer do
   use Kino.JS, assets_path: "lib/assets/explorer_cell/build"
   use Kino.JS.Live
   use Kino.SmartCell, name: "EtherCAT SDO Explorer"
 
-  alias KinoEtherCAT.{ExplorerSource, ExplorerSupport}
+  alias KinoEtherCAT.SmartCells.{ExplorerSource, ExplorerSupport}
 
   @impl true
   def init(attrs, ctx) do

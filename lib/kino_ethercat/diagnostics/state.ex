@@ -1,4 +1,4 @@
-defmodule KinoEtherCAT.DiagnosticsState do
+defmodule KinoEtherCAT.Diagnostics.State do
   @moduledoc false
 
   @default_history_limit 40

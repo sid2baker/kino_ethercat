@@ -1,4 +1,4 @@
-defmodule KinoEtherCAT.Value do
+defmodule KinoEtherCAT.Widgets.Value do
   use Kino.JS, assets_path: "lib/assets/value/build"
   use Kino.JS.Live
 

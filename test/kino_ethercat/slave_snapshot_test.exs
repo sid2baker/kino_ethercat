@@ -1,7 +1,7 @@
 defmodule KinoEtherCAT.SlaveSnapshotTest do
   use ExUnit.Case, async: true
 
-  alias KinoEtherCAT.SlaveSnapshot
+  alias KinoEtherCAT.Widgets.SlaveSnapshot
 
   test "builds a live snapshot with input and output sections" do
     info = %{

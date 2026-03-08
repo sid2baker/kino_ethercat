@@ -1,9 +1,9 @@
-defmodule KinoEtherCAT.RegisterExplorer do
+defmodule KinoEtherCAT.SmartCells.RegisterExplorer do
   use Kino.JS, assets_path: "lib/assets/explorer_cell/build"
   use Kino.JS.Live
   use Kino.SmartCell, name: "EtherCAT Register Explorer"
 
-  alias KinoEtherCAT.{ExplorerSource, ExplorerSupport}
+  alias KinoEtherCAT.SmartCells.{ExplorerSource, ExplorerSupport}
 
   @read_presets [
     %{value: "al_status", label: "AL status"},

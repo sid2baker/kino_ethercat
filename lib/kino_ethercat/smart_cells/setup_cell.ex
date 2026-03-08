@@ -1,9 +1,9 @@
-defmodule KinoEtherCAT.SetupCell do
+defmodule KinoEtherCAT.SmartCells.Setup do
   use Kino.JS, assets_path: "lib/assets/setup_cell/build"
   use Kino.JS.Live
   use Kino.SmartCell, name: "EtherCAT Setup"
 
-  alias KinoEtherCAT.SetupSource
+  alias KinoEtherCAT.SmartCells.SetupSource
 
   @impl true
   def init(attrs, ctx) do

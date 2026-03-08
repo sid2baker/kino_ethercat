@@ -1,9 +1,9 @@
-defmodule KinoEtherCAT.VisualizerCell do
+defmodule KinoEtherCAT.SmartCells.Visualizer do
   use Kino.JS, assets_path: "lib/assets/visualizer_cell/build"
   use Kino.JS.Live
   use Kino.SmartCell, name: "EtherCAT Visualizer"
 
-  alias KinoEtherCAT.Source
+  alias KinoEtherCAT.SmartCells.Source
 
   @impl true
   def init(attrs, ctx) do
@@ -75,7 +75,7 @@ defmodule KinoEtherCAT.VisualizerCell do
           end
 
         Source.multiline([
-          "KinoEtherCAT.dashboard([#{slave_literals}]#{columns}) |> Kino.render()",
+          "KinoEtherCAT.Widgets.dashboard([#{slave_literals}]#{columns}) |> Kino.render()",
           "\n\nKino.nothing()"
         ])
     end

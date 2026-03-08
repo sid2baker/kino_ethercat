@@ -7,7 +7,6 @@ defmodule KinoEtherCAT.Runtime do
   """
 
   alias EtherCAT.{Bus, Domain, Master, Slave}
-  alias EtherCAT.DC.Status, as: DCStatus
 
   @spec master() :: Master.t()
   def master do
@@ -33,11 +32,14 @@ defmodule KinoEtherCAT.Runtime do
     end
   end
 
-  @spec dc() :: DCStatus.t()
+  @spec dc() :: struct()
   def dc do
-    case EtherCAT.dc_status() do
-      %DCStatus{} = status -> status
-      _ -> %DCStatus{}
+    case fetch_dc_state() do
+      {:ok, _state_name, data} when is_struct(data, EtherCAT.DC) ->
+        data
+
+      _ ->
+        fetch_dc_status()
     end
   end
 
@@ -53,8 +55,9 @@ defmodule KinoEtherCAT.Runtime do
   def refresh(%Master{}), do: master()
   def refresh(%Slave{name: name}), do: slave(name)
   def refresh(%Domain{id: id}), do: domain(id)
-  def refresh(%DCStatus{}), do: dc()
   def refresh(%Bus{}), do: bus()
+  def refresh(resource) when is_struct(resource, EtherCAT.DC), do: dc()
+  def refresh(resource) when is_struct(resource, EtherCAT.DC.Status), do: dc()
 
   @spec payload(struct(), map() | nil) :: map()
   def payload(resource, message \\ nil)
@@ -64,7 +67,7 @@ defmodule KinoEtherCAT.Runtime do
     state_name = fetch_state_name(master)
     slaves = runtime_slaves()
     domains = runtime_domains()
-    dc_status = dc()
+    dc_status = dc_snapshot(dc())
 
     slave_rows =
       Enum.map(slaves, fn %{name: name, station: station} ->
@@ -114,7 +117,7 @@ defmodule KinoEtherCAT.Runtime do
         %{label: "State", value: to_string(state_name || :unknown)},
         %{label: "Slaves", value: Integer.to_string(length(slaves))},
         %{label: "Domains", value: Integer.to_string(length(domains))},
-        %{label: "DC lock", value: to_string(dc_status.lock_state)},
+        %{label: "DC lock", value: to_string(dc_status.lock_state || :disabled)},
         %{
           label: "Pending PREOP",
           value: Integer.to_string(MapSet.size(master.pending_preop || MapSet.new()))
@@ -272,7 +275,17 @@ defmodule KinoEtherCAT.Runtime do
     }
   end
 
-  def payload(%DCStatus{} = status, message) do
+  def payload(resource, message) when is_struct(resource, EtherCAT.DC) do
+    payload_dc_resource(resource, message)
+  end
+
+  def payload(resource, message) when is_struct(resource, EtherCAT.DC.Status) do
+    payload_dc_resource(resource, message)
+  end
+
+  defp payload_dc_resource(resource, message) do
+    status = dc_snapshot(resource)
+
     %{
       kind: "dc",
       title: "Distributed Clocks",
@@ -281,15 +294,26 @@ defmodule KinoEtherCAT.Runtime do
       summary: [
         %{label: "Configured", value: to_string(status.configured?)},
         %{label: "Active", value: to_string(status.active?)},
-        %{label: "Reference", value: format_term(status.reference_clock || "none")},
+        %{
+          label: "Reference",
+          value: format_term(status.reference_clock || status.reference_station || "none")
+        },
         %{label: "Cycle", value: format_term(status.cycle_ns || "n/a")},
         %{label: "Max diff", value: format_term(status.max_sync_diff_ns || "n/a")}
       ],
       tables: [],
       details: [
         %{label: "Reference station", value: format_term(status.reference_station || "none")},
+        %{label: "Monitored stations", value: format_term(status.monitored_stations || [])},
+        %{label: "Cycle count", value: format_term(status.cycle_count || "n/a")},
         %{label: "Last sync check", value: format_term(status.last_sync_check_at_ms || "none")},
-        %{label: "Monitor failures", value: Integer.to_string(status.monitor_failures)}
+        %{label: "Monitor failures", value: Integer.to_string(status.monitor_failures || 0)},
+        %{label: "Tick interval", value: format_term(status.tick_interval_ms || "n/a")},
+        %{
+          label: "Diagnostic cadence",
+          value: format_term(status.diagnostic_interval_cycles || "n/a")
+        },
+        %{label: "Bus", value: format_term(status.bus || "none")}
       ],
       controls: %{
         buttons: [%{id: "refresh", label: "Refresh", tone: "secondary"}],
@@ -361,7 +385,8 @@ defmodule KinoEtherCAT.Runtime do
     end
   end
 
-  def perform(%DCStatus{} = resource, "await_dc_locked", %{"value" => value}) do
+  def perform(resource, "await_dc_locked", %{"value" => value})
+      when is_struct(resource, EtherCAT.DC) or is_struct(resource, EtherCAT.DC.Status) do
     with {:ok, timeout_ms} <- parse_positive_integer(value) do
       run_action(resource, fn -> EtherCAT.await_dc_locked(timeout_ms) end, "DC locked")
     else
@@ -397,6 +422,13 @@ defmodule KinoEtherCAT.Runtime do
       nil -> {:error, :not_started}
       {:error, _} = error -> error
       bus_server -> fetch_statem_state(bus_server)
+    end
+  end
+
+  defp fetch_dc_state do
+    case Process.whereis(EtherCAT.DC) do
+      nil -> {:error, :not_started}
+      _pid -> fetch_statem_state(EtherCAT.DC)
     end
   end
 
@@ -475,6 +507,67 @@ defmodule KinoEtherCAT.Runtime do
       phase when is_atom(phase) -> phase
       _ -> default
     end
+  end
+
+  defp fetch_dc_status do
+    case safe(fn -> EtherCAT.dc_status() end, nil) do
+      resource when is_struct(resource, EtherCAT.DC) ->
+        resource
+
+      resource when is_struct(resource, EtherCAT.DC.Status) ->
+        resource
+
+      _ ->
+        default_dc_resource()
+    end
+  end
+
+  defp default_dc_resource do
+    cond do
+      function_exported?(EtherCAT.DC.Status, :__struct__, 0) -> struct(EtherCAT.DC.Status)
+      function_exported?(EtherCAT.DC, :__struct__, 0) -> struct(EtherCAT.DC)
+      true -> %{}
+    end
+  end
+
+  defp dc_snapshot(resource) when is_struct(resource, EtherCAT.DC) do
+    config = Map.get(resource, :config, %{})
+
+    %{
+      configured?: not is_nil(Map.get(resource, :config)),
+      active?: Map.get(resource, :cycle_count, 0) > 0,
+      lock_state: Map.get(resource, :lock_state, :unknown),
+      reference_clock: nil,
+      reference_station: Map.get(resource, :ref_station),
+      cycle_ns: Map.get(config, :cycle_ns),
+      max_sync_diff_ns: Map.get(resource, :max_sync_diff_ns),
+      last_sync_check_at_ms: Map.get(resource, :last_sync_check_at_ms),
+      monitor_failures: Map.get(resource, :fail_count, 0),
+      cycle_count: Map.get(resource, :cycle_count, 0),
+      monitored_stations: Map.get(resource, :monitored_stations, []),
+      tick_interval_ms: Map.get(resource, :tick_interval_ms),
+      diagnostic_interval_cycles: Map.get(resource, :diagnostic_interval_cycles),
+      bus: Map.get(resource, :bus)
+    }
+  end
+
+  defp dc_snapshot(resource) when is_struct(resource, EtherCAT.DC.Status) do
+    %{
+      configured?: Map.get(resource, :configured?, false),
+      active?: Map.get(resource, :active?, false),
+      lock_state: Map.get(resource, :lock_state, :disabled),
+      reference_clock: Map.get(resource, :reference_clock),
+      reference_station: Map.get(resource, :reference_station),
+      cycle_ns: Map.get(resource, :cycle_ns),
+      max_sync_diff_ns: Map.get(resource, :max_sync_diff_ns),
+      last_sync_check_at_ms: Map.get(resource, :last_sync_check_at_ms),
+      monitor_failures: Map.get(resource, :monitor_failures, 0),
+      cycle_count: nil,
+      monitored_stations: [],
+      tick_interval_ms: nil,
+      diagnostic_interval_cycles: nil,
+      bus: nil
+    }
   end
 
   defp run_action(resource, fun, success_label) do
