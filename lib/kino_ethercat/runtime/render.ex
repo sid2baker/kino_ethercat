@@ -40,10 +40,3 @@ if function_exported?(EtherCAT.DC, :__struct__, 0) do
     end
   end
 end
-
-defimpl Kino.Render, for: KinoEtherCAT.Testing.Run do
-  def to_livebook(resource) do
-    kino = KinoEtherCAT.Testing.Panel.new(resource)
-    Kino.Render.to_livebook(kino)
-  end
-end

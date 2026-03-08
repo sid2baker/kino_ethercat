@@ -53,7 +53,6 @@ defmodule KinoEtherCAT.MixProject do
            lib/assets/value/build
            lib/assets/visualizer_cell/build
            lib/assets/diagnostics/build
-           lib/assets/testing/build
            mix.exs README.md LICENSE CHANGELOG.md usage-rules.md)
     ]
   end
@@ -76,17 +75,6 @@ defmodule KinoEtherCAT.MixProject do
           KinoEtherCAT.Runtime.Bus,
           KinoEtherCAT.Runtime.DC
         ],
-        Testing: [
-          KinoEtherCAT.Testing,
-          KinoEtherCAT.Testing.Scenario,
-          KinoEtherCAT.Testing.Step,
-          KinoEtherCAT.Testing.Run,
-          KinoEtherCAT.Testing.Report,
-          KinoEtherCAT.Testing.Scenarios,
-          KinoEtherCAT.Testing.Scenarios.LoopbackSmoke,
-          KinoEtherCAT.Testing.Scenarios.DCLock,
-          KinoEtherCAT.Testing.Scenarios.WatchdogRecovery
-        ],
         Widgets: [
           KinoEtherCAT.Widgets,
           KinoEtherCAT.Widgets.LED,
@@ -97,7 +85,6 @@ defmodule KinoEtherCAT.MixProject do
         "Smart Cells": [
           KinoEtherCAT.SmartCells.Setup,
           KinoEtherCAT.SmartCells.Visualizer,
-          KinoEtherCAT.SmartCells.Scenario,
           KinoEtherCAT.SmartCells.SDOExplorer,
           KinoEtherCAT.SmartCells.RegisterExplorer,
           KinoEtherCAT.SmartCells.SIIExplorer

@@ -15,8 +15,7 @@ defmodule KinoEtherCAT do
 
   For live dashboards and signal-oriented widgets, use `KinoEtherCAT.Widgets`.
   For the telemetry dashboard, use `KinoEtherCAT.diagnostics/0` or
-  `KinoEtherCAT.Diagnostics.panel/0`. For scenario-driven validation runs, use
-  `KinoEtherCAT.Testing`.
+  `KinoEtherCAT.Diagnostics.panel/0`.
   """
 
   alias KinoEtherCAT.Runtime

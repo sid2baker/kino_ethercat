@@ -1,7 +1,7 @@
 defmodule KinoEtherCAT.SmartCellsTest do
   use ExUnit.Case, async: true
 
-  alias KinoEtherCAT.SmartCells.{Scenario, Setup, Visualizer}
+  alias KinoEtherCAT.SmartCells.{Setup, Visualizer}
 
   test "setup cell persists static startup code from discovered slaves" do
     source =
@@ -58,7 +58,9 @@ defmodule KinoEtherCAT.SmartCellsTest do
     assert source =~ ~s(process_data: {:all, :slow})
     assert source =~ ~s(warmup_cycles: 8)
     assert source =~ ":ok = EtherCAT.await_operational()"
-    assert source =~ "Process.whereis(EtherCAT.Master)"
+    assert source =~ "Kino.Layout.tabs("
+    assert source =~ "master: KinoEtherCAT.master()"
+    assert source =~ "diagnostics: KinoEtherCAT.diagnostics()"
     refute source =~ "String.to_atom"
     refute source =~ "EtherCAT.configure_slave"
     refute source =~ "backup_interface"
@@ -108,49 +110,5 @@ defmodule KinoEtherCAT.SmartCellsTest do
 
     assert source =~ "Kino.nothing()"
     refute source =~ "String.to_atom"
-  end
-
-  test "scenario cell renders loopback smoke runs with telemetry" do
-    source =
-      Scenario.to_source(%{
-        "scenario" => "loopback_smoke",
-        "telemetry" => "bus",
-        "output_slave" => "outputs",
-        "input_slave" => "inputs",
-        "pairs" => "ch1:ch1, ch2->ch2",
-        "settle_ms" => "300",
-        "timeout_ms" => "20000"
-      })
-
-    assert source =~ "scenario = KinoEtherCAT.Testing.Scenarios.loopback_smoke("
-    assert source =~ "output_slave: :outputs"
-    assert source =~ "input_slave: :inputs"
-    assert source =~ "pairs: [{:ch1, :ch1}, {:ch2, :ch2}]"
-    assert source =~ "settle_ms: 300"
-    assert source =~ "timeout_ms: 20000"
-    assert source =~ "KinoEtherCAT.Testing.new(attach_telemetry: true, telemetry_groups: [:bus])"
-    assert source =~ "|> Kino.render()"
-    assert source =~ "Kino.nothing()"
-  end
-
-  test "scenario cell renders dc lock runs without telemetry" do
-    source =
-      Scenario.to_source(%{
-        "scenario" => "dc_lock",
-        "telemetry" => "none",
-        "slaves" => "coupler,\noutputs",
-        "expected_lock_state" => "locked",
-        "within_ms" => "2500",
-        "poll_ms" => "75",
-        "timeout_ms" => "8000"
-      })
-
-    assert source =~ "scenario = KinoEtherCAT.Testing.Scenarios.dc_lock("
-    assert source =~ "slaves: [:coupler, :outputs]"
-    assert source =~ "expected_lock_state: :locked"
-    assert source =~ "within_ms: 2500"
-    assert source =~ "poll_ms: 75"
-    assert source =~ "timeout_ms: 8000"
-    assert source =~ "KinoEtherCAT.Testing.new()"
   end
 end
