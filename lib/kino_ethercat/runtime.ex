@@ -1,0 +1,554 @@
+defmodule KinoEtherCAT.Runtime do
+  @moduledoc """
+  Runtime-facing API for inspecting and controlling EtherCAT resources.
+
+  These functions return EtherCAT structs with enough identifying information
+  for `Kino.Render` protocol implementations to build rich Livebook views.
+  """
+
+  alias EtherCAT.{Bus, Domain, Master, Slave}
+  alias EtherCAT.DC.Status, as: DCStatus
+
+  @spec master() :: Master.t()
+  def master do
+    case fetch_master_state() do
+      {:ok, _state_name, %Master{} = master} -> master
+      _ -> %Master{activation_phase: :idle}
+    end
+  end
+
+  @spec slave(atom()) :: Slave.t()
+  def slave(name) when is_atom(name) do
+    case fetch_slave_state(name) do
+      {:ok, _state_name, %Slave{} = slave} -> slave
+      _ -> %Slave{name: name}
+    end
+  end
+
+  @spec domain(atom()) :: Domain.t()
+  def domain(id) when is_atom(id) do
+    case fetch_domain_state(id) do
+      {:ok, _state_name, %Domain{} = domain} -> domain
+      _ -> %Domain{id: id}
+    end
+  end
+
+  @spec dc() :: DCStatus.t()
+  def dc do
+    case EtherCAT.dc_status() do
+      %DCStatus{} = status -> status
+      _ -> %DCStatus{}
+    end
+  end
+
+  @spec bus() :: Bus.t()
+  def bus do
+    case fetch_bus_state() do
+      {:ok, _state_name, %Bus{} = bus} -> bus
+      _ -> %Bus{}
+    end
+  end
+
+  @spec refresh(struct()) :: struct()
+  def refresh(%Master{}), do: master()
+  def refresh(%Slave{name: name}), do: slave(name)
+  def refresh(%Domain{id: id}), do: domain(id)
+  def refresh(%DCStatus{}), do: dc()
+  def refresh(%Bus{}), do: bus()
+
+  @spec payload(struct(), map() | nil) :: map()
+  def payload(resource, message \\ nil)
+
+  def payload(%Master{} = master, message) do
+    phase = runtime_phase(master.activation_phase || :idle)
+    state_name = fetch_state_name(master)
+    slaves = runtime_slaves()
+    domains = runtime_domains()
+    dc_status = dc()
+
+    slave_rows =
+      Enum.map(slaves, fn %{name: name, station: station} ->
+        info = safe(fn -> EtherCAT.slave_info(name) end, {:error, :not_found})
+
+        al_state =
+          if match?({:ok, _}, info),
+            do: info |> elem(1) |> Map.get(:al_state, :unknown),
+            else: :unknown
+
+        %{
+          key: Atom.to_string(name),
+          cells: [
+            Atom.to_string(name),
+            hex(station, 4),
+            to_string(al_state)
+          ]
+        }
+      end)
+
+    domain_rows =
+      Enum.map(domains, fn {id, cycle_time_us, _pid} ->
+        info = safe(fn -> EtherCAT.domain_info(id) end, {:error, :not_found})
+
+        state =
+          if match?({:ok, _}, info),
+            do: info |> elem(1) |> Map.get(:state, :unknown),
+            else: :unknown
+
+        %{
+          key: Atom.to_string(id),
+          cells: [
+            Atom.to_string(id),
+            "#{cycle_time_us} us",
+            to_string(state)
+          ]
+        }
+      end)
+
+    %{
+      kind: "master",
+      title: "EtherCAT Master",
+      status: to_string(phase),
+      message: message,
+      summary: [
+        %{label: "Phase", value: to_string(phase)},
+        %{label: "State", value: to_string(state_name || :unknown)},
+        %{label: "Slaves", value: Integer.to_string(length(slaves))},
+        %{label: "Domains", value: Integer.to_string(length(domains))},
+        %{label: "DC lock", value: to_string(dc_status.lock_state)},
+        %{
+          label: "Pending PREOP",
+          value: Integer.to_string(MapSet.size(master.pending_preop || MapSet.new()))
+        },
+        %{label: "Activatable", value: Integer.to_string(length(master.activatable_slaves || []))}
+      ],
+      tables: [
+        %{title: "Slaves", headers: ["Name", "Station", "State"], rows: slave_rows},
+        %{title: "Domains", headers: ["Domain", "Cycle", "State"], rows: domain_rows}
+      ],
+      details: [
+        %{label: "Bus monitor", value: format_term(master.bus_ref || "none")},
+        %{label: "DC reference station", value: format_term(master.dc_ref_station || "none")},
+        %{label: "Last failure", value: format_term(master.last_failure || "none")}
+      ],
+      controls: %{
+        buttons: [
+          %{id: "refresh", label: "Refresh", tone: "secondary"},
+          %{id: "activate", label: "Activate", tone: "primary"},
+          %{id: "stop", label: "Stop", tone: "danger"}
+        ]
+      }
+    }
+  end
+
+  def payload(%Slave{name: name} = slave, message) do
+    info = safe(fn -> EtherCAT.slave_info(name) end, {:error, :not_found})
+    state_name = fetch_state_name(slave)
+
+    case info do
+      {:ok, info} ->
+        signal_rows =
+          Enum.map(info.signals, fn signal ->
+            %{
+              key: "#{signal.direction}:#{signal.name}",
+              cells: [
+                to_string(signal.name),
+                to_string(signal.direction),
+                to_string(signal.domain),
+                Integer.to_string(signal.bit_size)
+              ]
+            }
+          end)
+
+        %{
+          kind: "slave",
+          title: "Slave #{name}",
+          status: to_string(info.al_state),
+          message: message,
+          summary: [
+            %{label: "State", value: to_string(state_name || info.al_state)},
+            %{label: "Station", value: hex(info.station, 4)},
+            %{label: "Driver", value: format_term(info.driver)},
+            %{label: "AL error", value: format_term(slave.error_code || "none")},
+            %{label: "CoE", value: to_string(info.coe)},
+            %{label: "Signals", value: Integer.to_string(length(info.signals))}
+          ],
+          tables: [
+            %{
+              title: "Signals",
+              headers: ["Signal", "Direction", "Domain", "Bits"],
+              rows: signal_rows
+            }
+          ],
+          details: [
+            %{label: "Identity", value: format_term(info.identity || %{})},
+            %{
+              label: "Configuration error",
+              value: format_term(info.configuration_error || "none")
+            },
+            %{label: "Process data", value: format_term(slave.process_data_request || :none)}
+          ],
+          controls: %{
+            buttons: [%{id: "refresh", label: "Refresh", tone: "secondary"}],
+            select: %{id: "transition", label: "Transition", options: ~w(init preop safeop op)}
+          }
+        }
+
+      {:error, reason} ->
+        unavailable_payload("slave", "Slave #{name}", reason, message)
+    end
+  end
+
+  def payload(%Domain{id: id}, message) do
+    state_name = fetch_state_name(%Domain{id: id})
+    info = safe(fn -> EtherCAT.domain_info(id) end, {:error, :not_found})
+
+    case info do
+      {:ok, info} ->
+        %{
+          kind: "domain",
+          title: "Domain #{id}",
+          status: to_string(info.state),
+          message: message,
+          summary: [
+            %{label: "State", value: to_string(state_name || info.state)},
+            %{label: "Cycle", value: "#{info.cycle_time_us} us"},
+            %{label: "Cycles", value: Integer.to_string(info.cycle_count)},
+            %{label: "Misses", value: Integer.to_string(info.miss_count)},
+            %{label: "Total misses", value: Integer.to_string(info.total_miss_count)},
+            %{label: "WKC", value: Integer.to_string(info.expected_wkc)}
+          ],
+          tables: [],
+          details: [
+            %{label: "Health", value: format_term(Map.get(info, :cycle_health, :unknown))},
+            %{label: "Image size", value: format_term(Map.get(info, :image_size, "n/a"))},
+            %{label: "Logical base", value: format_term(runtime_domain(id).logical_base || "n/a")}
+          ],
+          controls: %{
+            buttons: [
+              %{id: "refresh", label: "Refresh", tone: "secondary"},
+              %{id: "start_cycling", label: "Start", tone: "primary"},
+              %{id: "stop_cycling", label: "Stop", tone: "danger"}
+            ],
+            input: %{
+              id: "cycle_time_us",
+              label: "Update cycle (us)",
+              value: Integer.to_string(info.cycle_time_us)
+            }
+          }
+        }
+
+      {:error, reason} ->
+        unavailable_payload("domain", "Domain #{id}", reason, message)
+    end
+  end
+
+  def payload(%Bus{} = bus, message) do
+    state_name = fetch_state_name(bus)
+    queue_depths = queue_depths(bus)
+
+    %{
+      kind: "bus",
+      title: "Bus",
+      status: to_string(state_name || :not_started),
+      message: message,
+      summary: [
+        %{label: "Frame timeout", value: "#{bus.frame_timeout_ms || 25} ms"},
+        %{label: "Timeouts", value: Integer.to_string(bus.timeout_count || 0)},
+        %{label: "Realtime queue", value: Integer.to_string(queue_depths.realtime)},
+        %{label: "Reliable queue", value: Integer.to_string(queue_depths.reliable)},
+        %{label: "Index", value: Integer.to_string(bus.idx || 0)}
+      ],
+      tables: [],
+      details: [
+        %{label: "Link module", value: format_term(bus.link_mod || "none")},
+        %{label: "Link", value: format_term(bus.link || "none")},
+        %{label: "In flight", value: format_term(bus.in_flight || "none")}
+      ],
+      controls: %{
+        buttons: [%{id: "refresh", label: "Refresh", tone: "secondary"}],
+        input: %{id: "frame_timeout_ms", label: "Frame timeout (ms)", value: "25"},
+        submit: %{id: "set_frame_timeout", label: "Apply timeout", tone: "primary"}
+      }
+    }
+  end
+
+  def payload(%DCStatus{} = status, message) do
+    %{
+      kind: "dc",
+      title: "Distributed Clocks",
+      status: to_string(status.lock_state),
+      message: message,
+      summary: [
+        %{label: "Configured", value: to_string(status.configured?)},
+        %{label: "Active", value: to_string(status.active?)},
+        %{label: "Reference", value: format_term(status.reference_clock || "none")},
+        %{label: "Cycle", value: format_term(status.cycle_ns || "n/a")},
+        %{label: "Max diff", value: format_term(status.max_sync_diff_ns || "n/a")}
+      ],
+      tables: [],
+      details: [
+        %{label: "Reference station", value: format_term(status.reference_station || "none")},
+        %{label: "Last sync check", value: format_term(status.last_sync_check_at_ms || "none")},
+        %{label: "Monitor failures", value: Integer.to_string(status.monitor_failures)}
+      ],
+      controls: %{
+        buttons: [%{id: "refresh", label: "Refresh", tone: "secondary"}],
+        input: %{id: "timeout_ms", label: "Await lock (ms)", value: "5000"},
+        submit: %{id: "await_dc_locked", label: "Await lock", tone: "primary"}
+      }
+    }
+  end
+
+  @spec perform(struct(), String.t(), map()) :: {:ok, struct(), map()} | {:error, struct(), map()}
+  def perform(resource, action, params \\ %{})
+
+  def perform(resource, "refresh", _params) do
+    refreshed = refresh(resource)
+    {:ok, refreshed, info_message("Refreshed")}
+  end
+
+  def perform(%Master{} = resource, "activate", _params) do
+    run_action(resource, fn -> EtherCAT.activate() end, "Master activated")
+  end
+
+  def perform(%Master{} = resource, "stop", _params) do
+    run_action(resource, fn -> EtherCAT.stop() end, "Master stopped")
+  end
+
+  def perform(%Slave{name: name} = resource, "transition", %{"value" => target}) do
+    with {:ok, target} <- transition_target(target) do
+      run_action(
+        resource,
+        fn -> EtherCAT.Slave.request(name, target) end,
+        "Slave transitioned to #{target}"
+      )
+    else
+      {:error, reason} -> {:error, resource, error_message(reason)}
+    end
+  end
+
+  def perform(%Domain{id: id} = resource, "start_cycling", _params) do
+    run_action(resource, fn -> EtherCAT.Domain.start_cycling(id) end, "Domain cycling started")
+  end
+
+  def perform(%Domain{id: id} = resource, "stop_cycling", _params) do
+    run_action(resource, fn -> EtherCAT.Domain.stop_cycling(id) end, "Domain cycling stopped")
+  end
+
+  def perform(%Domain{id: id} = resource, "update_cycle_time", %{"value" => value}) do
+    with {:ok, cycle_time_us} <- parse_positive_integer(value) do
+      run_action(
+        resource,
+        fn -> EtherCAT.Domain.update_cycle_time(id, cycle_time_us) end,
+        "Domain cycle updated to #{cycle_time_us} us"
+      )
+    else
+      {:error, reason} -> {:error, resource, error_message(reason)}
+    end
+  end
+
+  def perform(%Bus{} = resource, "set_frame_timeout", %{"value" => value}) do
+    with {:ok, timeout_ms} <- parse_positive_integer(value),
+         bus when not is_nil(bus) <- safe(fn -> EtherCAT.bus() end, nil) do
+      run_action(
+        resource,
+        fn -> EtherCAT.Bus.set_frame_timeout(bus, timeout_ms) end,
+        "Frame timeout set to #{timeout_ms} ms"
+      )
+    else
+      nil -> {:error, resource, error_message(:not_started)}
+      {:error, reason} -> {:error, resource, error_message(reason)}
+    end
+  end
+
+  def perform(%DCStatus{} = resource, "await_dc_locked", %{"value" => value}) do
+    with {:ok, timeout_ms} <- parse_positive_integer(value) do
+      run_action(resource, fn -> EtherCAT.await_dc_locked(timeout_ms) end, "DC locked")
+    else
+      {:error, reason} -> {:error, resource, error_message(reason)}
+    end
+  end
+
+  def perform(resource, _action, _params),
+    do: {:error, resource, error_message(:unsupported_action)}
+
+  defp safe(fun, default) do
+    fun.()
+  rescue
+    _ -> default
+  catch
+    :exit, _ -> default
+  end
+
+  defp fetch_master_state do
+    fetch_statem_state(EtherCAT.Master)
+  end
+
+  defp fetch_slave_state(name) when is_atom(name) do
+    fetch_registry_statem_state({:slave, name})
+  end
+
+  defp fetch_domain_state(id) when is_atom(id) do
+    fetch_registry_statem_state({:domain, id})
+  end
+
+  defp fetch_bus_state do
+    case safe(fn -> EtherCAT.bus() end, nil) do
+      nil -> {:error, :not_started}
+      {:error, _} = error -> error
+      bus_server -> fetch_statem_state(bus_server)
+    end
+  end
+
+  defp fetch_statem_state(server) do
+    try do
+      case :sys.get_state(server) do
+        {state_name, data} -> {:ok, state_name, data}
+        data -> {:ok, nil, data}
+      end
+    catch
+      :exit, {:noproc, _} -> {:error, :not_started}
+      :exit, {:normal, _} -> {:error, :not_started}
+      :exit, reason -> {:error, reason}
+    end
+  end
+
+  defp fetch_registry_statem_state(key) do
+    if Process.whereis(EtherCAT.Registry) do
+      fetch_statem_state({:via, Registry, {EtherCAT.Registry, key}})
+    else
+      {:error, :not_started}
+    end
+  end
+
+  defp fetch_state_name(%Master{}) do
+    case fetch_master_state() do
+      {:ok, state_name, _master} -> state_name
+      _ -> nil
+    end
+  end
+
+  defp fetch_state_name(%Slave{name: name}) when is_atom(name) do
+    case fetch_slave_state(name) do
+      {:ok, state_name, _slave} -> state_name
+      _ -> nil
+    end
+  end
+
+  defp fetch_state_name(%Domain{id: id}) when is_atom(id) do
+    case fetch_domain_state(id) do
+      {:ok, state_name, _domain} -> state_name
+      _ -> nil
+    end
+  end
+
+  defp fetch_state_name(%Bus{}) do
+    case fetch_bus_state() do
+      {:ok, state_name, _bus} -> state_name
+      _ -> nil
+    end
+  end
+
+  defp runtime_domain(id) when is_atom(id) do
+    case fetch_domain_state(id) do
+      {:ok, _state_name, %Domain{} = domain} -> domain
+      _ -> %Domain{id: id}
+    end
+  end
+
+  defp runtime_slaves do
+    case safe(fn -> EtherCAT.slaves() end, []) do
+      slaves when is_list(slaves) -> slaves
+      _ -> []
+    end
+  end
+
+  defp runtime_domains do
+    case safe(fn -> EtherCAT.domains() end, []) do
+      domains when is_list(domains) -> domains
+      _ -> []
+    end
+  end
+
+  defp runtime_phase(default) do
+    case safe(fn -> EtherCAT.phase() end, default) do
+      phase when is_atom(phase) -> phase
+      _ -> default
+    end
+  end
+
+  defp run_action(resource, fun, success_label) do
+    case fun.() do
+      :ok ->
+        refreshed = refresh(resource)
+        {:ok, refreshed, info_message(success_label)}
+
+      :already_stopped ->
+        {:ok, refresh(resource), info_message("Master already stopped")}
+
+      {:ok, _} ->
+        refreshed = refresh(resource)
+        {:ok, refreshed, info_message(success_label)}
+
+      {:error, reason} ->
+        {:error, refresh(resource), error_message(reason)}
+    end
+  rescue
+    error ->
+      {:error, refresh(resource), error_message(Exception.message(error))}
+  end
+
+  defp transition_target(target) when target in ["init", "preop", "safeop", "op"] do
+    {:ok, String.to_existing_atom(target)}
+  end
+
+  defp transition_target(_target), do: {:error, :invalid_transition}
+
+  defp parse_positive_integer(value) when is_binary(value) do
+    case Integer.parse(String.trim(value)) do
+      {int, ""} when int > 0 -> {:ok, int}
+      _ -> {:error, :invalid_integer}
+    end
+  end
+
+  defp parse_positive_integer(_value), do: {:error, :invalid_integer}
+
+  defp unavailable_payload(kind, title, reason, message) do
+    %{
+      kind: kind,
+      title: title,
+      status: "unavailable",
+      message: message || error_message(reason),
+      summary: [],
+      tables: [],
+      details: [%{label: "Reason", value: format_term(reason)}],
+      controls: %{buttons: [%{id: "refresh", label: "Refresh", tone: "secondary"}]}
+    }
+  end
+
+  defp info_message(text), do: %{level: "info", text: text}
+  defp error_message(reason), do: %{level: "error", text: format_term(reason)}
+
+  defp format_term(value) when is_binary(value), do: value
+  defp format_term(value), do: inspect(value, pretty: false, limit: 20)
+
+  defp hex(nil, _pad), do: "n/a"
+
+  defp hex(value, pad),
+    do: "0x" <> String.upcase(String.pad_leading(Integer.to_string(value, 16), pad, "0"))
+
+  defp queue_depths(%Bus{} = bus) do
+    %{
+      realtime: queue_len(bus.realtime),
+      reliable: queue_len(bus.reliable)
+    }
+  end
+
+  defp queue_len(queue) when is_tuple(queue) do
+    :queue.len(queue)
+  rescue
+    _ -> 0
+  end
+
+  defp queue_len(_queue), do: 0
+end

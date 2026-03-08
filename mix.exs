@@ -36,8 +36,7 @@ defmodule KinoEtherCAT.MixProject do
   end
 
   defp description do
-    "Livebook Kino widgets for EtherCAT bus signals — SmartCells for bus setup and " <>
-      "visualization, plus LED, switch, and value display widgets."
+    "Livebook tools for EtherCAT discovery, runtime inspection, control, and diagnostics."
   end
 
   defp package do
@@ -46,7 +45,10 @@ defmodule KinoEtherCAT.MixProject do
       links: %{"GitHub" => @source_url},
       files: ~w(lib/kino_ethercat* lib/kino_ethercat.ex
            lib/assets/led/build
+           lib/assets/runtime_panel/build
+           lib/assets/sdo_explorer/build
            lib/assets/setup_cell/build
+           lib/assets/slave_panel/build
            lib/assets/switch/build
            lib/assets/value/build
            lib/assets/visualizer_cell/build
@@ -62,12 +64,16 @@ defmodule KinoEtherCAT.MixProject do
       source_ref: "v#{@version}",
       extras: ["README.md", "CHANGELOG.md", "LICENSE"],
       groups_for_modules: [
-        Widgets: [
+        Runtime: [
           KinoEtherCAT,
+          KinoEtherCAT.Runtime,
+          KinoEtherCAT.Runtime.Panel,
+          KinoEtherCAT.Diagnostics
+        ],
+        Widgets: [
           KinoEtherCAT.LED,
           KinoEtherCAT.Switch,
-          KinoEtherCAT.Value,
-          KinoEtherCAT.Diagnostics
+          KinoEtherCAT.Value
         ],
         "Smart Cells": [KinoEtherCAT.SetupCell, KinoEtherCAT.VisualizerCell],
         Drivers: [

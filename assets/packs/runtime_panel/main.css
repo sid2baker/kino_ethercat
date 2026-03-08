@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .kino-ethercat-runtime {
+    @apply rounded-2xl border border-stone-200 bg-gradient-to-br from-stone-50 via-white to-slate-50 shadow-sm;
+  }
+}

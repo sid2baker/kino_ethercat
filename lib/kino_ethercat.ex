@@ -1,12 +1,41 @@
 defmodule KinoEtherCAT do
   @moduledoc """
-  Livebook Kino widgets for EtherCAT bus discovery, control, and diagnostics.
+  Livebook integration for EtherCAT discovery, control, and diagnostics.
+
+  The notebook-facing API is centered on renderable runtime resources:
+
+      KinoEtherCAT.master()
+      KinoEtherCAT.slave(:io_1)
+      KinoEtherCAT.domain(:main)
+      KinoEtherCAT.dc()
+      KinoEtherCAT.bus()
+
+  Each returns a renderable EtherCAT struct. In Livebook those structs render
+  as interactive resource views via `Kino.Render`.
+
+  Legacy signal widgets remain available for narrow signal-level notebooks, but
+  the primary surface is the resource-oriented runtime API above.
   """
 
-  alias KinoEtherCAT.{Diagnostics, LED, SDOExplorer, SlavePanel, Switch}
+  alias KinoEtherCAT.{Diagnostics, LED, Runtime, SDOExplorer, SlavePanel, Switch}
+
+  @spec master() :: EtherCAT.Master.t()
+  def master, do: Runtime.master()
+
+  @spec slave(atom()) :: EtherCAT.Slave.t()
+  def slave(name), do: Runtime.slave(name)
+
+  @spec domain(atom()) :: EtherCAT.Domain.t()
+  def domain(id), do: Runtime.domain(id)
+
+  @spec dc() :: EtherCAT.DC.Status.t()
+  def dc, do: Runtime.dc()
+
+  @spec bus() :: EtherCAT.Bus.t()
+  def bus, do: Runtime.bus()
 
   @doc """
-  Render a read-only LED indicator driven by an EtherCAT input signal.
+  Legacy read-only LED indicator driven by an EtherCAT input signal.
 
   Subscribes to `{slave, signal}` and lights up when the value is `1`.
 
@@ -19,7 +48,7 @@ defmodule KinoEtherCAT do
   def led(slave, signal, opts \\ []), do: LED.new(slave, signal, opts)
 
   @doc """
-  Render a toggle switch that writes an EtherCAT output signal.
+  Legacy toggle switch that writes an EtherCAT output signal.
 
   Clicking the switch calls `EtherCAT.write_output/3` with `0` or `1`.
 
@@ -32,7 +61,7 @@ defmodule KinoEtherCAT do
   def switch(slave, signal, opts \\ []), do: Switch.new(slave, signal, opts)
 
   @doc """
-  Render a live aggregated panel for a single slave.
+  Legacy aggregated live panel for a single slave.
 
   The panel shows live input values, bit outputs, slave metadata, and domain
   health in a single widget. Unlike the older per-signal grid, this keeps
@@ -49,7 +78,7 @@ defmodule KinoEtherCAT do
   def render(slave_name, opts \\ []), do: panel(slave_name, opts)
 
   @doc """
-  Render a live aggregated panel for a single EtherCAT slave.
+  Legacy aggregated live panel for a single EtherCAT slave.
   """
   @spec panel(atom(), keyword()) :: Kino.JS.Live.t()
   def panel(slave_name, opts \\ []), do: SlavePanel.new(slave_name, opts)
@@ -90,17 +119,7 @@ defmodule KinoEtherCAT do
   def diagnostics, do: Diagnostics.new()
 
   @doc """
-  Render a mailbox / SDO explorer for CoE-capable slaves.
-
-  The explorer discovers running CoE slaves, lets you upload or download a
-  mailbox object entry, and keeps a short operation history in the widget.
-
-  ## Options
-
-    * `:slave` — preferred default slave name
-    * `:index` — default object index. Default: `0x1018`
-    * `:subindex` — default object subindex. Default: `0`
-    * `:write_data` — default hex payload for downloads
+  Direct runtime SDO panel.
   """
   @spec sdo_explorer(keyword()) :: Kino.JS.Live.t()
   def sdo_explorer(opts \\ []), do: SDOExplorer.new(opts)
