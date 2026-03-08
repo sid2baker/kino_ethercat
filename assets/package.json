@@ -9,7 +9,9 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "uplot": "^1.6.32",
+    "uplot-react": "^1.2.4"
   },
   "devDependencies": {
     "@livebook/kino-bundler": "^0.2.1"

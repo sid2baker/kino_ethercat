@@ -1,7 +1,10 @@
 import "./main.css";
+import "uplot/dist/uPlot.min.css";
 
-import React, { startTransition, useEffect, useState } from "react";
+import React, { startTransition, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import uPlot from "uplot";
+import UplotReact from "uplot-react";
 
 export async function init(ctx, data) {
   await ctx.importCSS("main.css");
@@ -90,83 +93,146 @@ function sliceWindowLabel(sliceMs) {
   return `${sliceMs} ms slices`;
 }
 
-function sliceTitle(slice, formatter) {
-  const parts = [`${slice.label}`];
-
-  if (slice.value != null) {
-    parts.push(`value ${formatter(slice.value)}`);
-  }
-
-  if (slice.peak != null) {
-    parts.push(`peak ${formatter(slice.peak)}`);
-  }
-
-  if (slice.count != null) {
-    parts.push(`samples ${formatCount(slice.count)}`);
-  }
-
-  return parts.join(" • ");
+function axisTime(value) {
+  return new Date(value * 1000).toLocaleTimeString([], {
+    hour12: false,
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
-function SliceBars({
-  slices,
-  color = "#0f766e",
-  formatter = formatCount,
-  emptyLabel = "No samples yet",
-}) {
-  if (!slices?.length) {
-    return (
-      <div className="flex h-28 items-center justify-center rounded-2xl bg-stone-100/80 font-mono text-[11px] text-stone-400">
-        {emptyLabel}
-      </div>
-    );
+function axisCompact(value, unit = "") {
+  if (!Number.isFinite(value)) return "";
+
+  if (Math.abs(value) >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(1)}M${unit}`;
   }
 
-  const peak = Math.max(
-    ...slices.map((slice) => {
-      const candidate = slice.peak ?? slice.value ?? 0;
-      return Number.isFinite(candidate) ? candidate : 0;
+  if (Math.abs(value) >= 1_000) {
+    return `${(value / 1_000).toFixed(1)}k${unit}`;
+  }
+
+  return `${Math.round(value)}${unit}`;
+}
+
+function useChartWidth(minWidth = 280) {
+  const ref = useRef(null);
+  const [width, setWidth] = useState(minWidth);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return undefined;
+
+    const update = () => {
+      const nextWidth = Math.max(Math.floor(element.clientWidth) - 8, minWidth);
+      setWidth(nextWidth);
+    };
+
+    update();
+
+    if (typeof ResizeObserver === "undefined") return undefined;
+
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, [minWidth]);
+
+  return [ref, width];
+}
+
+function buildChartData(series) {
+  const first = series.find((entry) => entry.slices && entry.slices.length > 0);
+  if (!first) return null;
+
+  const timestamps = first.slices.map((slice) => slice.at_ms / 1000);
+
+  return [
+    timestamps,
+    ...series.map((entry) => {
+      const byTimestamp = new Map(entry.slices.map((slice) => [slice.at_ms, slice.value ?? 0]));
+      return first.slices.map((slice) => byTimestamp.get(slice.at_ms) ?? 0);
     }),
-    1,
-  );
-
-  return (
-    <div className="rounded-2xl border border-stone-200 bg-stone-50/80 px-3 py-3">
-      <div className="flex h-28 items-end gap-1.5">
-        {slices.map((slice) => {
-          const value = slice.value ?? 0;
-          const height = Math.max((value / peak) * 100, value > 0 ? 6 : 2);
-
-          return (
-            <div key={slice.at_ms} className="group flex min-w-0 flex-1 flex-col items-center justify-end gap-1">
-              <div
-                className="w-full rounded-t-xl rounded-b-md transition-transform duration-150 group-hover:-translate-y-1"
-                style={{
-                  height: `${height}%`,
-                  background: `linear-gradient(180deg, ${color}, ${color}CC)`,
-                }}
-                title={sliceTitle(slice, formatter)}
-              />
-              <div className="truncate font-mono text-[10px] text-stone-400">{slice.label.slice(3)}</div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+  ];
 }
 
-function SliceMetric({ title, subtitle, slices, color, formatter, emptyLabel }) {
+function chartOptions(width, height, series, yUnit = "") {
+  return {
+    width,
+    height,
+    padding: [10, 8, 4, 4],
+    legend: { show: series.length > 1 },
+    cursor: {
+      drag: {
+        setScale: false,
+        x: false,
+        y: false,
+      },
+    },
+    scales: {
+      x: { time: true },
+      y: { auto: true },
+    },
+    axes: [
+      {
+        stroke: "#78716c",
+        grid: { stroke: "#e7e5e4" },
+        values: (_u, splits) => splits.map(axisTime),
+      },
+      {
+        stroke: "#78716c",
+        grid: { stroke: "#e7e5e4" },
+        values: (_u, splits) => splits.map((value) => axisCompact(value, yUnit)),
+      },
+    ],
+    series: [
+      {},
+      ...series.map((entry) => ({
+        label: entry.label,
+        stroke: entry.stroke,
+        width: 2,
+        fill: entry.fill,
+        points: { show: false },
+        value: (_u, value) => (value == null ? "n/a" : `${value}`),
+      })),
+    ],
+  };
+}
+
+function ChartPanel({ title, subtitle, series, height = 210, yUnit = "", emptyLabel = "No samples yet" }) {
+  const [ref, width] = useChartWidth();
+  const data = buildChartData(series);
+
   return (
-    <div className="space-y-2 rounded-2xl border border-stone-200 bg-white/70 p-3">
-      <div className="flex items-start justify-between gap-2">
+    <div className="rounded-2xl border border-stone-200 bg-white/70 p-3">
+      <div className="mb-3 flex items-start justify-between gap-2">
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{title}</div>
           <div className="mt-1 font-mono text-[11px] text-stone-500">{subtitle}</div>
         </div>
-        <div className="mt-1 h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
+        <div className="flex flex-wrap gap-2">
+          {series.map((entry) => (
+            <div key={entry.label} className="inline-flex items-center gap-1 font-mono text-[10px] text-stone-500">
+              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: entry.stroke }} />
+              {entry.label}
+            </div>
+          ))}
+        </div>
       </div>
-      <SliceBars slices={slices} color={color} formatter={formatter} emptyLabel={emptyLabel} />
+
+      <div ref={ref} className="ke-diagnostics__chart">
+        {data ? (
+          <UplotReact
+            options={chartOptions(width, height, series, yUnit)}
+            data={data}
+            resetScales={false}
+          />
+        ) : (
+          <div className="flex h-[210px] items-center justify-center rounded-2xl bg-stone-100/80 font-mono text-[11px] text-stone-400">
+            {emptyLabel}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -216,20 +282,17 @@ function TransactionCard({ title, accent, transaction, queue }) {
       summary={`latency last ${formatUs(transaction.last_latency_us)} • avg ${formatUs(transaction.avg_latency_us)}`}
     >
       <div className="grid gap-3 xl:grid-cols-2">
-        <SliceMetric
+        <ChartPanel
           title="Latency"
           subtitle={`dispatches ${formatCount(transaction.dispatches)} • wkc ${formatCount(transaction.last_wkc)}`}
-          slices={transaction.latency_slices}
-          color={accent}
-          formatter={formatUs}
+          series={[{ label: "Latency", slices: transaction.latency_slices, stroke: accent, fill: `${accent}26` }]}
+          yUnit="us"
           emptyLabel="No bus latency samples yet"
         />
-        <SliceMetric
+        <ChartPanel
           title="Queue Depth"
           subtitle={`last ${formatCount(queue.last_depth)} • avg ${formatCount(queue.avg_depth)} • peak ${formatCount(queue.peak_depth)}`}
-          slices={queue.slices}
-          color="#475569"
-          formatter={formatCount}
+          series={[{ label: "Queue", slices: queue.slices, stroke: "#475569", fill: "#47556926" }]}
           emptyLabel="No queue samples yet"
         />
       </div>
@@ -260,64 +323,35 @@ function FrameSection({ frames, links }) {
         accent="#7c3aed"
         summary={`RTT last ${formatNs(frames.last_rtt_ns)} • peak ${formatNs(frames.peak_rtt_ns)}`}
       >
-        <div className="grid gap-3 xl:grid-cols-2">
-          <SliceMetric
-            title="Round Trip"
-            subtitle={`sent ${formatCount(frames.sent)} • received ${formatCount(frames.received)}`}
-            slices={frames.rtt_slices}
-            color="#7c3aed"
-            formatter={formatNs}
-            emptyLabel="No RTT samples yet"
+        <div className="grid gap-3">
+          <ChartPanel
+            title="Traffic"
+            subtitle={`sent ${formatCount(frames.sent)} • received ${formatCount(frames.received)} • dropped ${formatCount(frames.dropped)}`}
+            series={[
+              { label: "Sent", slices: frames.sent_slices, stroke: "#0f766e", fill: "#0f766e20" },
+              { label: "Received", slices: frames.received_slices, stroke: "#2563eb", fill: "#2563eb20" },
+              { label: "Dropped", slices: frames.dropped_slices, stroke: "#be123c", fill: "#be123c20" },
+            ]}
+            emptyLabel="No frame traffic yet"
           />
-          <SliceMetric
-            title="Sent / s"
-            subtitle={`total ${formatCount(frames.sent)}`}
-            slices={frames.sent_slices}
-            color="#0f766e"
-            formatter={formatCount}
-            emptyLabel="No sent frames yet"
-          />
-          <SliceMetric
-            title="Received / s"
-            subtitle={`total ${formatCount(frames.received)}`}
-            slices={frames.received_slices}
-            color="#2563eb"
-            formatter={formatCount}
-            emptyLabel="No received frames yet"
-          />
-          <div className="space-y-3 rounded-2xl border border-stone-200 bg-white/70 p-3">
-            <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Fault Traffic</div>
-              <div className="mt-1 font-mono text-[11px] text-stone-500">
-                dropped {formatCount(frames.dropped)} • ignored {formatCount(frames.ignored)}
-              </div>
-            </div>
-            <SliceMetric
-              title="Dropped / s"
-              subtitle={`expired ${formatCount(frames.expired_slices?.at(-1)?.value ?? 0)} • exceptions ${formatCount(frames.exception_slices?.at(-1)?.value ?? 0)}`}
-              slices={frames.dropped_slices}
-              color="#be123c"
-              formatter={formatCount}
-              emptyLabel="No dropped frames yet"
+          <div className="grid gap-3 xl:grid-cols-2">
+            <ChartPanel
+              title="Round Trip"
+              subtitle={`ignored ${formatCount(frames.ignored)} • exceptions ${formatCount(frames.exception_slices.reduce((sum, slice) => sum + (slice.value ?? 0), 0))}`}
+              series={[{ label: "RTT", slices: frames.rtt_slices, stroke: "#7c3aed", fill: "#7c3aed20" }]}
+              yUnit="ns"
+              emptyLabel="No RTT samples yet"
             />
-            <div className="grid gap-3 lg:grid-cols-2">
-              <SliceMetric
-                title="Ignored / s"
-                subtitle={`total ${formatCount(frames.ignored)}`}
-                slices={frames.ignored_slices}
-                color="#78716c"
-                formatter={formatCount}
-                emptyLabel="No ignored frames yet"
-              />
-              <SliceMetric
-                title="Expired / s"
-                subtitle={`exceptions ${formatCount(frames.exception_slices?.reduce((sum, slice) => sum + (slice.value ?? 0), 0) ?? 0)}`}
-                slices={frames.expired_slices}
-                color="#ea580c"
-                formatter={formatCount}
-                emptyLabel="No expired realtime work"
-              />
-            </div>
+            <ChartPanel
+              title="Fault Timeline"
+              subtitle={`expired realtime ${formatCount(frames.expired_slices.reduce((sum, slice) => sum + (slice.value ?? 0), 0))}`}
+              series={[
+                { label: "Expired", slices: frames.expired_slices, stroke: "#ea580c", fill: "#ea580c20" },
+                { label: "Exceptions", slices: frames.exception_slices, stroke: "#dc2626", fill: "#dc262620" },
+                { label: "Ignored", slices: frames.ignored_slices, stroke: "#78716c", fill: "#78716c20" },
+              ]}
+              emptyLabel="No bus faults recorded"
+            />
           </div>
         </div>
         {frames.dropped_reasons.length > 0 && (
@@ -362,14 +396,13 @@ function DcSection({ dc }) {
         <Badge label={dc.lock_state} tone={badgeClass(LOCK_STYLES, dc.lock_state)} />
       </div>
 
-      <div className="grid gap-3 xl:grid-cols-[1.15fr_1fr]">
+      <div className="grid gap-3 xl:grid-cols-[1.2fr_1fr]">
         <div className="space-y-3">
-          <SliceMetric
-            title="Sync Diff / Slice"
+          <ChartPanel
+            title="Sync Diff"
             subtitle={`tick wkc ${formatCount(dc.tick_wkc)} • max ${formatNs(dc.max_sync_diff_ns)}`}
-            slices={dc.sync_diff_slices}
-            color="#be123c"
-            formatter={formatNs}
+            series={[{ label: "Sync diff", slices: dc.sync_diff_slices, stroke: "#be123c", fill: "#be123c20" }]}
+            yUnit="ns"
             emptyLabel="No DC sync samples yet"
           />
           <div className="grid grid-cols-2 gap-2 font-mono text-[11px] text-stone-500">
@@ -412,21 +445,18 @@ function DomainsSection({ domains }) {
                 <span className="font-mono text-xs font-semibold text-stone-700">{domain.id}</span>
                 <Badge label={domain.state} tone={badgeClass(DOMAIN_STYLES, domain.state)} />
               </div>
-              <div className="mt-3 grid gap-3 xl:grid-cols-2">
-                <SliceMetric
+              <div className="mt-3 grid gap-3">
+                <ChartPanel
                   title="Cycle Duration"
                   subtitle={`last ${formatUs(domain.last_cycle_us)} • avg ${formatUs(domain.avg_cycle_us)}`}
-                  slices={domain.cycle_slices}
-                  color="#d97706"
-                  formatter={formatUs}
+                  series={[{ label: "Cycle", slices: domain.cycle_slices, stroke: "#d97706", fill: "#d9770620" }]}
+                  yUnit="us"
                   emptyLabel="No cycle telemetry yet"
                 />
-                <SliceMetric
-                  title="Misses / Slice"
+                <ChartPanel
+                  title="Misses"
                   subtitle={`miss events ${formatCount(domain.missed_events)} • total misses ${formatCount(domain.total_miss_count)}`}
-                  slices={domain.miss_slices}
-                  color="#dc2626"
-                  formatter={formatCount}
+                  series={[{ label: "Misses", slices: domain.miss_slices, stroke: "#dc2626", fill: "#dc262620" }]}
                   emptyLabel="No misses recorded"
                 />
               </div>
@@ -494,7 +524,7 @@ function SlavesSection({ slaves }) {
 function TimelineSection({ timeline }) {
   return (
     <section className="rounded-2xl border border-stone-200 bg-white/80 p-3">
-      <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Timeline</div>
+      <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Event Timeline</div>
       {timeline.length === 0 ? (
         <div className="rounded-xl bg-stone-50 px-3 py-4 text-center font-mono text-xs text-stone-400">No fault or recovery events yet</div>
       ) : (
