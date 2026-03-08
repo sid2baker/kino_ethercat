@@ -3,7 +3,7 @@ defmodule KinoEtherCAT.SetupCell do
   use Kino.JS.Live
   use Kino.SmartCell, name: "EtherCAT Setup"
 
-  alias KinoEtherCAT.Source
+  alias KinoEtherCAT.SetupSource
 
   @impl true
   def init(attrs, ctx) do
@@ -14,11 +14,17 @@ defmodule KinoEtherCAT.SetupCell do
     {:ok,
      assign(ctx,
        interface: attrs["interface"] || "eth0",
+       backup_interface: attrs["backup_interface"] || "",
        status: status,
        error: nil,
        slaves: slaves,
        domain_id: attrs["domain_id"] || "main",
        cycle_time_us: attrs["cycle_time_us"] || 1_000,
+       activation_mode: attrs["activation_mode"] || "op",
+       dc_enabled?: Map.get(attrs, "dc_enabled?", true),
+       await_lock?: Map.get(attrs, "await_lock?", false),
+       lock_threshold_ns: attrs["lock_threshold_ns"] || 100,
+       lock_timeout_ms: attrs["lock_timeout_ms"] || 5_000,
        master_phase: :idle
      )}
   end
@@ -36,8 +42,14 @@ defmodule KinoEtherCAT.SetupCell do
        status: to_string(ctx.assigns.status),
        error: ctx.assigns.error,
        slaves: ctx.assigns.slaves,
+       backup_interface: ctx.assigns.backup_interface,
        domain_id: ctx.assigns.domain_id,
        cycle_time_us: ctx.assigns.cycle_time_us,
+       activation_mode: ctx.assigns.activation_mode,
+       dc_enabled?: ctx.assigns.dc_enabled?,
+       await_lock?: ctx.assigns.await_lock?,
+       lock_threshold_ns: ctx.assigns.lock_threshold_ns,
+       lock_timeout_ms: ctx.assigns.lock_timeout_ms,
        master_phase: to_string(ctx.assigns.master_phase),
        available_drivers: drivers
      }, ctx}
@@ -73,12 +85,18 @@ defmodule KinoEtherCAT.SetupCell do
     {:noreply, assign(ctx, slaves: slaves)}
   end
 
-  def handle_event(
-        "update_domain",
-        %{"domain_id" => domain_id, "cycle_time_us" => cycle_time_us},
-        ctx
-      ) do
-    {:noreply, assign(ctx, domain_id: domain_id, cycle_time_us: cycle_time_us)}
+  def handle_event("update_runtime", params, ctx) do
+    {:noreply,
+     assign(ctx,
+       backup_interface: Map.get(params, "backup_interface", ctx.assigns.backup_interface),
+       domain_id: Map.get(params, "domain_id", ctx.assigns.domain_id),
+       cycle_time_us: Map.get(params, "cycle_time_us", ctx.assigns.cycle_time_us),
+       activation_mode: Map.get(params, "activation_mode", ctx.assigns.activation_mode),
+       dc_enabled?: Map.get(params, "dc_enabled?", ctx.assigns.dc_enabled?),
+       await_lock?: Map.get(params, "await_lock?", ctx.assigns.await_lock?),
+       lock_threshold_ns: Map.get(params, "lock_threshold_ns", ctx.assigns.lock_threshold_ns),
+       lock_timeout_ms: Map.get(params, "lock_timeout_ms", ctx.assigns.lock_timeout_ms)
+     )}
   end
 
   @impl true
@@ -108,114 +126,21 @@ defmodule KinoEtherCAT.SetupCell do
   def to_attrs(ctx) do
     %{
       "interface" => ctx.assigns.interface,
+      "backup_interface" => ctx.assigns.backup_interface,
       "slaves" => ctx.assigns.slaves,
       "domain_id" => ctx.assigns.domain_id,
-      "cycle_time_us" => ctx.assigns.cycle_time_us
+      "cycle_time_us" => ctx.assigns.cycle_time_us,
+      "activation_mode" => ctx.assigns.activation_mode,
+      "dc_enabled?" => ctx.assigns.dc_enabled?,
+      "await_lock?" => ctx.assigns.await_lock?,
+      "lock_threshold_ns" => ctx.assigns.lock_threshold_ns,
+      "lock_timeout_ms" => ctx.assigns.lock_timeout_ms
     }
   end
 
   @impl true
   def to_source(attrs) do
-    interface =
-      attrs
-      |> Map.get("interface", "")
-      |> String.trim()
-
-    slaves = attrs["slaves"] || []
-
-    if interface == "" or Enum.empty?(slaves) do
-      ""
-    else
-      domain_id =
-        attrs
-        |> Map.get("domain_id", "main")
-        |> String.trim()
-
-      cycle_time_us =
-        attrs
-        |> Map.get("cycle_time_us", 1_000)
-        |> normalize_cycle_time()
-
-      slave_structs =
-        slaves
-        |> Enum.map(&slave_source(&1, domain_id))
-        |> Enum.reject(&is_nil/1)
-        |> Enum.join(",\n")
-
-      Source.multiline([
-        "alias EtherCAT.Slave.Config, as: SlaveConfig\n",
-        "alias EtherCAT.Domain.Config, as: DomainConfig\n\n",
-        "EtherCAT.stop()\n\n",
-        "EtherCAT.start(\n",
-        "  interface: ",
-        inspect(interface),
-        ",\n",
-        "  domains: [%DomainConfig{id: ",
-        Source.atom_literal(domain_id),
-        ", cycle_time_us: ",
-        Source.integer_literal(cycle_time_us),
-        "}],\n",
-        "  slaves: [\n",
-        indent_lines(slave_structs, 4),
-        "\n",
-        "  ]\n",
-        ")\n"
-      ])
-    end
-  end
-
-  defp slave_source(%{"name" => name} = slave, domain_id) when is_binary(name) do
-    name = String.trim(name)
-
-    if name == "" do
-      nil
-    else
-      fields =
-        case driver_source(slave["driver"]) do
-          {:ok, driver_source} ->
-            [
-              "name: ",
-              Source.atom_literal(name),
-              ", driver: ",
-              driver_source,
-              ", process_data: {:all, ",
-              Source.atom_literal(domain_id),
-              "}"
-            ]
-
-          :error ->
-            ["name: ", Source.atom_literal(name)]
-        end
-
-      IO.iodata_to_binary(["%SlaveConfig{", fields, "}"])
-    end
-  end
-
-  defp driver_source(driver) when is_binary(driver) do
-    Source.module_literal(driver)
-  end
-
-  defp driver_source(_driver), do: :error
-
-  defp normalize_cycle_time(value) when is_integer(value) and value > 0, do: value
-
-  defp normalize_cycle_time(value) when is_binary(value) do
-    case Integer.parse(String.trim(value)) do
-      {parsed, ""} when parsed > 0 -> parsed
-      _ -> 1_000
-    end
-  end
-
-  defp normalize_cycle_time(_value), do: 1_000
-
-  defp indent_lines("", _spaces), do: ""
-
-  defp indent_lines(content, spaces) do
-    padding = String.duplicate(" ", spaces)
-
-    content
-    |> String.split("\n")
-    |> Enum.map_join("\n", &(padding <> &1))
+    SetupSource.render(attrs)
   end
 
   defp run_scan(server, interface) do
@@ -224,8 +149,7 @@ defmodule KinoEtherCAT.SetupCell do
            :ok <- EtherCAT.await_running(15_000) do
         slaves =
           EtherCAT.slaves()
-          |> Enum.with_index(1)
-          |> Enum.map(fn {%{name: name, station: station}, idx} ->
+          |> Enum.map(fn %{name: name, station: station} ->
             identity =
               case EtherCAT.slave_info(name) do
                 {:ok, %{identity: id}} when not is_nil(id) -> id
@@ -238,11 +162,14 @@ defmodule KinoEtherCAT.SetupCell do
                 :error -> ""
               end
 
+            discovered_name = to_string(name)
+
             %{
               "station" => station,
               "vendor_id" => Map.get(identity, :vendor_id, 0),
               "product_code" => Map.get(identity, :product_code, 0),
-              "name" => "slave_#{idx}",
+              "name" => discovered_name,
+              "discovered_name" => discovered_name,
               "driver" => driver
             }
           end)

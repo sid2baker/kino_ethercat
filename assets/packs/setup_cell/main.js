@@ -60,6 +60,9 @@ function SlaveRow({ slave, index, availableDrivers, onUpdate }) {
           placeholder="slave_name"
         />
       </td>
+      <td className="py-1 pr-4 text-gray-400 font-mono text-xs">
+        {slave.discovered_name ?? "—"}
+      </td>
       <td className="py-1">
         <div className="flex flex-col gap-1">
           <select
@@ -92,39 +95,145 @@ function SlaveRow({ slave, index, availableDrivers, onUpdate }) {
   );
 }
 
-// ── Domain config row ─────────────────────────────────────────────────────────
+// ── Runtime config row ────────────────────────────────────────────────────────
 
-function DomainConfig({ domainId, cycleTimeUs, onChange }) {
+function RuntimeConfig({
+  backupInterface,
+  domainId,
+  cycleTimeUs,
+  activationMode,
+  dcEnabled,
+  awaitLock,
+  lockThresholdNs,
+  lockTimeoutMs,
+  onChange,
+}) {
+  const [backup, setBackup] = useState(backupInterface);
   const [id, setId] = useState(domainId);
   const [cycle, setCycle] = useState(cycleTimeUs);
+  const [activation, setActivation] = useState(activationMode);
+  const [dc, setDc] = useState(dcEnabled);
+  const [lockGate, setLockGate] = useState(awaitLock);
+  const [threshold, setThreshold] = useState(lockThresholdNs);
+  const [timeout, setTimeoutMs] = useState(lockTimeoutMs);
 
-  const push = () => onChange(id, Number(cycle));
+  const push = (overrides = {}) =>
+    onChange({
+      backup_interface: backup,
+      domain_id: id,
+      cycle_time_us: Number(cycle),
+      activation_mode: activation,
+      "dc_enabled?": dc,
+      "await_lock?": lockGate,
+      lock_threshold_ns: Number(threshold),
+      lock_timeout_ms: Number(timeout),
+      ...overrides,
+    });
 
   return (
-    <div className="flex items-center gap-4 pt-2 border-t border-gray-200 text-sm text-gray-600">
-      <span className="font-semibold text-gray-700">Domain</span>
-      <label className="flex items-center gap-1">
-        <span>id:</span>
-        <input
-          className="w-24 border border-gray-300 rounded px-2 py-0.5 font-mono focus:outline-none focus:border-blue-400"
-          value={id}
-          onChange={(e) => setId(e.target.value)}
-          onBlur={push}
-          onKeyDown={(e) => e.key === "Enter" && push()}
-        />
-      </label>
-      <label className="flex items-center gap-1">
-        <span>cycle_time_us:</span>
-        <input
-          type="number"
-          min="100"
-          className="w-24 border border-gray-300 rounded px-2 py-0.5 font-mono focus:outline-none focus:border-blue-400"
-          value={cycle}
-          onChange={(e) => setCycle(Number(e.target.value))}
-          onBlur={push}
-          onKeyDown={(e) => e.key === "Enter" && push()}
-        />
-      </label>
+    <div className="space-y-2 pt-2 border-t border-gray-200 text-sm text-gray-600">
+      <div className="font-semibold text-gray-700">Runtime</div>
+      <div className="flex flex-wrap items-center gap-4">
+        <label className="flex items-center gap-1">
+          <span>backup:</span>
+          <input
+            className="w-28 border border-gray-300 rounded px-2 py-0.5 font-mono focus:outline-none focus:border-blue-400"
+            value={backup}
+            onChange={(e) => setBackup(e.target.value)}
+            onBlur={() => push()}
+            onKeyDown={(e) => e.key === "Enter" && push()}
+            placeholder="optional"
+          />
+        </label>
+        <label className="flex items-center gap-1">
+          <span>domain:</span>
+          <input
+            className="w-24 border border-gray-300 rounded px-2 py-0.5 font-mono focus:outline-none focus:border-blue-400"
+            value={id}
+            onChange={(e) => setId(e.target.value)}
+            onBlur={() => push()}
+            onKeyDown={(e) => e.key === "Enter" && push()}
+          />
+        </label>
+        <label className="flex items-center gap-1">
+          <span>cycle_time_us:</span>
+          <input
+            type="number"
+            min="1000"
+            step="1000"
+            className="w-24 border border-gray-300 rounded px-2 py-0.5 font-mono focus:outline-none focus:border-blue-400"
+            value={cycle}
+            onChange={(e) => setCycle(Number(e.target.value))}
+            onBlur={() => push()}
+            onKeyDown={(e) => e.key === "Enter" && push()}
+          />
+        </label>
+        <label className="flex items-center gap-1">
+          <span>target:</span>
+          <select
+            className="border border-gray-300 rounded px-2 py-0.5 font-mono text-sm focus:outline-none focus:border-blue-400 text-gray-700 bg-white"
+            value={activation}
+            onChange={(e) => {
+              setActivation(e.target.value);
+              push({ activation_mode: e.target.value });
+            }}
+          >
+            <option value="op">operational</option>
+            <option value="preop">pre-op only</option>
+          </select>
+        </label>
+      </div>
+      <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500">
+        <label className="flex items-center gap-1.5">
+          <input
+            type="checkbox"
+            checked={dc}
+            onChange={(e) => {
+              setDc(e.target.checked);
+              push({ "dc_enabled?": e.target.checked });
+            }}
+          />
+          <span>Enable DC</span>
+        </label>
+        <label className="flex items-center gap-1.5">
+          <input
+            type="checkbox"
+            checked={lockGate}
+            disabled={!dc}
+            onChange={(e) => {
+              setLockGate(e.target.checked);
+              push({ "await_lock?": e.target.checked });
+            }}
+          />
+          <span>Await lock</span>
+        </label>
+        <label className="flex items-center gap-1">
+          <span>lock_threshold_ns:</span>
+          <input
+            type="number"
+            min="1"
+            className="w-20 border border-gray-300 rounded px-2 py-0.5 font-mono focus:outline-none focus:border-blue-400 disabled:bg-gray-50"
+            value={threshold}
+            disabled={!dc}
+            onChange={(e) => setThreshold(Number(e.target.value))}
+            onBlur={() => push()}
+            onKeyDown={(e) => e.key === "Enter" && push()}
+          />
+        </label>
+        <label className="flex items-center gap-1">
+          <span>lock_timeout_ms:</span>
+          <input
+            type="number"
+            min="1"
+            className="w-20 border border-gray-300 rounded px-2 py-0.5 font-mono focus:outline-none focus:border-blue-400 disabled:bg-gray-50"
+            value={timeout}
+            disabled={!dc}
+            onChange={(e) => setTimeoutMs(Number(e.target.value))}
+            onBlur={() => push()}
+            onKeyDown={(e) => e.key === "Enter" && push()}
+          />
+        </label>
+      </div>
     </div>
   );
 }
@@ -155,8 +264,14 @@ function StartCell({ ctx, data }) {
   const [status, setStatus] = useState(data.status);
   const [error, setError] = useState(data.error);
   const [slaves, setSlaves] = useState(data.slaves);
+  const [backupInterface, setBackupInterface] = useState(data.backup_interface ?? "");
   const [domainId, setDomainId] = useState(data.domain_id);
   const [cycleTimeUs, setCycleTimeUs] = useState(data.cycle_time_us);
+  const [activationMode, setActivationMode] = useState(data.activation_mode ?? "op");
+  const [dcEnabled, setDcEnabled] = useState(data["dc_enabled?"] ?? true);
+  const [awaitLock, setAwaitLock] = useState(data["await_lock?"] ?? false);
+  const [lockThresholdNs, setLockThresholdNs] = useState(data.lock_threshold_ns ?? 100);
+  const [lockTimeoutMs, setLockTimeoutMs] = useState(data.lock_timeout_ms ?? 5000);
   const [masterPhase, setMasterPhase] = useState(data.master_phase ?? "idle");
   const availableDrivers = data.available_drivers ?? [];
 
@@ -197,13 +312,24 @@ function StartCell({ ctx, data }) {
     ctx.pushEvent("update_slave", { index: idx, name, driver });
   };
 
-  const handleDomainChange = (id, cycle) => {
-    setDomainId(id);
-    setCycleTimeUs(cycle);
-    ctx.pushEvent("update_domain", { domain_id: id, cycle_time_us: cycle });
+  const handleRuntimeChange = (next) => {
+    setBackupInterface(next.backup_interface);
+    setDomainId(next.domain_id);
+    setCycleTimeUs(next.cycle_time_us);
+    setActivationMode(next.activation_mode);
+    setDcEnabled(next["dc_enabled?"]);
+    setAwaitLock(next["await_lock?"]);
+    setLockThresholdNs(next.lock_threshold_ns);
+    setLockTimeoutMs(next.lock_timeout_ms);
+    ctx.pushEvent("update_runtime", next);
   };
 
   const scanning = status === "scanning";
+  const dynamicMode =
+    slaves.length > 0 &&
+    slaves.every(
+      (slave) => !slave.discovered_name || slave.name.trim() === slave.discovered_name.trim()
+    );
 
   return (
     <div className="p-3 space-y-3 font-sans text-sm select-none">
@@ -247,37 +373,57 @@ function StartCell({ ctx, data }) {
 
       {/* Slave table */}
       {status === "discovered" && slaves.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-gray-400 text-xs">
-                <th className="pb-1 pr-4 font-medium">Station</th>
-                <th className="pb-1 pr-4 font-medium">Identity</th>
-                <th className="pb-1 pr-2 font-medium">Name</th>
-                <th className="pb-1 font-medium">Driver</th>
-              </tr>
-            </thead>
-            <tbody>
-              {slaves.map((slave, idx) => (
-                <SlaveRow
-                  key={idx}
-                  slave={slave}
-                  index={idx}
-                  availableDrivers={availableDrivers}
-                  onUpdate={handleSlaveUpdate}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <div
+            className={`text-xs rounded px-3 py-2 border font-mono ${
+              dynamicMode
+                ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                : "bg-amber-50 border-amber-200 text-amber-700"
+            }`}
+          >
+            {dynamicMode
+              ? "Source mode: dynamic PREOP configuration. Persisting code will keep discovery names and replay configure_slave/2 + activate/0."
+              : "Source mode: declarative startup fallback. Renamed slaves require startup-time names, so the generated code will persist the full slave config."}
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-gray-400 text-xs">
+                  <th className="pb-1 pr-4 font-medium">Station</th>
+                  <th className="pb-1 pr-4 font-medium">Identity</th>
+                  <th className="pb-1 pr-2 font-medium">Name</th>
+                  <th className="pb-1 pr-4 font-medium">Discovered</th>
+                  <th className="pb-1 font-medium">Driver</th>
+                </tr>
+              </thead>
+              <tbody>
+                {slaves.map((slave, idx) => (
+                  <SlaveRow
+                    key={idx}
+                    slave={slave}
+                    index={idx}
+                    availableDrivers={availableDrivers}
+                    onUpdate={handleSlaveUpdate}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
-      {/* Domain config */}
+      {/* Runtime config */}
       {status === "discovered" && (
-        <DomainConfig
+        <RuntimeConfig
+          backupInterface={backupInterface}
           domainId={domainId}
           cycleTimeUs={cycleTimeUs}
-          onChange={handleDomainChange}
+          activationMode={activationMode}
+          dcEnabled={dcEnabled}
+          awaitLock={awaitLock}
+          lockThresholdNs={lockThresholdNs}
+          lockTimeoutMs={lockTimeoutMs}
+          onChange={handleRuntimeChange}
         />
       )}
     </div>
