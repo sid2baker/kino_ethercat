@@ -45,8 +45,8 @@ defmodule KinoEtherCAT.MixProject do
       links: %{"GitHub" => @source_url},
       files: ~w(lib/kino_ethercat* lib/kino_ethercat.ex
            lib/assets/led/build
+           lib/assets/explorer_cell/build
            lib/assets/runtime_panel/build
-           lib/assets/sdo_explorer/build
            lib/assets/setup_cell/build
            lib/assets/slave_panel/build
            lib/assets/switch/build
@@ -75,7 +75,13 @@ defmodule KinoEtherCAT.MixProject do
           KinoEtherCAT.Switch,
           KinoEtherCAT.Value
         ],
-        "Smart Cells": [KinoEtherCAT.SetupCell, KinoEtherCAT.VisualizerCell],
+        "Smart Cells": [
+          KinoEtherCAT.SetupCell,
+          KinoEtherCAT.VisualizerCell,
+          KinoEtherCAT.SDOExplorer,
+          KinoEtherCAT.RegisterExplorer,
+          KinoEtherCAT.SIIExplorer
+        ],
         Drivers: [
           KinoEtherCAT.Driver,
           KinoEtherCAT.Driver.EL1809,

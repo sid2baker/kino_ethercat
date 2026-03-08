@@ -17,7 +17,7 @@ defmodule KinoEtherCAT do
   the primary surface is the resource-oriented runtime API above.
   """
 
-  alias KinoEtherCAT.{Diagnostics, LED, Runtime, SDOExplorer, SlavePanel, Switch}
+  alias KinoEtherCAT.{Diagnostics, LED, Runtime, SlavePanel, Switch}
 
   @spec master() :: EtherCAT.Master.t()
   def master, do: Runtime.master()
@@ -117,12 +117,6 @@ defmodule KinoEtherCAT do
   """
   @spec diagnostics() :: Kino.JS.Live.t()
   def diagnostics, do: Diagnostics.new()
-
-  @doc """
-  Direct runtime SDO panel.
-  """
-  @spec sdo_explorer(keyword()) :: Kino.JS.Live.t()
-  def sdo_explorer(opts \\ []), do: SDOExplorer.new(opts)
 
   defp panel_columns(0), do: 1
   defp panel_columns(n), do: min(n, 4)
