@@ -4,7 +4,6 @@ import "uplot/dist/uPlot.min.css";
 import React, { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import uPlot from "uplot";
-import UplotReact from "uplot-react";
 
 export async function init(ctx, data) {
   await ctx.importCSS("main.css");
@@ -170,7 +169,7 @@ function chartOptions(width, height, series, yUnit = "") {
     width,
     height,
     padding: [10, 8, 4, 4],
-    legend: { show: series.length > 1 },
+    legend: { show: false },
     cursor: {
       drag: {
         setScale: false,
@@ -208,6 +207,37 @@ function chartOptions(width, height, series, yUnit = "") {
   };
 }
 
+function UPlotChart({ options, data, className, chartKey }) {
+  const targetRef = useRef(null);
+  const chartRef = useRef(null);
+
+  useEffect(() => {
+    if (!targetRef.current || !data) return undefined;
+
+    const chart = new uPlot(options, data, targetRef.current);
+    chartRef.current = chart;
+
+    return () => {
+      chart.destroy();
+      chartRef.current = null;
+    };
+  }, [chartKey]);
+
+  useEffect(() => {
+    if (chartRef.current && data) {
+      chartRef.current.setData(data, true);
+    }
+  }, [data]);
+
+  useEffect(() => {
+    if (chartRef.current) {
+      chartRef.current.setSize({ width: options.width, height: options.height });
+    }
+  }, [options.width, options.height]);
+
+  return <div ref={targetRef} className={className} />;
+}
+
 function ChartPanel({ title, subtitle, series, height = 210, yUnit = "", emptyLabel = "No samples yet" }) {
   const [ref, width] = useChartWidth();
   const seriesKey = series.map((entry) => `${entry.label}:${entry.stroke}:${entry.fill ?? ""}`).join("|");
@@ -233,11 +263,7 @@ function ChartPanel({ title, subtitle, series, height = 210, yUnit = "", emptyLa
 
       <div ref={ref} className="ke-diagnostics__chart">
         {data ? (
-          <UplotReact
-            options={options}
-            data={data}
-            resetScales
-          />
+          <UPlotChart options={options} data={data} className="ke-diagnostics__plot-root" chartKey={`${seriesKey}:${yUnit}`} />
         ) : (
           <div className="flex h-[210px] items-center justify-center rounded-2xl bg-stone-100/80 font-mono text-[11px] text-stone-400">
             {emptyLabel}
