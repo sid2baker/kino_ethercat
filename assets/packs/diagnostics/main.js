@@ -1,7 +1,7 @@
 import "./main.css";
 import "uplot/dist/uPlot.min.css";
 
-import React, { startTransition, useEffect, useRef, useState } from "react";
+import React, { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import uPlot from "uplot";
 import UplotReact from "uplot-react";
@@ -156,6 +156,15 @@ function buildChartData(series) {
   ];
 }
 
+function positiveRange(_u, min, max) {
+  if (!Number.isFinite(min) || !Number.isFinite(max)) {
+    return [0, 1];
+  }
+
+  const nextMax = max <= 0 ? 1 : max * 1.1;
+  return [0, nextMax];
+}
+
 function chartOptions(width, height, series, yUnit = "") {
   return {
     width,
@@ -171,7 +180,7 @@ function chartOptions(width, height, series, yUnit = "") {
     },
     scales: {
       x: { time: true },
-      y: { auto: true },
+      y: { auto: true, range: positiveRange },
     },
     axes: [
       {
@@ -201,6 +210,8 @@ function chartOptions(width, height, series, yUnit = "") {
 
 function ChartPanel({ title, subtitle, series, height = 210, yUnit = "", emptyLabel = "No samples yet" }) {
   const [ref, width] = useChartWidth();
+  const seriesKey = series.map((entry) => `${entry.label}:${entry.stroke}:${entry.fill ?? ""}`).join("|");
+  const options = useMemo(() => chartOptions(width, height, series, yUnit), [width, height, yUnit, seriesKey]);
   const data = buildChartData(series);
 
   return (
@@ -223,9 +234,9 @@ function ChartPanel({ title, subtitle, series, height = 210, yUnit = "", emptyLa
       <div ref={ref} className="ke-diagnostics__chart">
         {data ? (
           <UplotReact
-            options={chartOptions(width, height, series, yUnit)}
+            options={options}
             data={data}
-            resetScales={false}
+            resetScales
           />
         ) : (
           <div className="flex h-[210px] items-center justify-center rounded-2xl bg-stone-100/80 font-mono text-[11px] text-stone-400">
