@@ -3,6 +3,8 @@ defmodule KinoEtherCAT.VisualizerCell do
   use Kino.JS.Live
   use Kino.SmartCell, name: "EtherCAT Visualizer"
 
+  alias KinoEtherCAT.Source
+
   @impl true
   def init(attrs, ctx) do
     selected = attrs["selected"] || []
@@ -58,24 +60,30 @@ defmodule KinoEtherCAT.VisualizerCell do
   end
 
   def to_source(%{"selected" => selected}) do
-    render_asts =
+    render_calls =
       Enum.map(selected, fn %{"name" => name, "columns" => columns} ->
-        name_atom = String.to_atom(name)
+        name = String.trim(name)
 
-        if columns do
-          quote do
-            KinoEtherCAT.render(unquote(name_atom), columns: unquote(columns))
-            |> Kino.render()
-          end
+        if name == "" do
+          nil
         else
-          quote do
-            KinoEtherCAT.render(unquote(name_atom)) |> Kino.render()
+          slave_literal = Source.atom_literal(name)
+
+          if is_integer(columns) and columns > 0 do
+            "KinoEtherCAT.render(#{slave_literal}, columns: #{columns}) |> Kino.render()"
+          else
+            "KinoEtherCAT.render(#{slave_literal}) |> Kino.render()"
           end
         end
       end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.join("\n\n")
 
-    ast = {:__block__, [], render_asts ++ [quote(do: Kino.nothing())]}
-    Kino.SmartCell.quoted_to_string(ast)
+    Source.multiline([
+      render_calls,
+      if(render_calls == "", do: "", else: "\n\n"),
+      "Kino.nothing()"
+    ])
   end
 
   defp fetch_slaves do

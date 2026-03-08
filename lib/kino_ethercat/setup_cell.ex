@@ -3,6 +3,8 @@ defmodule KinoEtherCAT.SetupCell do
   use Kino.JS.Live
   use Kino.SmartCell, name: "EtherCAT Setup"
 
+  alias KinoEtherCAT.Source
+
   @impl true
   def init(attrs, ctx) do
     slaves = attrs["slaves"] || []
@@ -114,60 +116,106 @@ defmodule KinoEtherCAT.SetupCell do
 
   @impl true
   def to_source(attrs) do
-    interface = attrs["interface"] || ""
+    interface =
+      attrs
+      |> Map.get("interface", "")
+      |> String.trim()
+
     slaves = attrs["slaves"] || []
 
     if interface == "" or Enum.empty?(slaves) do
       ""
     else
-      domain_id = String.to_atom(attrs["domain_id"] || "main")
-      cycle_time_us = attrs["cycle_time_us"] || 1_000
+      domain_id =
+        attrs
+        |> Map.get("domain_id", "main")
+        |> String.trim()
 
-      domain_struct =
-        quote do: %DomainConfig{id: unquote(domain_id), cycle_time_us: unquote(cycle_time_us)}
+      cycle_time_us =
+        attrs
+        |> Map.get("cycle_time_us", 1_000)
+        |> normalize_cycle_time()
 
-      slave_structs = Enum.map(slaves, &slave_quoted(&1, domain_id))
+      slave_structs =
+        slaves
+        |> Enum.map(&slave_source(&1, domain_id))
+        |> Enum.reject(&is_nil/1)
+        |> Enum.join(",\n")
 
-      ast =
-        quote do
-          alias EtherCAT.Slave.Config, as: SlaveConfig
-          alias EtherCAT.Domain.Config, as: DomainConfig
-
-          EtherCAT.stop()
-
-          EtherCAT.start(
-            interface: unquote(interface),
-            domains: [unquote(domain_struct)],
-            slaves: unquote(slave_structs)
-          )
-        end
-
-      Kino.SmartCell.quoted_to_string(ast)
+      Source.multiline([
+        "alias EtherCAT.Slave.Config, as: SlaveConfig\n",
+        "alias EtherCAT.Domain.Config, as: DomainConfig\n\n",
+        "EtherCAT.stop()\n\n",
+        "EtherCAT.start(\n",
+        "  interface: ",
+        inspect(interface),
+        ",\n",
+        "  domains: [%DomainConfig{id: ",
+        Source.atom_literal(domain_id),
+        ", cycle_time_us: ",
+        Source.integer_literal(cycle_time_us),
+        "}],\n",
+        "  slaves: [\n",
+        indent_lines(slave_structs, 4),
+        "\n",
+        "  ]\n",
+        ")\n"
+      ])
     end
   end
 
-  defp slave_quoted(%{"name" => name, "driver" => driver}, domain_id)
-       when is_binary(driver) and driver != "" do
-    name_atom = String.to_atom(name)
+  defp slave_source(%{"name" => name} = slave, domain_id) when is_binary(name) do
+    name = String.trim(name)
 
-    case Code.string_to_quoted(driver) do
-      {:ok, driver_ast} ->
-        quote do
-          %SlaveConfig{
-            name: unquote(name_atom),
-            driver: unquote(driver_ast),
-            process_data: {:all, unquote(domain_id)}
-          }
+    if name == "" do
+      nil
+    else
+      fields =
+        case driver_source(slave["driver"]) do
+          {:ok, driver_source} ->
+            [
+              "name: ",
+              Source.atom_literal(name),
+              ", driver: ",
+              driver_source,
+              ", process_data: {:all, ",
+              Source.atom_literal(domain_id),
+              "}"
+            ]
+
+          :error ->
+            ["name: ", Source.atom_literal(name)]
         end
 
-      {:error, _} ->
-        quote do: %SlaveConfig{name: unquote(name_atom)}
+      IO.iodata_to_binary(["%SlaveConfig{", fields, "}"])
     end
   end
 
-  defp slave_quoted(%{"name" => name}, _domain_id) do
-    name_atom = String.to_atom(name)
-    quote do: %SlaveConfig{name: unquote(name_atom)}
+  defp driver_source(driver) when is_binary(driver) do
+    Source.module_literal(driver)
+  end
+
+  defp driver_source(_driver), do: :error
+
+  defp normalize_cycle_time(value) when is_integer(value) and value > 0, do: value
+
+  defp normalize_cycle_time(value) when is_binary(value) do
+    case Integer.parse(String.trim(value)) do
+      {parsed, ""} when parsed > 0 -> parsed
+      _ -> 1_000
+    end
+  end
+
+  defp normalize_cycle_time(_value), do: 1_000
+
+  defp indent_lines("", _spaces), do: ""
+
+  defp indent_lines(content, spaces) do
+    padding = String.duplicate(" ", spaces)
+
+    content
+    |> String.split("\n")
+    |> Enum.map_join("\n", &(padding <> &1))
   end
 
   defp run_scan(server, interface) do

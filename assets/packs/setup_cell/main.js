@@ -1,6 +1,6 @@
 import "./main.css";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 export async function init(ctx, data) {
@@ -171,6 +171,12 @@ function StartCell({ ctx, data }) {
       setStatus("error");
     });
     ctx.handleEvent("master_phase", ({ phase }) => setMasterPhase(phase));
+    ctx.handleSync(() => {
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && ctx.root.contains(active)) {
+        active.blur();
+      }
+    });
   }, []);
 
   const handleScan = () => {

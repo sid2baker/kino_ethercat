@@ -128,6 +128,12 @@ function VisualizerCell({ ctx, data }) {
       setSelected(selected);
       setStatus(status);
     });
+    ctx.handleSync(() => {
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && ctx.root.contains(active)) {
+        active.blur();
+      }
+    });
   }, []);
 
   const sensors = useSensors(useSensor(PointerSensor));
