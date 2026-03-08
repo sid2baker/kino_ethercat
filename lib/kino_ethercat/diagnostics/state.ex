@@ -83,7 +83,8 @@ defmodule KinoEtherCAT.DiagnosticsState do
       metric
       |> append_history(:latency_history, duration_us, state.history_limit)
       |> Map.update!(:count, &(&1 + 1))
-      |> Map.put(:last_wkc, metadata.total_wkc)
+      |> Map.put(:last_wkc, Map.get(metadata, :total_wkc))
+      |> Map.update!(:datagrams, &(&1 + Map.get(metadata, :datagram_count, 0)))
     end)
   end
 

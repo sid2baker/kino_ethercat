@@ -10,48 +10,15 @@ defmodule KinoEtherCAT.SetupSource do
     if config.interface == "" or Enum.empty?(config.slaves) do
       ""
     else
-      case dynamic_mode(config) do
-        :dynamic -> dynamic_source(config)
-        :declarative -> declarative_source(config)
-      end
+      declarative_source(config)
     end
-  end
-
-  defp dynamic_mode(config) do
-    if Enum.all?(config.slaves, &dynamic_slave?/1) do
-      :dynamic
-    else
-      :declarative
-    end
-  end
-
-  defp dynamic_slave?(%{name: name, discovered_name: discovered_name})
-       when is_binary(name) and is_binary(discovered_name) do
-    name == discovered_name and discovered_name != ""
-  end
-
-  defp dynamic_slave?(_slave), do: false
-
-  defp dynamic_source(config) do
-    Source.multiline([
-      aliases(config),
-      "_ = EtherCAT.stop()\n\n",
-      ":ok =\n",
-      "  EtherCAT.start(\n",
-      indent_lines(keyword_entries(start_entries(config)), 4),
-      "\n",
-      "  )\n\n",
-      ":ok = EtherCAT.await_running()\n",
-      render_dynamic_configure_calls(config),
-      render_activation(config)
-    ])
   end
 
   defp declarative_source(config) do
     Source.multiline([
       aliases(config),
-      "# Uses declarative startup because one or more slave names differ from the\n",
-      "# discovery names exposed by EtherCAT's dynamic PREOP workflow.\n",
+      "# Generated from dynamic bus discovery, but persisted as a static startup\n",
+      "# configuration so the notebook can recreate the full master in one call.\n",
       "_ = EtherCAT.stop()\n\n",
       ":ok =\n",
       "  EtherCAT.start(\n",
@@ -75,52 +42,11 @@ defmodule KinoEtherCAT.SetupSource do
     ])
   end
 
-  defp render_dynamic_configure_calls(config) do
-    config.slaves
-    |> Enum.map(&dynamic_configure_call(&1, config))
-    |> Enum.reject(&is_nil/1)
-    |> Enum.join("\n")
-    |> case do
-      "" -> ""
-      calls -> calls <> "\n\n"
-    end
-  end
-
-  defp dynamic_configure_call(slave, config) do
-    entries =
-      dynamic_slave_entries(slave, config)
-
-    Source.multiline([
-      ":ok =\n",
-      "  EtherCAT.configure_slave(\n",
-      "    ",
-      Source.atom_literal(slave.discovered_name),
-      ",\n",
-      indent_lines(keyword_entries(entries), 4),
-      "\n",
-      "  )\n"
-    ])
-  end
-
-  defp dynamic_slave_entries(slave, config) do
-    base_entries = [target_state: activation_target(config)]
-
-    case driver_literal(slave.driver) do
-      {:ok, driver_source} ->
-        [
-          driver: driver_source,
-          process_data: "{:all, #{Source.atom_literal(config.domain_id)}}"
-        ] ++ base_entries
-
-      :error ->
-        base_entries
-    end
-  end
-
   defp declarative_slaves(config) do
-    config.slaves
-    |> Enum.map(&declarative_slave_literal(&1, config))
-    |> Enum.join(",\n")
+    "[" <>
+      (config.slaves
+       |> Enum.map(&declarative_slave_literal(&1, config))
+       |> Enum.join(", ")) <> "]"
   end
 
   defp declarative_slave_literal(slave, config) do
@@ -145,18 +71,7 @@ defmodule KinoEtherCAT.SetupSource do
       Enum.map_join(fields, ", ", fn {key, value} -> "#{key}: #{value}" end) <> "}"
   end
 
-  defp render_activation(%{activation_mode: :op}) do
-    Source.multiline([
-      ":ok = EtherCAT.activate()\n",
-      render_activation_wait(%{activation_mode: :op})
-    ])
-  end
-
-  defp render_activation(_config), do: ""
-
-  defp render_activation_wait(%{activation_mode: :op}) do
-    ":ok = EtherCAT.await_operational()\n"
-  end
+  defp render_activation_wait(%{activation_mode: :op}), do: ":ok = EtherCAT.await_operational()\n"
 
   defp render_activation_wait(_config), do: ""
 

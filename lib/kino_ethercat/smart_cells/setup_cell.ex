@@ -145,36 +145,9 @@ defmodule KinoEtherCAT.SetupCell do
 
   defp run_scan(server, interface) do
     result =
-      with :ok <- EtherCAT.start(interface: interface),
+      with :ok <- ensure_master_running(interface),
            :ok <- EtherCAT.await_running(15_000) do
-        slaves =
-          EtherCAT.slaves()
-          |> Enum.map(fn %{name: name, station: station} ->
-            identity =
-              case EtherCAT.slave_info(name) do
-                {:ok, %{identity: id}} when not is_nil(id) -> id
-                _ -> %{}
-              end
-
-            driver =
-              case KinoEtherCAT.Driver.lookup(identity) do
-                {:ok, %{module: mod}} -> inspect(mod)
-                :error -> ""
-              end
-
-            discovered_name = to_string(name)
-
-            %{
-              "station" => station,
-              "vendor_id" => Map.get(identity, :vendor_id, 0),
-              "product_code" => Map.get(identity, :product_code, 0),
-              "name" => discovered_name,
-              "discovered_name" => discovered_name,
-              "driver" => driver
-            }
-          end)
-
-        {:ok, slaves}
+        {:ok, discovered_slaves()}
       else
         {:error, reason} -> {:error, inspect(reason)}
       end
@@ -182,5 +155,42 @@ defmodule KinoEtherCAT.SetupCell do
     send(server, {:scan_complete, result})
   rescue
     e -> send(server, {:scan_complete, {:error, Exception.message(e)}})
+  end
+
+  defp ensure_master_running(interface) do
+    case EtherCAT.start(interface: interface) do
+      :ok -> :ok
+      {:error, :already_started} -> :ok
+      {:error, {:already_started, _pid}} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp discovered_slaves do
+    EtherCAT.slaves()
+    |> Enum.map(fn %{name: name, station: station} ->
+      identity =
+        case EtherCAT.slave_info(name) do
+          {:ok, %{identity: id}} when not is_nil(id) -> id
+          _ -> %{}
+        end
+
+      driver =
+        case KinoEtherCAT.Driver.lookup(identity) do
+          {:ok, %{module: mod}} -> inspect(mod)
+          :error -> ""
+        end
+
+      discovered_name = to_string(name)
+
+      %{
+        "station" => station,
+        "vendor_id" => Map.get(identity, :vendor_id, 0),
+        "product_code" => Map.get(identity, :product_code, 0),
+        "name" => discovered_name,
+        "discovered_name" => discovered_name,
+        "driver" => driver
+      }
+    end)
   end
 end

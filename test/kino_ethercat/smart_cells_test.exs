@@ -3,7 +3,7 @@ defmodule KinoEtherCAT.SmartCellsTest do
 
   alias KinoEtherCAT.{SetupCell, VisualizerCell}
 
-  test "setup cell renders dynamic PREOP source when discovery names are unchanged" do
+  test "setup cell persists static startup code from discovered slaves" do
     source =
       SetupCell.to_source(%{
         "interface" => "eth0",
@@ -29,18 +29,18 @@ defmodule KinoEtherCAT.SmartCellsTest do
 
     assert source =~ ~s(interface: "eth0")
     assert source =~ ~s(backup_interface: "eth1")
-    assert source =~ ~s(%DomainConfig{id: :"main", cycle_time_us: 2000})
-    assert source =~ "EtherCAT.configure_slave("
-    assert source =~ ~s(:"coupler")
+    assert source =~ ~s(%DomainConfig{id: :main, cycle_time_us: 2000})
+    assert source =~ "slaves: ["
+    assert source =~ ~s(%SlaveConfig{name: :coupler, target_state: :op})
     assert source =~ ~s(driver: KinoEtherCAT.Driver.EL1809)
-    assert source =~ ~s(process_data: {:all, :"main"})
-    assert source =~ ":ok = EtherCAT.activate()"
+    assert source =~ ~s(process_data: {:all, :main})
     assert source =~ ":ok = EtherCAT.await_operational()"
     refute source =~ "String.to_atom"
-    refute source =~ "slaves: ["
+    refute source =~ "EtherCAT.configure_slave"
+    refute source =~ "EtherCAT.activate()"
   end
 
-  test "setup cell falls back to declarative startup when slave names are renamed" do
+  test "setup cell persists renamed slaves directly into static startup config" do
     source =
       SetupCell.to_source(%{
         "interface" => "eth0",
@@ -57,11 +57,10 @@ defmodule KinoEtherCAT.SmartCellsTest do
         ]
       })
 
-    assert source =~ "Uses declarative startup"
     assert source =~ ~s(dc: nil)
 
     assert source =~
-             ~s(%SlaveConfig{name: :"sensor_a", driver: KinoEtherCAT.Driver.EL1809, process_data: {:all, :"main"}, target_state: :preop})
+             ~s(%SlaveConfig{name: :sensor_a, driver: KinoEtherCAT.Driver.EL1809, process_data: {:all, :main}, target_state: :preop})
 
     refute source =~ "EtherCAT.configure_slave"
     refute source =~ "EtherCAT.activate()"
@@ -78,7 +77,7 @@ defmodule KinoEtherCAT.SmartCellsTest do
       })
 
     assert source =~
-             ~s/KinoEtherCAT.dashboard([:"sensor_a", :"output rack"], columns: 2) |> Kino.render()/
+             ~s/KinoEtherCAT.dashboard([:sensor_a, :"output rack"], columns: 2) |> Kino.render()/
 
     assert source =~ "Kino.nothing()"
     refute source =~ "String.to_atom"

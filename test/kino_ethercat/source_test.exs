@@ -3,8 +3,9 @@ defmodule KinoEtherCAT.SourceTest do
 
   alias KinoEtherCAT.Source
 
-  test "atom_literal renders quoted atom syntax from strings" do
-    assert Source.atom_literal("slave_1") == ~s(:"slave_1")
+  test "atom_literal only quotes atoms when required" do
+    assert Source.atom_literal("slave_1") == ":slave_1"
+    assert Source.atom_literal("main") == ":main"
     assert Source.atom_literal(" temperature sensor ") == ~s(:"temperature sensor")
   end
 

@@ -325,11 +325,6 @@ function StartCell({ ctx, data }) {
   };
 
   const scanning = status === "scanning";
-  const dynamicMode =
-    slaves.length > 0 &&
-    slaves.every(
-      (slave) => !slave.discovered_name || slave.name.trim() === slave.discovered_name.trim()
-    );
 
   return (
     <div className="p-3 space-y-3 font-sans text-sm select-none">
@@ -375,15 +370,11 @@ function StartCell({ ctx, data }) {
       {status === "discovered" && slaves.length > 0 && (
         <>
           <div
-            className={`text-xs rounded px-3 py-2 border font-mono ${
-              dynamicMode
-                ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                : "bg-amber-50 border-amber-200 text-amber-700"
-            }`}
+            className="text-xs rounded px-3 py-2 border font-mono bg-emerald-50 border-emerald-200 text-emerald-700"
           >
-            {dynamicMode
-              ? "Source mode: dynamic PREOP configuration. Persisting code will keep discovery names and replay configure_slave/2 + activate/0."
-              : "Source mode: declarative startup fallback. Renamed slaves require startup-time names, so the generated code will persist the full slave config."}
+            Source mode: static startup configuration. Bus discovery stays live in
+            the Smart Cell, but persisted code is emitted as a single
+            EtherCAT.start/1 call with the full slave config.
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

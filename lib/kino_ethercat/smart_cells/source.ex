@@ -2,10 +2,17 @@ defmodule KinoEtherCAT.Source do
   @moduledoc false
 
   @module_pattern ~r/^(Elixir\.)?[A-Z][A-Za-z0-9_]*(\.[A-Z][A-Za-z0-9_]*)*$/
+  @atom_pattern ~r/^[a-z_][A-Za-z0-9_]*[!?]?$/
 
   @spec atom_literal(String.t()) :: String.t()
   def atom_literal(name) when is_binary(name) do
-    ":" <> inspect(String.trim(name))
+    trimmed = String.trim(name)
+
+    if Regex.match?(@atom_pattern, trimmed) do
+      ":" <> trimmed
+    else
+      ":" <> inspect(trimmed)
+    end
   end
 
   @spec module_literal(String.t()) :: {:ok, String.t()} | :error

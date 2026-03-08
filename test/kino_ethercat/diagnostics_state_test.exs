@@ -32,6 +32,22 @@ defmodule KinoEtherCAT.DiagnosticsStateTest do
     assert payload.bus.transactions.realtime.last_wkc == 7
   end
 
+  test "accepts transaction stop telemetry without total_wkc" do
+    state =
+      DiagnosticsState.new(history_limit: 5)
+      |> DiagnosticsState.apply_telemetry(
+        [:ethercat, :bus, :transact, :stop],
+        %{duration: System.convert_time_unit(125, :microsecond, :native)},
+        %{class: :realtime, datagram_count: 1}
+      )
+
+    payload = DiagnosticsState.payload(state)
+
+    assert payload.bus.transactions.realtime.last_latency_us == 125
+    assert payload.bus.transactions.realtime.last_wkc == nil
+    assert payload.bus.transactions.realtime.datagrams == 1
+  end
+
   test "records link and slave fault events into the timeline" do
     state =
       DiagnosticsState.new(event_limit: 5)
