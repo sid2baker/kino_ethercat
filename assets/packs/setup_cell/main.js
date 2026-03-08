@@ -34,7 +34,7 @@ function nextDomain(domains) {
 
   return {
     id: `domain_${suffix}`,
-    cycle_time_us: 1000,
+    cycle_time_us: 10000,
     miss_threshold: 1000,
   };
 }
@@ -149,8 +149,8 @@ function DomainCard({ domain, index, canRemove, onChange, onCommit, onRemove }) 
             min="1000"
             step="1000"
             value={domain.cycle_time_us}
-            onChange={(event) => onChange({ cycle_time_us: Number(event.target.value) || 1000 })}
-            onBlur={(event) => onCommit({ cycle_time_us: Number(event.target.value) || 1000 })}
+            onChange={(event) => onChange({ cycle_time_us: Number(event.target.value) || 10000 })}
+            onBlur={(event) => onCommit({ cycle_time_us: Number(event.target.value) || 10000 })}
           />
         </label>
 
@@ -402,10 +402,10 @@ function SetupCell({ ctx, data }) {
                 disabled={!state.dc_enabled}
                 value={state.dc_cycle_ns}
                 onChange={(event) =>
-                  updateLocal((previous) => ({ ...previous, dc_cycle_ns: Number(event.target.value) || 1000000 }))
+                  updateLocal((previous) => ({ ...previous, dc_cycle_ns: Number(event.target.value) || 10000000 }))
                 }
                 onBlur={(event) =>
-                  commit((previous) => ({ ...previous, dc_cycle_ns: Number(event.target.value) || 1000000 }))
+                  commit((previous) => ({ ...previous, dc_cycle_ns: Number(event.target.value) || 10000000 }))
                 }
               />
             </label>
