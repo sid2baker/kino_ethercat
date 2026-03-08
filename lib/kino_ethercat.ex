@@ -3,7 +3,7 @@ defmodule KinoEtherCAT do
   Livebook Kino widgets for EtherCAT bus discovery, control, and diagnostics.
   """
 
-  alias KinoEtherCAT.{Diagnostics, LED, SlavePanel, Switch}
+  alias KinoEtherCAT.{Diagnostics, LED, SDOExplorer, SlavePanel, Switch}
 
   @doc """
   Render a read-only LED indicator driven by an EtherCAT input signal.
@@ -88,6 +88,22 @@ defmodule KinoEtherCAT do
   """
   @spec diagnostics() :: Kino.JS.Live.t()
   def diagnostics, do: Diagnostics.new()
+
+  @doc """
+  Render a mailbox / SDO explorer for CoE-capable slaves.
+
+  The explorer discovers running CoE slaves, lets you upload or download a
+  mailbox object entry, and keeps a short operation history in the widget.
+
+  ## Options
+
+    * `:slave` — preferred default slave name
+    * `:index` — default object index. Default: `0x1018`
+    * `:subindex` — default object subindex. Default: `0`
+    * `:write_data` — default hex payload for downloads
+  """
+  @spec sdo_explorer(keyword()) :: Kino.JS.Live.t()
+  def sdo_explorer(opts \\ []), do: SDOExplorer.new(opts)
 
   defp panel_columns(0), do: 1
   defp panel_columns(n), do: min(n, 4)
