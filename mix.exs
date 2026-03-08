@@ -1,7 +1,7 @@
 defmodule KinoEtherCAT.MixProject do
   use Mix.Project
 
-  @version "0.1.0"
+  @version "0.2.0-dev"
   @source_url "https://github.com/sid2baker/kino_ethercat"
 
   def project do
@@ -50,6 +50,7 @@ defmodule KinoEtherCAT.MixProject do
            lib/assets/switch/build
            lib/assets/value/build
            lib/assets/visualizer_cell/build
+           lib/assets/diagnostics/build
            mix.exs README.md LICENSE CHANGELOG.md usage-rules.md)
     ]
   end
@@ -61,7 +62,13 @@ defmodule KinoEtherCAT.MixProject do
       source_ref: "v#{@version}",
       extras: ["README.md", "CHANGELOG.md", "LICENSE"],
       groups_for_modules: [
-        Widgets: [KinoEtherCAT, KinoEtherCAT.LED, KinoEtherCAT.Switch, KinoEtherCAT.Value],
+        Widgets: [
+          KinoEtherCAT,
+          KinoEtherCAT.LED,
+          KinoEtherCAT.Switch,
+          KinoEtherCAT.Value,
+          KinoEtherCAT.Diagnostics
+        ],
         "Smart Cells": [KinoEtherCAT.SetupCell, KinoEtherCAT.VisualizerCell],
         Drivers: [
           KinoEtherCAT.Driver,

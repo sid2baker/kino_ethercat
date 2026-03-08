@@ -3,7 +3,7 @@ defmodule KinoEtherCAT do
   Livebook Kino widgets for EtherCAT bus signals.
   """
 
-  alias KinoEtherCAT.{LED, Switch, Value}
+  alias KinoEtherCAT.{LED, Switch, Value, Diagnostics}
 
   @doc """
   Render a read-only LED indicator driven by an EtherCAT input signal.
@@ -56,6 +56,18 @@ defmodule KinoEtherCAT do
       {:error, reason} -> handle_error(slave_name, reason, on_error)
     end
   end
+
+  @doc """
+  Render a live diagnostic dashboard for the EtherCAT master.
+
+  Polls every 500 ms and displays:
+  - Master phase
+  - Per-slave ESM state and AL error codes
+  - Domain cycle statistics (cycle count, miss count, working counter)
+  - Distributed Clocks lock status (when configured)
+  """
+  @spec diagnostics() :: Kino.JS.Live.t()
+  def diagnostics, do: Diagnostics.new()
 
   defp fetch_signals(slave_name) do
     case EtherCAT.slave_info(slave_name) do
