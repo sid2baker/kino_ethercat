@@ -1,0 +1,81 @@
+# EtherCAT DC Lock Check
+
+Open this notebook with a Mix project runtime rooted at this repository.
+
+Use the setup Smart Cell to configure a DC-enabled session first. The cells
+below then verify that the master reaches the expected Distributed Clocks lock
+state and show the final runtime snapshot.
+
+## Setup
+
+<!-- livebook:{"attrs":"e30","chunks":null,"kind":"Elixir.KinoEtherCAT.SmartCells.Setup","livebook_object":"smart_cell"} -->
+
+```elixir
+
+```
+
+## Helpers
+
+```elixir
+await_dc_lock = fn expected_state, timeout_ms, poll_ms ->
+  deadline = System.monotonic_time(:millisecond) + timeout_ms
+  samples = []
+
+  Stream.repeatedly(fn -> EtherCAT.dc_status() end)
+  |> Enum.reduce_while(samples, fn status, acc ->
+    current =
+      %{
+        at_ms: System.system_time(:millisecond),
+        lock_state: status.lock_state,
+        max_sync_diff_ns: status.max_sync_diff_ns
+      }
+
+    cond do
+      status.lock_state == expected_state ->
+        {:halt, {:ok, Enum.reverse([current | acc])}}
+
+      System.monotonic_time(:millisecond) >= deadline ->
+        {:halt, {:error, {:timeout, Enum.reverse([current | acc])}}}
+
+      true ->
+        Process.sleep(poll_ms)
+        {:cont, [current | acc]}
+    end
+  end)
+end
+```
+
+## Configuration
+
+```elixir
+expected_lock_state = :locked
+timeout_ms = 10_000
+poll_ms = 50
+```
+
+## Run
+
+```elixir
+with {:ok, samples} <- await_dc_lock.(expected_lock_state, timeout_ms, poll_ms) do
+  %{
+    status: :ok,
+    expected_lock_state: expected_lock_state,
+    final_status: EtherCAT.dc_status(),
+    samples: samples
+  }
+else
+  {:error, {:timeout, samples}} ->
+    %{
+      status: :error,
+      expected_lock_state: expected_lock_state,
+      final_status: EtherCAT.dc_status(),
+      samples: samples
+    }
+end
+```
+
+## Tidy Up
+
+```elixir
+EtherCAT.dc_status()
+```

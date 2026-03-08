@@ -1,0 +1,108 @@
+# EtherCAT Fault Tolerance Manual Check
+
+Open this notebook with a Mix project runtime rooted at this repository.
+
+This notebook is intentionally operator-guided. Use it to observe how the
+running setup reacts when you disconnect and reconnect a slave segment.
+
+## Setup
+
+<!-- livebook:{"attrs":"e30","chunks":null,"kind":"Elixir.KinoEtherCAT.SmartCells.Setup","livebook_object":"smart_cell"} -->
+
+```elixir
+
+```
+
+## Helpers
+
+```elixir
+await_phase = fn expected_phase, timeout_ms ->
+  deadline = System.monotonic_time(:millisecond) + timeout_ms
+
+  Stream.repeatedly(fn -> EtherCAT.phase() end)
+  |> Enum.reduce_while(nil, fn phase, _acc ->
+    cond do
+      phase == expected_phase ->
+        {:halt, :ok}
+
+      System.monotonic_time(:millisecond) >= deadline ->
+        {:halt, {:error, {:timeout, expected_phase, phase}}}
+
+      true ->
+        Process.sleep(100)
+        {:cont, nil}
+    end
+  end)
+end
+
+await_slave_state = fn slave, expected_state, timeout_ms ->
+  deadline = System.monotonic_time(:millisecond) + timeout_ms
+
+  Stream.repeatedly(fn -> EtherCAT.slave_info(slave) end)
+  |> Enum.reduce_while(nil, fn
+    {:ok, %{al_state: ^expected_state} = info}, _acc ->
+      {:halt, {:ok, info}}
+
+    {:ok, info}, _acc ->
+      if System.monotonic_time(:millisecond) >= deadline do
+        {:halt, {:error, {:timeout, slave, expected_state, info.al_state}}}
+      else
+        Process.sleep(100)
+        {:cont, nil}
+      end
+
+    other, _acc ->
+      {:halt, {:error, other}}
+  end)
+end
+```
+
+## Baseline
+
+```elixir
+%{
+  phase: EtherCAT.phase(),
+  outputs: EtherCAT.slave_info(:outputs),
+  diagnostics: EtherCAT.domain_info(:main)
+}
+```
+
+## Operator Action
+
+Disconnect the cable after `:outputs`, then evaluate the next cell.
+
+## Observe Disconnect
+
+```elixir
+%{
+  degraded: await_phase.(:degraded, 10_000),
+  outputs: await_slave_state.(:outputs, :safeop, 10_000),
+  phase_after: EtherCAT.phase(),
+  outputs_after: EtherCAT.slave_info(:outputs)
+}
+```
+
+## Operator Action
+
+Reconnect the cable and wait until the hardware link is stable, then evaluate
+the next cell.
+
+## Observe Recovery
+
+```elixir
+%{
+  operational: await_phase.(:operational, 15_000),
+  outputs: await_slave_state.(:outputs, :op, 15_000),
+  phase_after: EtherCAT.phase(),
+  outputs_after: EtherCAT.slave_info(:outputs)
+}
+```
+
+## Tidy Up
+
+```elixir
+%{
+  phase: EtherCAT.phase(),
+  outputs: EtherCAT.slave_info(:outputs)
+}
+```
