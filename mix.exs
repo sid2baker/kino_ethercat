@@ -69,7 +69,11 @@ defmodule KinoEtherCAT.MixProject do
           KinoEtherCAT.Diagnostics,
           KinoEtherCAT.Diagnostics.Panel,
           KinoEtherCAT.Runtime,
-          KinoEtherCAT.Runtime.Panel
+          KinoEtherCAT.Runtime.Master,
+          KinoEtherCAT.Runtime.Slave,
+          KinoEtherCAT.Runtime.Domain,
+          KinoEtherCAT.Runtime.Bus,
+          KinoEtherCAT.Runtime.DC
         ],
         Widgets: [
           KinoEtherCAT.Widgets,
