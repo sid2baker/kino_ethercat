@@ -29,7 +29,7 @@ defmodule KinoEtherCAT.MixProject do
   defp deps do
     [
       {:kino, "~> 0.18"},
-      {:ethercat, "~> 0.1"},
+      {:ethercat, github: "sid2baker/ethercat"},
       {:ex_doc, "~> 0.36", only: :dev, runtime: false},
       {:usage_rules, "~> 1.1", only: [:dev]}
     ]
