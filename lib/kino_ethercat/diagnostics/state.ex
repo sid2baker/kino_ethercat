@@ -3,6 +3,7 @@ defmodule KinoEtherCAT.DiagnosticsState do
 
   @default_history_limit 40
   @default_event_limit 30
+  @default_slice_ms 1_000
 
   @type telemetry_event :: [atom()]
   @type telemetry_measurements :: map()
@@ -12,10 +13,12 @@ defmodule KinoEtherCAT.DiagnosticsState do
   def new(opts \\ []) do
     history_limit = Keyword.get(opts, :history_limit, @default_history_limit)
     event_limit = Keyword.get(opts, :event_limit, @default_event_limit)
+    slice_ms = Keyword.get(opts, :slice_ms, @default_slice_ms)
 
     %{
       history_limit: history_limit,
       event_limit: event_limit,
+      slice_ms: slice_ms,
       snapshot: %{
         phase: "idle",
         last_failure: nil,
@@ -39,6 +42,13 @@ defmodule KinoEtherCAT.DiagnosticsState do
         dropped_frames: 0,
         ignored_frames: 0,
         rtt_ns_history: [],
+        sent_slices: [],
+        received_slices: [],
+        dropped_slices: [],
+        ignored_slices: [],
+        expired_realtime_slices: [],
+        exception_slices: [],
+        rtt_ns_slices: [],
         dropped_reasons: %{},
         pending_tx: %{},
         links: %{}
@@ -46,6 +56,7 @@ defmodule KinoEtherCAT.DiagnosticsState do
       dc_metrics: %{
         tick_wkc: nil,
         sync_diff_ns_history: [],
+        sync_diff_slices: [],
         lock_state: nil,
         lock_events: []
       },
@@ -82,6 +93,7 @@ defmodule KinoEtherCAT.DiagnosticsState do
     update_in(state, [:transactions, class], fn metric ->
       metric
       |> append_history(:latency_history, duration_us, state.history_limit)
+      |> append_sample_slice(:latency_slices, duration_us, state.history_limit, state.slice_ms)
       |> Map.update!(:count, &(&1 + 1))
       |> Map.put(:last_wkc, Map.get(metadata, :total_wkc))
       |> Map.update!(:datagrams, &(&1 + Map.get(metadata, :datagram_count, 0)))
@@ -91,6 +103,7 @@ defmodule KinoEtherCAT.DiagnosticsState do
   def apply_telemetry(state, [:ethercat, :bus, :transact, :exception], _measurements, metadata) do
     state
     |> update_in([:bus, :exceptions], &(&1 + 1))
+    |> update_count_series([:bus, :exception_slices], 1, state.history_limit, state.slice_ms)
     |> record_event("warn", "Bus exception", format_reason(metadata.reason))
   end
 
@@ -100,6 +113,12 @@ defmodule KinoEtherCAT.DiagnosticsState do
     update_in(state, [:queues, class], fn metric ->
       metric
       |> append_history(:history, measurements.queue_depth, state.history_limit)
+      |> append_sample_slice(
+        :slices,
+        measurements.queue_depth,
+        state.history_limit,
+        state.slice_ms
+      )
       |> Map.put(:last_depth, measurements.queue_depth)
       |> Map.update!(:peak_depth, &max(&1, measurements.queue_depth))
     end)
@@ -110,6 +129,12 @@ defmodule KinoEtherCAT.DiagnosticsState do
 
     state
     |> update_in([:bus, :expired_realtime], &(&1 + 1))
+    |> update_count_series(
+      [:bus, :expired_realtime_slices],
+      1,
+      state.history_limit,
+      state.slice_ms
+    )
     |> record_event("warn", "Realtime submission expired", detail)
   end
 
@@ -127,25 +152,30 @@ defmodule KinoEtherCAT.DiagnosticsState do
   def apply_telemetry(state, [:ethercat, :bus, :frame, :sent], measurements, metadata) do
     state
     |> update_in([:bus, :sent_frames], &(&1 + 1))
+    |> update_count_series([:bus, :sent_slices], 1, state.history_limit, state.slice_ms)
     |> maybe_track_tx_timestamp(metadata.link, metadata.port, measurements.tx_timestamp)
   end
 
   def apply_telemetry(state, [:ethercat, :bus, :frame, :received], measurements, metadata) do
     state
     |> update_in([:bus, :received_frames], &(&1 + 1))
+    |> update_count_series([:bus, :received_slices], 1, state.history_limit, state.slice_ms)
     |> maybe_track_rtt(metadata.link, metadata.port, measurements.rx_timestamp)
   end
 
   def apply_telemetry(state, [:ethercat, :bus, :frame, :dropped], _measurements, metadata) do
     state
     |> update_in([:bus, :dropped_frames], &(&1 + 1))
+    |> update_count_series([:bus, :dropped_slices], 1, state.history_limit, state.slice_ms)
     |> update_in([:bus, :dropped_reasons], fn reasons ->
       Map.update(reasons, to_string(metadata.reason), 1, fn count -> count + 1 end)
     end)
   end
 
   def apply_telemetry(state, [:ethercat, :bus, :frame, :ignored], _measurements, _metadata) do
-    update_in(state, [:bus, :ignored_frames], &(&1 + 1))
+    state
+    |> update_in([:bus, :ignored_frames], &(&1 + 1))
+    |> update_count_series([:bus, :ignored_slices], 1, state.history_limit, state.slice_ms)
   end
 
   def apply_telemetry(state, [:ethercat, :bus, :link, :down], _measurements, metadata) do
@@ -172,6 +202,12 @@ defmodule KinoEtherCAT.DiagnosticsState do
       [:dc_metrics, :sync_diff_ns_history],
       measurements.max_sync_diff_ns,
       state.history_limit
+    )
+    |> update_sample_series(
+      [:dc_metrics, :sync_diff_slices],
+      measurements.max_sync_diff_ns,
+      state.history_limit,
+      state.slice_ms
     )
   end
 
@@ -202,6 +238,12 @@ defmodule KinoEtherCAT.DiagnosticsState do
       measurements.duration_us,
       state.history_limit
     )
+    |> update_sample_series(
+      [:domain_metrics, domain_id, :cycle_slices],
+      measurements.duration_us,
+      state.history_limit,
+      state.slice_ms
+    )
   end
 
   def apply_telemetry(state, [:ethercat, :domain, :cycle, :missed], measurements, metadata) do
@@ -210,6 +252,12 @@ defmodule KinoEtherCAT.DiagnosticsState do
     state
     |> ensure_domain_metrics(domain_id)
     |> update_in([:domain_metrics, domain_id, :missed_events], &(&1 + 1))
+    |> update_count_series(
+      [:domain_metrics, domain_id, :miss_slices],
+      1,
+      state.history_limit,
+      state.slice_ms
+    )
     |> put_in([:domain_metrics, domain_id, :last_miss_reason], format_reason(metadata.reason))
     |> put_in([:domain_metrics, domain_id, :last_miss_count], measurements.miss_count)
   end
@@ -274,6 +322,7 @@ defmodule KinoEtherCAT.DiagnosticsState do
     %{
       phase: state.snapshot.phase,
       last_failure: state.snapshot.last_failure,
+      slice_ms: state.slice_ms,
       slaves: payload_slaves(state),
       domains: payload_domains(state),
       dc: payload_dc(state),
@@ -318,6 +367,10 @@ defmodule KinoEtherCAT.DiagnosticsState do
           cycle_history: metric.cycle_history,
           last_cycle_us: List.last(metric.cycle_history),
           avg_cycle_us: average(metric.cycle_history),
+          cycle_slices:
+            payload_sample_slices(metric.cycle_slices, state.history_limit, state.slice_ms),
+          miss_slices:
+            payload_count_slices(metric.miss_slices, state.history_limit, state.slice_ms),
           missed_events: metric.missed_events,
           last_miss_reason: metric.last_miss_reason,
           last_miss_count: metric.last_miss_count,
@@ -341,6 +394,10 @@ defmodule KinoEtherCAT.DiagnosticsState do
           cycle_history: metric.cycle_history,
           last_cycle_us: List.last(metric.cycle_history),
           avg_cycle_us: average(metric.cycle_history),
+          cycle_slices:
+            payload_sample_slices(metric.cycle_slices, state.history_limit, state.slice_ms),
+          miss_slices:
+            payload_count_slices(metric.miss_slices, state.history_limit, state.slice_ms),
           missed_events: metric.missed_events,
           last_miss_reason: metric.last_miss_reason,
           last_miss_count: metric.last_miss_count,
@@ -367,6 +424,12 @@ defmodule KinoEtherCAT.DiagnosticsState do
           monitor_failures: 0,
           tick_wkc: state.dc_metrics.tick_wkc,
           sync_diff_history: state.dc_metrics.sync_diff_ns_history,
+          sync_diff_slices:
+            payload_sample_slices(
+              state.dc_metrics.sync_diff_slices,
+              state.history_limit,
+              state.slice_ms
+            ),
           lock_events: state.dc_metrics.lock_events
         }
 
@@ -375,6 +438,12 @@ defmodule KinoEtherCAT.DiagnosticsState do
           lock_state: base.lock_state || state.dc_metrics.lock_state || "unknown",
           tick_wkc: state.dc_metrics.tick_wkc,
           sync_diff_history: state.dc_metrics.sync_diff_ns_history,
+          sync_diff_slices:
+            payload_sample_slices(
+              state.dc_metrics.sync_diff_slices,
+              state.history_limit,
+              state.slice_ms
+            ),
           lock_events: state.dc_metrics.lock_events
         })
     end
@@ -385,12 +454,12 @@ defmodule KinoEtherCAT.DiagnosticsState do
       expired_realtime: state.bus.expired_realtime,
       exceptions: state.bus.exceptions,
       transactions: %{
-        realtime: payload_transaction_metrics(state.transactions["realtime"]),
-        reliable: payload_transaction_metrics(state.transactions["reliable"])
+        realtime: payload_transaction_metrics(state.transactions["realtime"], state),
+        reliable: payload_transaction_metrics(state.transactions["reliable"], state)
       },
       queues: %{
-        realtime: state.queues["realtime"],
-        reliable: state.queues["reliable"]
+        realtime: payload_queue_metrics(state.queues["realtime"], state),
+        reliable: payload_queue_metrics(state.queues["reliable"], state)
       },
       frames: %{
         sent: state.bus.sent_frames,
@@ -400,16 +469,43 @@ defmodule KinoEtherCAT.DiagnosticsState do
         last_rtt_ns: List.last(state.bus.rtt_ns_history),
         peak_rtt_ns: Enum.max(state.bus.rtt_ns_history, fn -> nil end),
         rtt_history: state.bus.rtt_ns_history,
+        rtt_slices:
+          payload_sample_slices(state.bus.rtt_ns_slices, state.history_limit, state.slice_ms),
+        sent_slices:
+          payload_count_slices(state.bus.sent_slices, state.history_limit, state.slice_ms),
+        received_slices:
+          payload_count_slices(state.bus.received_slices, state.history_limit, state.slice_ms),
+        dropped_slices:
+          payload_count_slices(state.bus.dropped_slices, state.history_limit, state.slice_ms),
+        ignored_slices:
+          payload_count_slices(state.bus.ignored_slices, state.history_limit, state.slice_ms),
+        expired_slices:
+          payload_count_slices(
+            state.bus.expired_realtime_slices,
+            state.history_limit,
+            state.slice_ms
+          ),
+        exception_slices:
+          payload_count_slices(state.bus.exception_slices, state.history_limit, state.slice_ms),
         dropped_reasons: payload_dropped_reasons(state.bus.dropped_reasons)
       },
       links: payload_links(state.bus.links)
     }
   end
 
-  defp payload_transaction_metrics(metric) do
+  defp payload_transaction_metrics(metric, state) do
     Map.merge(metric, %{
       last_latency_us: List.last(metric.latency_history),
-      avg_latency_us: average(metric.latency_history)
+      avg_latency_us: average(metric.latency_history),
+      latency_slices:
+        payload_sample_slices(metric.latency_slices, state.history_limit, state.slice_ms)
+    })
+  end
+
+  defp payload_queue_metrics(metric, state) do
+    Map.merge(metric, %{
+      avg_depth: average(metric.history),
+      slices: payload_sample_slices(metric.slices, state.history_limit, state.slice_ms)
     })
   end
 
@@ -428,6 +524,7 @@ defmodule KinoEtherCAT.DiagnosticsState do
   defp new_transaction_metrics do
     %{
       latency_history: [],
+      latency_slices: [],
       count: 0,
       dispatches: 0,
       transactions: 0,
@@ -437,12 +534,14 @@ defmodule KinoEtherCAT.DiagnosticsState do
   end
 
   defp new_queue_metrics do
-    %{history: [], peak_depth: 0, last_depth: 0}
+    %{history: [], slices: [], peak_depth: 0, last_depth: 0}
   end
 
   defp new_domain_metrics do
     %{
       cycle_history: [],
+      cycle_slices: [],
+      miss_slices: [],
       missed_events: 0,
       last_miss_reason: nil,
       last_miss_count: nil,
@@ -484,6 +583,12 @@ defmodule KinoEtherCAT.DiagnosticsState do
         state
         |> put_in([:bus, :pending_tx, {link, port}], rest)
         |> update_history([:bus, :rtt_ns_history], rtt_ns, state.history_limit)
+        |> update_sample_series(
+          [:bus, :rtt_ns_slices],
+          rtt_ns,
+          state.history_limit,
+          state.slice_ms
+        )
 
       [_ | rest] ->
         put_in(state, [:bus, :pending_tx, {link, port}], rest)
@@ -530,6 +635,119 @@ defmodule KinoEtherCAT.DiagnosticsState do
     end)
   end
 
+  defp append_sample_slice(metric, key, value, limit, slice_ms) when is_map(metric) do
+    Map.update!(metric, key, fn slices ->
+      put_sample_slice(slices, value, limit, slice_ms)
+    end)
+  end
+
+  defp update_sample_series(state, path, value, limit, slice_ms) do
+    update_in(state, path, fn slices ->
+      put_sample_slice(slices || [], value, limit, slice_ms)
+    end)
+  end
+
+  defp update_count_series(state, path, increment, limit, slice_ms) do
+    update_in(state, path, fn slices ->
+      put_count_slice(slices || [], increment, limit, slice_ms)
+    end)
+  end
+
+  defp put_sample_slice(slices, value, limit, slice_ms) do
+    bucket_at = bucket_start(now_ms(), slice_ms)
+
+    case slices do
+      [%{at_ms: ^bucket_at} = slice | rest] ->
+        [merge_sample_slice(slice, value) | rest]
+
+      _ ->
+        [
+          %{
+            at_ms: bucket_at,
+            count: 1,
+            sum: value,
+            avg: value,
+            max: value,
+            min: value,
+            last: value
+          }
+          | slices
+        ]
+        |> Enum.take(limit)
+    end
+  end
+
+  defp put_count_slice(slices, increment, limit, slice_ms) do
+    bucket_at = bucket_start(now_ms(), slice_ms)
+
+    case slices do
+      [%{at_ms: ^bucket_at} = slice | rest] ->
+        [%{slice | count: slice.count + increment} | rest]
+
+      _ ->
+        [%{at_ms: bucket_at, count: increment} | slices]
+        |> Enum.take(limit)
+    end
+  end
+
+  defp merge_sample_slice(slice, value) do
+    count = slice.count + 1
+    sum = slice.sum + value
+
+    %{
+      slice
+      | count: count,
+        sum: sum,
+        avg: Float.round(sum / count, 1),
+        max: max(slice.max, value),
+        min: min(slice.min, value),
+        last: value
+    }
+  end
+
+  defp payload_sample_slices(slices, limit, slice_ms) do
+    slices
+    |> fill_slice_window(limit, slice_ms, %{count: 0, avg: 0, max: 0, min: 0, last: 0})
+    |> Enum.map(fn slice ->
+      %{
+        at_ms: slice.at_ms,
+        label: slice_label(slice.at_ms),
+        value: slice.avg,
+        peak: slice.max,
+        count: slice.count
+      }
+    end)
+  end
+
+  defp payload_count_slices(slices, limit, slice_ms) do
+    slices
+    |> fill_slice_window(limit, slice_ms, %{count: 0})
+    |> Enum.map(fn slice ->
+      %{
+        at_ms: slice.at_ms,
+        label: slice_label(slice.at_ms),
+        value: slice.count
+      }
+    end)
+  end
+
+  defp fill_slice_window(slices, limit, slice_ms, defaults) do
+    latest_at = bucket_start(now_ms(), slice_ms)
+
+    by_bucket =
+      Map.new(slices, fn slice ->
+        {slice.at_ms, slice}
+      end)
+
+    for offset <- Enum.reverse(0..(limit - 1)) do
+      at_ms = latest_at - offset * slice_ms
+
+      %{at_ms: at_ms}
+      |> Map.merge(defaults)
+      |> Map.merge(Map.get(by_bucket, at_ms, %{}))
+    end
+  end
+
   defp native_to_us(duration) when is_integer(duration) do
     System.convert_time_unit(duration, :native, :microsecond)
   end
@@ -544,6 +762,7 @@ defmodule KinoEtherCAT.DiagnosticsState do
   end
 
   defp format_reason(nil), do: nil
+  defp format_reason(reason) when is_atom(reason), do: Atom.to_string(reason)
   defp format_reason(reason) when is_binary(reason), do: reason
   defp format_reason(reason), do: inspect(reason)
 
@@ -555,6 +774,14 @@ defmodule KinoEtherCAT.DiagnosticsState do
 
   defp max_sync_diff(nil), do: "sync diff unavailable"
   defp max_sync_diff(value), do: "#{value} ns"
+
+  defp bucket_start(at_ms, slice_ms), do: div(at_ms, slice_ms) * slice_ms
+
+  defp slice_label(at_ms) do
+    at_ms
+    |> DateTime.from_unix!(:millisecond)
+    |> Calendar.strftime("%H:%M:%S")
+  end
 
   defp hex(nil, _pad), do: "n/a"
   defp hex(value, pad), do: "0x" <> String.pad_leading(Integer.to_string(value, 16), pad, "0")

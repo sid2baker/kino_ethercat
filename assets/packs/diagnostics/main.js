@@ -59,33 +59,6 @@ function Badge({ label, tone }) {
   );
 }
 
-function Sparkline({ values, tone = "#0f766e", max = null }) {
-  if (!values?.length) {
-    return <div className="h-12 rounded-xl bg-stone-100" />;
-  }
-
-  const chartValues = max ? values.map((value) => Math.min(value, max)) : values;
-  const width = 120;
-  const height = 42;
-  const minValue = Math.min(...chartValues);
-  const maxValue = Math.max(...chartValues);
-  const range = Math.max(maxValue - minValue, 1);
-
-  const points = chartValues
-    .map((value, index) => {
-      const x = (index / Math.max(chartValues.length - 1, 1)) * width;
-      const y = height - ((value - minValue) / range) * (height - 4) - 2;
-      return `${x},${y}`;
-    })
-    .join(" ");
-
-  return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="h-12 w-full rounded-xl bg-stone-100/70">
-      <polyline fill="none" stroke={tone} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" points={points} />
-    </svg>
-  );
-}
-
 function formatCount(value) {
   if (value == null) return "n/a";
   return value.toLocaleString();
@@ -111,6 +84,93 @@ function formatTime(atMs) {
   return new Date(atMs).toLocaleTimeString();
 }
 
+function sliceWindowLabel(sliceMs) {
+  if (!sliceMs) return "rolling slices";
+  if (sliceMs % 1000 === 0) return `${sliceMs / 1000}s slices`;
+  return `${sliceMs} ms slices`;
+}
+
+function sliceTitle(slice, formatter) {
+  const parts = [`${slice.label}`];
+
+  if (slice.value != null) {
+    parts.push(`value ${formatter(slice.value)}`);
+  }
+
+  if (slice.peak != null) {
+    parts.push(`peak ${formatter(slice.peak)}`);
+  }
+
+  if (slice.count != null) {
+    parts.push(`samples ${formatCount(slice.count)}`);
+  }
+
+  return parts.join(" • ");
+}
+
+function SliceBars({
+  slices,
+  color = "#0f766e",
+  formatter = formatCount,
+  emptyLabel = "No samples yet",
+}) {
+  if (!slices?.length) {
+    return (
+      <div className="flex h-28 items-center justify-center rounded-2xl bg-stone-100/80 font-mono text-[11px] text-stone-400">
+        {emptyLabel}
+      </div>
+    );
+  }
+
+  const peak = Math.max(
+    ...slices.map((slice) => {
+      const candidate = slice.peak ?? slice.value ?? 0;
+      return Number.isFinite(candidate) ? candidate : 0;
+    }),
+    1,
+  );
+
+  return (
+    <div className="rounded-2xl border border-stone-200 bg-stone-50/80 px-3 py-3">
+      <div className="flex h-28 items-end gap-1.5">
+        {slices.map((slice) => {
+          const value = slice.value ?? 0;
+          const height = Math.max((value / peak) * 100, value > 0 ? 6 : 2);
+
+          return (
+            <div key={slice.at_ms} className="group flex min-w-0 flex-1 flex-col items-center justify-end gap-1">
+              <div
+                className="w-full rounded-t-xl rounded-b-md transition-transform duration-150 group-hover:-translate-y-1"
+                style={{
+                  height: `${height}%`,
+                  background: `linear-gradient(180deg, ${color}, ${color}CC)`,
+                }}
+                title={sliceTitle(slice, formatter)}
+              />
+              <div className="truncate font-mono text-[10px] text-stone-400">{slice.label.slice(3)}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function SliceMetric({ title, subtitle, slices, color, formatter, emptyLabel }) {
+  return (
+    <div className="space-y-2 rounded-2xl border border-stone-200 bg-white/70 p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{title}</div>
+          <div className="mt-1 font-mono text-[11px] text-stone-500">{subtitle}</div>
+        </div>
+        <div className="mt-1 h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
+      </div>
+      <SliceBars slices={slices} color={color} formatter={formatter} emptyLabel={emptyLabel} />
+    </div>
+  );
+}
+
 function SummaryHeader({ data }) {
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -125,6 +185,7 @@ function SummaryHeader({ data }) {
         </div>
       </div>
       <div className="grid gap-2 text-right text-xs text-stone-500">
+        <div className="font-mono">{sliceWindowLabel(data.slice_ms)}</div>
         <div className="font-mono">expired realtime {formatCount(data.bus.expired_realtime)}</div>
         <div className="font-mono">bus exceptions {formatCount(data.bus.exceptions)}</div>
       </div>
@@ -135,7 +196,7 @@ function SummaryHeader({ data }) {
 function MetricCard({ title, accent, summary, children }) {
   return (
     <section className="rounded-2xl border border-stone-200 bg-white/80 p-3">
-      <div className="mb-2 flex items-center justify-between gap-2">
+      <div className="mb-3 flex items-center justify-between gap-2">
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{title}</div>
           <div className="mt-1 font-mono text-xs text-stone-600">{summary}</div>
@@ -147,58 +208,117 @@ function MetricCard({ title, accent, summary, children }) {
   );
 }
 
+function TransactionCard({ title, accent, transaction, queue }) {
+  return (
+    <MetricCard
+      title={title}
+      accent={accent}
+      summary={`latency last ${formatUs(transaction.last_latency_us)} • avg ${formatUs(transaction.avg_latency_us)}`}
+    >
+      <div className="grid gap-3 xl:grid-cols-2">
+        <SliceMetric
+          title="Latency"
+          subtitle={`dispatches ${formatCount(transaction.dispatches)} • wkc ${formatCount(transaction.last_wkc)}`}
+          slices={transaction.latency_slices}
+          color={accent}
+          formatter={formatUs}
+          emptyLabel="No bus latency samples yet"
+        />
+        <SliceMetric
+          title="Queue Depth"
+          subtitle={`last ${formatCount(queue.last_depth)} • avg ${formatCount(queue.avg_depth)} • peak ${formatCount(queue.peak_depth)}`}
+          slices={queue.slices}
+          color="#475569"
+          formatter={formatCount}
+          emptyLabel="No queue samples yet"
+        />
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 font-mono text-[11px] text-stone-500">
+        <span>transactions {formatCount(transaction.transactions)}</span>
+        <span>datagrams {formatCount(transaction.datagrams)}</span>
+        <span>submissions {formatCount(transaction.count)}</span>
+        <span>queue peak {formatCount(queue.peak_depth)}</span>
+      </div>
+    </MetricCard>
+  );
+}
+
 function TransactionSection({ transactions, queues }) {
   return (
     <div className="grid gap-3 xl:grid-cols-2">
-      <MetricCard
-        title="Realtime Bus"
-        accent="#0f766e"
-        summary={`last ${formatUs(transactions.realtime.last_latency_us)} • avg ${formatUs(transactions.realtime.avg_latency_us)}`}
-      >
-        <Sparkline values={transactions.realtime.latency_history} tone="#0f766e" />
-        <div className="mt-3 grid grid-cols-2 gap-2 font-mono text-[11px] text-stone-500">
-          <span>dispatches {formatCount(transactions.realtime.dispatches)}</span>
-          <span>transactions {formatCount(transactions.realtime.transactions)}</span>
-          <span>datagrams {formatCount(transactions.realtime.datagrams)}</span>
-          <span>last wkc {formatCount(transactions.realtime.last_wkc)}</span>
-          <span>queue peak {formatCount(queues.realtime.peak_depth)}</span>
-          <span>queue last {formatCount(queues.realtime.last_depth)}</span>
-        </div>
-      </MetricCard>
-
-      <MetricCard
-        title="Reliable Bus"
-        accent="#1d4ed8"
-        summary={`last ${formatUs(transactions.reliable.last_latency_us)} • avg ${formatUs(transactions.reliable.avg_latency_us)}`}
-      >
-        <Sparkline values={transactions.reliable.latency_history} tone="#1d4ed8" />
-        <div className="mt-3 grid grid-cols-2 gap-2 font-mono text-[11px] text-stone-500">
-          <span>dispatches {formatCount(transactions.reliable.dispatches)}</span>
-          <span>transactions {formatCount(transactions.reliable.transactions)}</span>
-          <span>datagrams {formatCount(transactions.reliable.datagrams)}</span>
-          <span>last wkc {formatCount(transactions.reliable.last_wkc)}</span>
-          <span>queue peak {formatCount(queues.reliable.peak_depth)}</span>
-          <span>queue last {formatCount(queues.reliable.last_depth)}</span>
-        </div>
-      </MetricCard>
+      <TransactionCard title="Realtime Bus" accent="#0f766e" transaction={transactions.realtime} queue={queues.realtime} />
+      <TransactionCard title="Reliable Bus" accent="#1d4ed8" transaction={transactions.reliable} queue={queues.reliable} />
     </div>
   );
 }
 
 function FrameSection({ frames, links }) {
   return (
-    <div className="grid gap-3 xl:grid-cols-[1.4fr_1fr]">
+    <div className="grid gap-3 xl:grid-cols-[1.5fr_1fr]">
       <MetricCard
-        title="Frames"
+        title="Bus Frames"
         accent="#7c3aed"
-        summary={`last RTT ${formatNs(frames.last_rtt_ns)} • peak ${formatNs(frames.peak_rtt_ns)}`}
+        summary={`RTT last ${formatNs(frames.last_rtt_ns)} • peak ${formatNs(frames.peak_rtt_ns)}`}
       >
-        <Sparkline values={frames.rtt_history} tone="#7c3aed" />
-        <div className="mt-3 grid grid-cols-2 gap-2 font-mono text-[11px] text-stone-500">
-          <span>sent {formatCount(frames.sent)}</span>
-          <span>received {formatCount(frames.received)}</span>
-          <span className={frames.dropped > 0 ? "text-rose-700" : ""}>dropped {formatCount(frames.dropped)}</span>
-          <span>ignored {formatCount(frames.ignored)}</span>
+        <div className="grid gap-3 xl:grid-cols-2">
+          <SliceMetric
+            title="Round Trip"
+            subtitle={`sent ${formatCount(frames.sent)} • received ${formatCount(frames.received)}`}
+            slices={frames.rtt_slices}
+            color="#7c3aed"
+            formatter={formatNs}
+            emptyLabel="No RTT samples yet"
+          />
+          <SliceMetric
+            title="Sent / s"
+            subtitle={`total ${formatCount(frames.sent)}`}
+            slices={frames.sent_slices}
+            color="#0f766e"
+            formatter={formatCount}
+            emptyLabel="No sent frames yet"
+          />
+          <SliceMetric
+            title="Received / s"
+            subtitle={`total ${formatCount(frames.received)}`}
+            slices={frames.received_slices}
+            color="#2563eb"
+            formatter={formatCount}
+            emptyLabel="No received frames yet"
+          />
+          <div className="space-y-3 rounded-2xl border border-stone-200 bg-white/70 p-3">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Fault Traffic</div>
+              <div className="mt-1 font-mono text-[11px] text-stone-500">
+                dropped {formatCount(frames.dropped)} • ignored {formatCount(frames.ignored)}
+              </div>
+            </div>
+            <SliceMetric
+              title="Dropped / s"
+              subtitle={`expired ${formatCount(frames.expired_slices?.at(-1)?.value ?? 0)} • exceptions ${formatCount(frames.exception_slices?.at(-1)?.value ?? 0)}`}
+              slices={frames.dropped_slices}
+              color="#be123c"
+              formatter={formatCount}
+              emptyLabel="No dropped frames yet"
+            />
+            <div className="grid gap-3 lg:grid-cols-2">
+              <SliceMetric
+                title="Ignored / s"
+                subtitle={`total ${formatCount(frames.ignored)}`}
+                slices={frames.ignored_slices}
+                color="#78716c"
+                formatter={formatCount}
+                emptyLabel="No ignored frames yet"
+              />
+              <SliceMetric
+                title="Expired / s"
+                subtitle={`exceptions ${formatCount(frames.exception_slices?.reduce((sum, slice) => sum + (slice.value ?? 0), 0) ?? 0)}`}
+                slices={frames.expired_slices}
+                color="#ea580c"
+                formatter={formatCount}
+                emptyLabel="No expired realtime work"
+              />
+            </div>
+          </div>
         </div>
         {frames.dropped_reasons.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
@@ -242,14 +362,23 @@ function DcSection({ dc }) {
         <Badge label={dc.lock_state} tone={badgeClass(LOCK_STYLES, dc.lock_state)} />
       </div>
 
-      <div className="grid gap-3 xl:grid-cols-[1.2fr_1fr]">
-        <div>
-          <Sparkline values={dc.sync_diff_history} tone="#be123c" />
-          <div className="mt-3 grid grid-cols-2 gap-2 font-mono text-[11px] text-stone-500">
-            <span>tick wkc {formatCount(dc.tick_wkc)}</span>
-            <span>failures {formatCount(dc.monitor_failures)}</span>
+      <div className="grid gap-3 xl:grid-cols-[1.15fr_1fr]">
+        <div className="space-y-3">
+          <SliceMetric
+            title="Sync Diff / Slice"
+            subtitle={`tick wkc ${formatCount(dc.tick_wkc)} • max ${formatNs(dc.max_sync_diff_ns)}`}
+            slices={dc.sync_diff_slices}
+            color="#be123c"
+            formatter={formatNs}
+            emptyLabel="No DC sync samples yet"
+          />
+          <div className="grid grid-cols-2 gap-2 font-mono text-[11px] text-stone-500">
+            <span>configured {String(dc.configured)}</span>
+            <span>active {String(dc.active)}</span>
             <span>cycle {formatNs(dc.cycle_ns)}</span>
-            <span>max diff {formatNs(dc.max_sync_diff_ns)}</span>
+            <span>failures {formatCount(dc.monitor_failures)}</span>
+            <span>reference {dc.reference_clock ?? "n/a"}</span>
+            <span>lock {dc.lock_state}</span>
           </div>
         </div>
         <div className="space-y-2">
@@ -283,16 +412,29 @@ function DomainsSection({ domains }) {
                 <span className="font-mono text-xs font-semibold text-stone-700">{domain.id}</span>
                 <Badge label={domain.state} tone={badgeClass(DOMAIN_STYLES, domain.state)} />
               </div>
-              <div className="mt-3">
-                <Sparkline values={domain.cycle_history} tone="#d97706" />
+              <div className="mt-3 grid gap-3 xl:grid-cols-2">
+                <SliceMetric
+                  title="Cycle Duration"
+                  subtitle={`last ${formatUs(domain.last_cycle_us)} • avg ${formatUs(domain.avg_cycle_us)}`}
+                  slices={domain.cycle_slices}
+                  color="#d97706"
+                  formatter={formatUs}
+                  emptyLabel="No cycle telemetry yet"
+                />
+                <SliceMetric
+                  title="Misses / Slice"
+                  subtitle={`miss events ${formatCount(domain.missed_events)} • total misses ${formatCount(domain.total_miss_count)}`}
+                  slices={domain.miss_slices}
+                  color="#dc2626"
+                  formatter={formatCount}
+                  emptyLabel="No misses recorded"
+                />
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2 font-mono text-[11px] text-stone-500">
-                <span>last {formatUs(domain.last_cycle_us)}</span>
-                <span>avg {formatUs(domain.avg_cycle_us)}</span>
-                <span>misses {formatCount(domain.miss_count)}</span>
-                <span>miss events {formatCount(domain.missed_events)}</span>
-                <span>total misses {formatCount(domain.total_miss_count)}</span>
+                <span>cycle {formatUs(domain.cycle_time_us)}</span>
                 <span>wkc {formatCount(domain.expected_wkc)}</span>
+                <span>miss count {formatCount(domain.miss_count)}</span>
+                <span>miss reason {domain.last_miss_reason ?? "n/a"}</span>
               </div>
               {(domain.last_miss_reason || domain.stop_reason || domain.crash_reason) && (
                 <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 font-mono text-[11px] text-amber-800">

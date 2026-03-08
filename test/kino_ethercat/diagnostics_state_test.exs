@@ -27,8 +27,11 @@ defmodule KinoEtherCAT.DiagnosticsStateTest do
     payload = DiagnosticsState.payload(state)
 
     assert payload.phase == "operational"
+    assert payload.slice_ms == 1_000
     assert payload.bus.queues.realtime.peak_depth == 3
+    assert_in_delta List.last(payload.bus.queues.realtime.slices).value, 3.0, 0.1
     assert payload.bus.transactions.realtime.last_latency_us == 240
+    assert_in_delta List.last(payload.bus.transactions.realtime.latency_slices).value, 240.0, 0.1
     assert payload.bus.transactions.realtime.last_wkc == 7
   end
 
@@ -46,6 +49,35 @@ defmodule KinoEtherCAT.DiagnosticsStateTest do
     assert payload.bus.transactions.realtime.last_latency_us == 125
     assert payload.bus.transactions.realtime.last_wkc == nil
     assert payload.bus.transactions.realtime.datagrams == 1
+  end
+
+  test "builds slice payloads for DC and domain telemetry" do
+    state =
+      DiagnosticsState.new(history_limit: 4)
+      |> DiagnosticsState.apply_telemetry(
+        [:ethercat, :dc, :sync_diff, :observed],
+        %{max_sync_diff_ns: 140},
+        %{ref_station: 4096}
+      )
+      |> DiagnosticsState.apply_telemetry(
+        [:ethercat, :domain, :cycle, :done],
+        %{duration_us: 900, cycle_count: 1},
+        %{domain: :main}
+      )
+      |> DiagnosticsState.apply_telemetry(
+        [:ethercat, :domain, :cycle, :missed],
+        %{miss_count: 1},
+        %{domain: :main, reason: :deadline}
+      )
+
+    payload = DiagnosticsState.payload(state)
+    [domain] = payload.domains
+
+    assert_in_delta List.last(payload.dc.sync_diff_slices).value, 140.0, 0.1
+    assert domain.id == "main"
+    assert_in_delta List.last(domain.cycle_slices).value, 900.0, 0.1
+    assert List.last(domain.miss_slices).value == 1
+    assert domain.last_miss_reason == "deadline"
   end
 
   test "records link and slave fault events into the timeline" do
