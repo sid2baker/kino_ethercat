@@ -524,9 +524,15 @@ defmodule KinoEtherCAT.Runtime do
 
   defp default_dc_resource do
     cond do
-      function_exported?(EtherCAT.DC.Status, :__struct__, 0) -> struct(EtherCAT.DC.Status)
-      function_exported?(EtherCAT.DC, :__struct__, 0) -> struct(EtherCAT.DC)
-      true -> %{}
+      Code.ensure_loaded?(EtherCAT.DC.Status) and
+          function_exported?(EtherCAT.DC.Status, :__struct__, 0) ->
+        struct(EtherCAT.DC.Status)
+
+      Code.ensure_loaded?(EtherCAT.DC) and function_exported?(EtherCAT.DC, :__struct__, 0) ->
+        struct(EtherCAT.DC)
+
+      true ->
+        %{}
     end
   end
 
