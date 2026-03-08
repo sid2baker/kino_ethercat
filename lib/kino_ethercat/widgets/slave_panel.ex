@@ -247,6 +247,7 @@ defmodule KinoEtherCAT.SlavePanel do
   end
 
   defp normalize_output_value(%{bit_size: 1}, value) when value in [0, 1], do: {:ok, value}
+
   defp normalize_output_value(%{bit_size: 1}, value) when value in ["0", "1"] do
     {:ok, String.to_integer(value)}
   end

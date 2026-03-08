@@ -168,7 +168,13 @@ defmodule KinoEtherCAT.SDOExplorer do
     |> Enum.flat_map(fn %{name: name, station: station} ->
       case EtherCAT.slave_info(name) do
         {:ok, %{coe: true}} ->
-          [%{name: to_string(name), station: station, label: "#{name} @ #{integer_to_hex(station, 4)}"}]
+          [
+            %{
+              name: to_string(name),
+              station: station,
+              label: "#{name} @ #{integer_to_hex(station, 4)}"
+            }
+          ]
 
         _ ->
           []
@@ -259,11 +265,24 @@ defmodule KinoEtherCAT.SDOExplorer do
   defp normalize_operation(_other), do: {:error, :invalid_operation}
 
   defp put_result(state, result) do
-    history_entry = Map.take(result, [:status, :operation, :slave, :index, :subindex, :bytes, :hex, :message, :at_ms])
+    history_entry =
+      Map.take(result, [
+        :status,
+        :operation,
+        :slave,
+        :index,
+        :subindex,
+        :bytes,
+        :hex,
+        :message,
+        :at_ms
+      ])
 
     state
     |> Map.put(:result, result)
-    |> Map.update!(:history, fn history -> [history_entry | history] |> Enum.take(@history_limit) end)
+    |> Map.update!(:history, fn history ->
+      [history_entry | history] |> Enum.take(@history_limit)
+    end)
   end
 
   defp success_result(operation, slave_name, index, subindex, binary) do

@@ -88,7 +88,12 @@ defmodule KinoEtherCAT.Diagnostics do
 
   def handle_info({:telemetry_event, event, measurements, metadata}, ctx) do
     diagnostics_state =
-      DiagnosticsState.apply_telemetry(ctx.assigns.diagnostics_state, event, measurements, metadata)
+      DiagnosticsState.apply_telemetry(
+        ctx.assigns.diagnostics_state,
+        event,
+        measurements,
+        metadata
+      )
 
     ctx =
       ctx

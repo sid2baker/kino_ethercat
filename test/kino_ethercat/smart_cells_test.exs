@@ -77,7 +77,9 @@ defmodule KinoEtherCAT.SmartCellsTest do
         ]
       })
 
-    assert source =~ ~s/KinoEtherCAT.dashboard([:"sensor_a", :"output rack"], columns: 2) |> Kino.render()/
+    assert source =~
+             ~s/KinoEtherCAT.dashboard([:"sensor_a", :"output rack"], columns: 2) |> Kino.render()/
+
     assert source =~ "Kino.nothing()"
     refute source =~ "String.to_atom"
   end

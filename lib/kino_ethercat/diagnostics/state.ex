@@ -71,7 +71,8 @@ defmodule KinoEtherCAT.DiagnosticsState do
     %{state | snapshot: snapshot, domain_metrics: domain_metrics, dc_metrics: dc_metrics}
   end
 
-  @spec apply_telemetry(map(), telemetry_event(), telemetry_measurements(), telemetry_metadata()) :: map()
+  @spec apply_telemetry(map(), telemetry_event(), telemetry_measurements(), telemetry_metadata()) ::
+          map()
   def apply_telemetry(state, event, measurements, metadata)
 
   def apply_telemetry(state, [:ethercat, :bus, :transact, :stop], measurements, metadata) do
@@ -165,7 +166,12 @@ defmodule KinoEtherCAT.DiagnosticsState do
   end
 
   def apply_telemetry(state, [:ethercat, :dc, :sync_diff, :observed], measurements, _metadata) do
-    update_history(state, [:dc_metrics, :sync_diff_ns_history], measurements.max_sync_diff_ns, state.history_limit)
+    update_history(
+      state,
+      [:dc_metrics, :sync_diff_ns_history],
+      measurements.max_sync_diff_ns,
+      state.history_limit
+    )
   end
 
   def apply_telemetry(state, [:ethercat, :dc, :lock, :changed], _measurements, metadata) do
@@ -178,7 +184,11 @@ defmodule KinoEtherCAT.DiagnosticsState do
     state
     |> put_in([:dc_metrics, :lock_state], to_string(metadata.to))
     |> update_history([:dc_metrics, :lock_events], event, 10)
-    |> record_event(lock_level(metadata.to), "DC lock #{metadata.from} -> #{metadata.to}", max_sync_diff(metadata.max_sync_diff_ns))
+    |> record_event(
+      lock_level(metadata.to),
+      "DC lock #{metadata.from} -> #{metadata.to}",
+      max_sync_diff(metadata.max_sync_diff_ns)
+    )
   end
 
   def apply_telemetry(state, [:ethercat, :domain, :cycle, :done], measurements, metadata) do
@@ -186,7 +196,11 @@ defmodule KinoEtherCAT.DiagnosticsState do
 
     state
     |> ensure_domain_metrics(domain_id)
-    |> update_history([:domain_metrics, domain_id, :cycle_history], measurements.duration_us, state.history_limit)
+    |> update_history(
+      [:domain_metrics, domain_id, :cycle_history],
+      measurements.duration_us,
+      state.history_limit
+    )
   end
 
   def apply_telemetry(state, [:ethercat, :domain, :cycle, :missed], measurements, metadata) do
@@ -224,13 +238,19 @@ defmodule KinoEtherCAT.DiagnosticsState do
     detail = "#{slave}: #{format_reason(metadata.reason)}"
 
     state
-    |> put_slave_event(slave, %{level: "danger", title: "crashed", detail: format_reason(metadata.reason)})
+    |> put_slave_event(slave, %{
+      level: "danger",
+      title: "crashed",
+      detail: format_reason(metadata.reason)
+    })
     |> record_event("danger", "Slave crashed", detail)
   end
 
   def apply_telemetry(state, [:ethercat, :slave, :health, :fault], measurements, metadata) do
     slave = to_string(metadata.slave)
-    detail = "#{slave} AL #{al_state_name(measurements.al_state)} error #{hex(measurements.error_code, 4)}"
+
+    detail =
+      "#{slave} AL #{al_state_name(measurements.al_state)} error #{hex(measurements.error_code, 4)}"
 
     state
     |> put_slave_event(slave, %{level: "danger", title: "fault", detail: detail})

@@ -45,7 +45,8 @@ defmodule KinoEtherCAT.SlaveSnapshotTest do
   end
 
   test "builds an unavailable snapshot when the slave is missing" do
-    snapshot = SlaveSnapshot.build(:ghost, nil, %{}, [], %{signal: "q1", reason: :enoent}, :not_found, [])
+    snapshot =
+      SlaveSnapshot.build(:ghost, nil, %{}, [], %{signal: "q1", reason: :enoent}, :not_found, [])
 
     assert snapshot.status == "unavailable"
     assert snapshot.summary.name == "ghost"
