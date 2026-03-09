@@ -47,7 +47,7 @@ defmodule KinoEtherCAT.Runtime do
   def bus do
     case fetch_bus_state() do
       {:ok, _state_name, %Bus{} = bus} -> bus
-      _ -> %Bus{}
+      _ -> struct(Bus)
     end
   end
 

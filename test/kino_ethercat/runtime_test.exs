@@ -23,15 +23,17 @@ defmodule KinoEtherCAT.RuntimeTest do
              Runtime.payload(%Domain{id: :main})
 
     assert %{kind: "bus", controls: %{submit: %{id: "set_frame_timeout"}}} =
-             Runtime.payload(%Bus{})
+             Runtime.payload(struct(Bus))
 
     assert %{kind: "dc", controls: %{submit: %{id: "await_dc_locked"}}} =
              Runtime.payload(default_dc_resource())
   end
 
   test "runtime actions validate numeric inputs before touching EtherCAT" do
-    assert {:error, %Bus{}, %{level: "error", text: ":invalid_integer"}} =
-             Runtime.perform(%Bus{}, "set_frame_timeout", %{"value" => "abc"})
+    bus = struct(Bus)
+
+    assert {:error, ^bus, %{level: "error", text: ":invalid_integer"}} =
+             Runtime.perform(bus, "set_frame_timeout", %{"value" => "abc"})
 
     assert {:error, %Domain{id: :main}, %{level: "error", text: ":invalid_integer"}} =
              Runtime.perform(%Domain{id: :main}, "update_cycle_time", %{"value" => "0"})
