@@ -88,8 +88,11 @@ defmodule KinoEtherCAT.SmartCellsTest do
 
     assert source =~ ~s(%DomainConfig{id: :main, cycle_time_us: 1000, miss_threshold: 1000})
 
-    assert source =~
-             ~s(%SlaveConfig{name: :sensor_a, driver: KinoEtherCAT.Driver.EL1809, process_data: {:all, :main}, target_state: :op})
+    assert source =~ "%SlaveConfig{"
+    assert source =~ "name: :sensor_a"
+    assert source =~ "driver: KinoEtherCAT.Driver.EL1809"
+    assert source =~ "process_data: {:all, :main}"
+    assert source =~ "target_state: :op"
 
     refute source =~ "EtherCAT.configure_slave"
     refute source =~ "activation_mode"

@@ -41,6 +41,7 @@ defmodule KinoEtherCAT.ExplorerCellsTest do
       })
 
     assert read_source =~ "alias EtherCAT.Bus.Transaction"
+    assert read_source =~ "alias EtherCAT.Slave.ESC.Registers"
     assert read_source =~ "register = Registers.al_status()"
     assert read_source =~ "Registers.decode_al_status(data)"
 
@@ -66,7 +67,7 @@ defmodule KinoEtherCAT.ExplorerCellsTest do
         "operation" => "identity"
       })
 
-    assert identity_source =~ "alias EtherCAT.Slave.SII"
+    assert identity_source =~ "alias EtherCAT.Slave.ESC.SII"
     assert identity_source =~ "SII.read_identity(bus, station)"
 
     write_source =

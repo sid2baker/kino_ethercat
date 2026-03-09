@@ -8,46 +8,49 @@ defmodule KinoEtherCAT.SmartCells.ExplorerSource do
     with {:ok, slave} <- slave_literal(attrs["slave"]),
          {:ok, index} <- integer_literal(attrs["index"]),
          {:ok, subindex} <- integer_literal(attrs["subindex"]) do
-      case Map.get(attrs, "operation", "upload") do
-        "download" ->
-          with {:ok, payload} <- binary_literal(attrs["write_data"]) do
+      source =
+        case Map.get(attrs, "operation", "upload") do
+          "download" ->
+            with {:ok, payload} <- binary_literal(attrs["write_data"]) do
+              Source.multiline([
+                "payload = #{payload}\n\n",
+                "case EtherCAT.download_sdo(#{slave}, #{index}, #{subindex}, payload) do\n",
+                "  :ok ->\n",
+                "    %{\n",
+                "      operation: :download,\n",
+                "      slave: #{slave},\n",
+                "      index: #{index},\n",
+                "      subindex: #{subindex},\n",
+                "      bytes: byte_size(payload),\n",
+                "      hex: Base.encode16(payload, case: :upper),\n",
+                "      result: :ok\n",
+                "    }\n\n",
+                "  {:error, reason} -> {:error, reason}\n",
+                "end\n"
+              ])
+            else
+              :error -> ""
+            end
+
+          _ ->
             Source.multiline([
-              "payload = #{payload}\n\n",
-              "case EtherCAT.download_sdo(#{slave}, #{index}, #{subindex}, payload) do\n",
-              "  :ok ->\n",
+              "case EtherCAT.upload_sdo(#{slave}, #{index}, #{subindex}) do\n",
+              "  {:ok, binary} ->\n",
               "    %{\n",
-              "      operation: :download,\n",
+              "      operation: :upload,\n",
               "      slave: #{slave},\n",
               "      index: #{index},\n",
               "      subindex: #{subindex},\n",
-              "      bytes: byte_size(payload),\n",
-              "      hex: Base.encode16(payload, case: :upper),\n",
-              "      result: :ok\n",
+              "      bytes: byte_size(binary),\n",
+              "      hex: Base.encode16(binary, case: :upper),\n",
+              "      binary: binary\n",
               "    }\n\n",
               "  {:error, reason} -> {:error, reason}\n",
               "end\n"
             ])
-          else
-            :error -> ""
-          end
+        end
 
-        _ ->
-          Source.multiline([
-            "case EtherCAT.upload_sdo(#{slave}, #{index}, #{subindex}) do\n",
-            "  {:ok, binary} ->\n",
-            "    %{\n",
-            "      operation: :upload,\n",
-            "      slave: #{slave},\n",
-            "      index: #{index},\n",
-            "      subindex: #{subindex},\n",
-            "      bytes: byte_size(binary),\n",
-            "      hex: Base.encode16(binary, case: :upper),\n",
-            "      binary: binary\n",
-            "    }\n\n",
-            "  {:error, reason} -> {:error, reason}\n",
-            "end\n"
-          ])
-      end
+      Source.format(source)
     else
       :error -> ""
     end
@@ -57,59 +60,62 @@ defmodule KinoEtherCAT.SmartCells.ExplorerSource do
   def render_register(attrs) when is_map(attrs) do
     with {:ok, slave} <- slave_literal(attrs["slave"]),
          {:ok, spec} <- register_spec(attrs) do
-      aliases = "alias EtherCAT.Bus.Transaction\nalias EtherCAT.Slave.Registers\n\n"
+      aliases = "alias EtherCAT.Bus.Transaction\nalias EtherCAT.Slave.ESC.Registers\n\n"
 
-      case Map.get(attrs, "operation", "read") do
-        "write" ->
-          Source.multiline([
-            aliases,
-            "register = #{spec.source}\n\n",
-            "with bus when not is_nil(bus) <- EtherCAT.bus(),\n",
-            "     {:ok, %{station: station}} <- EtherCAT.slave_info(#{slave}),\n",
-            "     {:ok, [%{wkc: wkc}]} <-\n",
-            "       EtherCAT.Bus.transaction(bus, Transaction.fpwr(station, register)) do\n",
-            "  %{\n",
-            "    operation: :write,\n",
-            "    slave: #{slave},\n",
-            "    station: station,\n",
-            "    register: #{spec.label},\n",
-            "    address: elem(register, 0),\n",
-            "    bytes: byte_size(elem(register, 1)),\n",
-            "    hex: Base.encode16(elem(register, 1), case: :upper),\n",
-            "    wkc: wkc\n",
-            "  }\n",
-            "end\n"
-          ])
+      source =
+        case Map.get(attrs, "operation", "read") do
+          "write" ->
+            Source.multiline([
+              aliases,
+              "register = #{spec.source}\n\n",
+              "with bus when not is_nil(bus) <- EtherCAT.bus(),\n",
+              "     {:ok, %{station: station}} <- EtherCAT.slave_info(#{slave}),\n",
+              "     {:ok, [%{wkc: wkc}]} <-\n",
+              "       EtherCAT.Bus.transaction(bus, Transaction.fpwr(station, register)) do\n",
+              "  %{\n",
+              "    operation: :write,\n",
+              "    slave: #{slave},\n",
+              "    station: station,\n",
+              "    register: #{spec.label},\n",
+              "    address: elem(register, 0),\n",
+              "    bytes: byte_size(elem(register, 1)),\n",
+              "    hex: Base.encode16(elem(register, 1), case: :upper),\n",
+              "    wkc: wkc\n",
+              "  }\n",
+              "end\n"
+            ])
 
-        _ ->
-          decoded_line =
-            case spec.decoder do
-              nil -> "    decoded: nil,\n"
-              decoder -> "    decoded: #{decoder},\n"
-            end
+          _ ->
+            decoded_line =
+              case spec.decoder do
+                nil -> "    decoded: nil,\n"
+                decoder -> "    decoded: #{decoder},\n"
+              end
 
-          Source.multiline([
-            aliases,
-            "register = #{spec.source}\n\n",
-            "with bus when not is_nil(bus) <- EtherCAT.bus(),\n",
-            "     {:ok, %{station: station}} <- EtherCAT.slave_info(#{slave}),\n",
-            "     {:ok, [%{data: data, wkc: wkc}]} <-\n",
-            "       EtherCAT.Bus.transaction(bus, Transaction.fprd(station, register)) do\n",
-            "  %{\n",
-            "    operation: :read,\n",
-            "    slave: #{slave},\n",
-            "    station: station,\n",
-            "    register: #{spec.label},\n",
-            "    address: elem(register, 0),\n",
-            "    bytes: byte_size(data),\n",
-            "    hex: Base.encode16(data, case: :upper),\n",
-            decoded_line,
-            "    wkc: wkc,\n",
-            "    binary: data\n",
-            "  }\n",
-            "end\n"
-          ])
-      end
+            Source.multiline([
+              aliases,
+              "register = #{spec.source}\n\n",
+              "with bus when not is_nil(bus) <- EtherCAT.bus(),\n",
+              "     {:ok, %{station: station}} <- EtherCAT.slave_info(#{slave}),\n",
+              "     {:ok, [%{data: data, wkc: wkc}]} <-\n",
+              "       EtherCAT.Bus.transaction(bus, Transaction.fprd(station, register)) do\n",
+              "  %{\n",
+              "    operation: :read,\n",
+              "    slave: #{slave},\n",
+              "    station: station,\n",
+              "    register: #{spec.label},\n",
+              "    address: elem(register, 0),\n",
+              "    bytes: byte_size(data),\n",
+              "    hex: Base.encode16(data, case: :upper),\n",
+              decoded_line,
+              "    wkc: wkc,\n",
+              "    binary: data\n",
+              "  }\n",
+              "end\n"
+            ])
+        end
+
+      Source.format(source)
     else
       :error -> ""
     end
@@ -119,116 +125,119 @@ defmodule KinoEtherCAT.SmartCells.ExplorerSource do
   def render_sii(attrs) when is_map(attrs) do
     with {:ok, slave} <- slave_literal(attrs["slave"]),
          {:ok, action} <- sii_action(Map.get(attrs, "operation", "identity")) do
-      aliases = "alias EtherCAT.Slave.SII\n\n"
+      aliases = "alias EtherCAT.Slave.ESC.SII\n\n"
 
-      case action do
-        :identity ->
-          simple_sii_call(
-            aliases,
-            slave,
-            "SII.read_identity(bus, station)",
-            "identity"
-          )
+      source =
+        case action do
+          :identity ->
+            simple_sii_call(
+              aliases,
+              slave,
+              "SII.read_identity(bus, station)",
+              "identity"
+            )
 
-        :mailbox ->
-          simple_sii_call(
-            aliases,
-            slave,
-            "SII.read_mailbox_config(bus, station)",
-            "mailbox"
-          )
+          :mailbox ->
+            simple_sii_call(
+              aliases,
+              slave,
+              "SII.read_mailbox_config(bus, station)",
+              "mailbox"
+            )
 
-        :sync_managers ->
-          simple_sii_call(
-            aliases,
-            slave,
-            "SII.read_sm_configs(bus, station)",
-            "sync_managers"
-          )
+          :sync_managers ->
+            simple_sii_call(
+              aliases,
+              slave,
+              "SII.read_sm_configs(bus, station)",
+              "sync_managers"
+            )
 
-        :pdo_configs ->
-          simple_sii_call(
-            aliases,
-            slave,
-            "SII.read_pdo_configs(bus, station)",
-            "pdo_configs"
-          )
+          :pdo_configs ->
+            simple_sii_call(
+              aliases,
+              slave,
+              "SII.read_pdo_configs(bus, station)",
+              "pdo_configs"
+            )
 
-        :reload ->
-          Source.multiline([
-            aliases,
-            "with bus when not is_nil(bus) <- EtherCAT.bus(),\n",
-            "     {:ok, %{station: station}} <- EtherCAT.slave_info(#{slave}),\n",
-            "     :ok <- SII.reload(bus, station) do\n",
-            "  %{operation: :reload, slave: #{slave}, station: station, result: :ok}\n",
-            "end\n"
-          ])
-
-        :dump ->
-          Source.multiline([
-            aliases,
-            "with bus when not is_nil(bus) <- EtherCAT.bus(),\n",
-            "     {:ok, %{station: station}} <- EtherCAT.slave_info(#{slave}),\n",
-            "     {:ok, binary} <- SII.dump(bus, station) do\n",
-            "  %{\n",
-            "    operation: :dump,\n",
-            "    slave: #{slave},\n",
-            "    station: station,\n",
-            "    bytes: byte_size(binary),\n",
-            "    preview_hex: Base.encode16(binary_part(binary, 0, min(byte_size(binary), 64)), case: :upper),\n",
-            "    binary: binary\n",
-            "  }\n",
-            "end\n"
-          ])
-
-        :read_words ->
-          with {:ok, word_address} <- integer_literal(attrs["word_address"]),
-               {:ok, word_count} <- integer_literal(attrs["word_count"]) do
+          :reload ->
             Source.multiline([
               aliases,
               "with bus when not is_nil(bus) <- EtherCAT.bus(),\n",
               "     {:ok, %{station: station}} <- EtherCAT.slave_info(#{slave}),\n",
-              "     {:ok, binary} <- SII.read(bus, station, #{word_address}, #{word_count}) do\n",
+              "     :ok <- SII.reload(bus, station) do\n",
+              "  %{operation: :reload, slave: #{slave}, station: station, result: :ok}\n",
+              "end\n"
+            ])
+
+          :dump ->
+            Source.multiline([
+              aliases,
+              "with bus when not is_nil(bus) <- EtherCAT.bus(),\n",
+              "     {:ok, %{station: station}} <- EtherCAT.slave_info(#{slave}),\n",
+              "     {:ok, binary} <- SII.dump(bus, station) do\n",
               "  %{\n",
-              "    operation: :read_words,\n",
+              "    operation: :dump,\n",
               "    slave: #{slave},\n",
               "    station: station,\n",
-              "    word_address: #{word_address},\n",
-              "    word_count: #{word_count},\n",
               "    bytes: byte_size(binary),\n",
-              "    hex: Base.encode16(binary, case: :upper),\n",
+              "    preview_hex: Base.encode16(binary_part(binary, 0, min(byte_size(binary), 64)), case: :upper),\n",
               "    binary: binary\n",
               "  }\n",
               "end\n"
             ])
-          else
-            :error -> ""
-          end
 
-        :write_words ->
-          with {:ok, word_address} <- integer_literal(attrs["word_address"]),
-               {:ok, payload} <- binary_literal(attrs["write_data"]) do
-            Source.multiline([
-              aliases,
-              "payload = #{payload}\n\n",
-              "with bus when not is_nil(bus) <- EtherCAT.bus(),\n",
-              "     {:ok, %{station: station}} <- EtherCAT.slave_info(#{slave}),\n",
-              "     :ok <- SII.write(bus, station, #{word_address}, payload) do\n",
-              "  %{\n",
-              "    operation: :write_words,\n",
-              "    slave: #{slave},\n",
-              "    station: station,\n",
-              "    word_address: #{word_address},\n",
-              "    bytes: byte_size(payload),\n",
-              "    hex: Base.encode16(payload, case: :upper),\n",
-              "    result: :ok\n",
-              "  }\n",
-              "end\n"
-            ])
-          else
-            :error -> ""
-          end
-      end
+          :read_words ->
+            with {:ok, word_address} <- integer_literal(attrs["word_address"]),
+                 {:ok, word_count} <- integer_literal(attrs["word_count"]) do
+              Source.multiline([
+                aliases,
+                "with bus when not is_nil(bus) <- EtherCAT.bus(),\n",
+                "     {:ok, %{station: station}} <- EtherCAT.slave_info(#{slave}),\n",
+                "     {:ok, binary} <- SII.read(bus, station, #{word_address}, #{word_count}) do\n",
+                "  %{\n",
+                "    operation: :read_words,\n",
+                "    slave: #{slave},\n",
+                "    station: station,\n",
+                "    word_address: #{word_address},\n",
+                "    word_count: #{word_count},\n",
+                "    bytes: byte_size(binary),\n",
+                "    hex: Base.encode16(binary, case: :upper),\n",
+                "    binary: binary\n",
+                "  }\n",
+                "end\n"
+              ])
+            else
+              :error -> ""
+            end
+
+          :write_words ->
+            with {:ok, word_address} <- integer_literal(attrs["word_address"]),
+                 {:ok, payload} <- binary_literal(attrs["write_data"]) do
+              Source.multiline([
+                aliases,
+                "payload = #{payload}\n\n",
+                "with bus when not is_nil(bus) <- EtherCAT.bus(),\n",
+                "     {:ok, %{station: station}} <- EtherCAT.slave_info(#{slave}),\n",
+                "     :ok <- SII.write(bus, station, #{word_address}, payload) do\n",
+                "  %{\n",
+                "    operation: :write_words,\n",
+                "    slave: #{slave},\n",
+                "    station: station,\n",
+                "    word_address: #{word_address},\n",
+                "    bytes: byte_size(payload),\n",
+                "    hex: Base.encode16(payload, case: :upper),\n",
+                "    result: :ok\n",
+                "  }\n",
+                "end\n"
+              ])
+            else
+              :error -> ""
+            end
+        end
+
+      Source.format(source)
     else
       :error -> ""
     end

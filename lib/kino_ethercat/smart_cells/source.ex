@@ -38,4 +38,13 @@ defmodule KinoEtherCAT.SmartCells.Source do
     |> String.trim()
     |> Kernel.<>("\n")
   end
+
+  @spec format(String.t()) :: String.t()
+  def format(source) when is_binary(source) do
+    source
+    |> Code.format_string!()
+    |> IO.iodata_to_binary()
+  rescue
+    _ -> source
+  end
 end

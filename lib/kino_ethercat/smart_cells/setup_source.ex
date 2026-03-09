@@ -10,7 +10,9 @@ defmodule KinoEtherCAT.SmartCells.SetupSource do
     if config.interface == "" or Enum.empty?(config.slaves) do
       ""
     else
-      static_start_source(config)
+      config
+      |> static_start_source()
+      |> Source.format()
     end
   end
 

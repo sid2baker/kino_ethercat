@@ -9,20 +9,48 @@ export async function init(ctx, data) {
   root.render(<RuntimePanel ctx={ctx} data={data} />);
 }
 
-const STATUS_STYLES = {
-  info: "bg-sky-100 text-sky-800",
-  error: "bg-rose-100 text-rose-800",
+const BADGE_TONES = {
+  ok: "ke-runtime__badge--ok",
+  warn: "ke-runtime__badge--warn",
+  danger: "ke-runtime__badge--danger",
+  neutral: "ke-runtime__badge--neutral",
 };
 
-const BUTTON_STYLES = {
-  primary: "border-stone-800 bg-stone-800 text-white hover:bg-stone-700",
-  secondary: "border-stone-300 bg-white text-stone-600 hover:border-stone-400 hover:bg-stone-100",
-  danger: "border-rose-600 bg-rose-600 text-white hover:bg-rose-500",
+const MESSAGE_TONES = {
+  info: "ke-runtime__message--info",
+  error: "ke-runtime__message--error",
 };
 
-function Badge({ label, tone }) {
+const BUTTON_TONES = {
+  primary: "ke-runtime__button--primary",
+  secondary: "ke-runtime__button--secondary",
+  danger: "ke-runtime__button--danger",
+};
+
+function statusTone(status) {
+  const value = String(status ?? "").toLowerCase();
+
+  if (["operational", "ok", "op", "locked", "active", "preop_ready"].includes(value)) {
+    return "ok";
+  }
+
+  if (
+    ["unavailable", "error", "fault", "activation_blocked", "down"].includes(value) ||
+    value.includes("error")
+  ) {
+    return "danger";
+  }
+
+  if (["recovering", "awaiting_preop", "discovering", "safeop", "preop"].includes(value)) {
+    return "warn";
+  }
+
+  return "neutral";
+}
+
+function Badge({ label }) {
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 font-mono text-[11px] font-medium ${tone}`}>
+    <span className={`ke-runtime__badge ${BADGE_TONES[statusTone(label)]}`}>
       {label}
     </span>
   );
@@ -32,7 +60,7 @@ function Message({ message }) {
   if (!message) return null;
 
   return (
-    <div className={`rounded-xl border px-3 py-2 font-mono text-xs ${STATUS_STYLES[message.level] ?? STATUS_STYLES.info}`}>
+    <div className={`ke-runtime__message ${MESSAGE_TONES[message.level] ?? MESSAGE_TONES.info}`}>
       {message.text}
     </div>
   );
@@ -42,14 +70,14 @@ function Summary({ items }) {
   if (!items.length) return null;
 
   return (
-    <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+    <section className="ke-runtime__summary">
       {items.map((item) => (
-        <div key={item.label} className="rounded-xl border border-stone-200 bg-white/80 px-3 py-2">
-          <div className="text-[11px] uppercase tracking-[0.18em] text-stone-400">{item.label}</div>
-          <div className="mt-1 font-mono text-xs text-stone-700">{item.value}</div>
+        <div key={item.label} className="ke-runtime__summary-item">
+          <div className="ke-runtime__summary-label">{item.label}</div>
+          <div className="ke-runtime__summary-value">{item.value}</div>
         </div>
       ))}
-    </div>
+    </section>
   );
 }
 
@@ -57,24 +85,22 @@ function TableSection({ table }) {
   if (!table.rows.length) return null;
 
   return (
-    <section className="rounded-2xl border border-stone-200 bg-white/80 p-3">
-      <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{table.title}</div>
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse">
+    <section className="ke-runtime__section">
+      <div className="ke-runtime__section-title">{table.title}</div>
+      <div className="ke-runtime__table-wrap">
+        <table className="ke-runtime__table">
           <thead>
-            <tr className="text-left text-[11px] uppercase tracking-[0.18em] text-stone-400">
+            <tr>
               {table.headers.map((header) => (
-                <th key={header} className="pb-2 pr-3">{header}</th>
+                <th key={header}>{header}</th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-stone-100">
+          <tbody>
             {table.rows.map((row) => (
               <tr key={row.key}>
                 {row.cells.map((cell, index) => (
-                  <td key={`${row.key}-${index}`} className="py-2 pr-3 font-mono text-xs text-stone-600">
-                    {cell}
-                  </td>
+                  <td key={`${row.key}-${index}`}>{cell}</td>
                 ))}
               </tr>
             ))}
@@ -89,13 +115,13 @@ function Details({ items }) {
   if (!items.length) return null;
 
   return (
-    <section className="rounded-2xl border border-stone-200 bg-white/80 p-3">
-      <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Details</div>
-      <div className="space-y-2">
+    <section className="ke-runtime__section">
+      <div className="ke-runtime__section-title">Details</div>
+      <div className="ke-runtime__details">
         {items.map((item) => (
-          <div key={item.label} className="rounded-xl bg-stone-50 px-3 py-2">
-            <div className="text-[11px] uppercase tracking-[0.18em] text-stone-400">{item.label}</div>
-            <div className="mt-1 break-all font-mono text-xs text-stone-700">{item.value}</div>
+          <div key={item.label} className="ke-runtime__detail">
+            <div className="ke-runtime__detail-label">{item.label}</div>
+            <div className="ke-runtime__detail-value">{item.value}</div>
           </div>
         ))}
       </div>
@@ -115,16 +141,16 @@ function Controls({ ctx, controls }) {
   if (!controls) return null;
 
   return (
-    <section className="rounded-2xl border border-stone-200 bg-white/80 p-3">
-      <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Controls</div>
+    <section className="ke-runtime__section">
+      <div className="ke-runtime__section-title">Controls</div>
 
       {controls.buttons?.length > 0 && (
-        <div className="flex flex-wrap gap-2">
+        <div className="ke-runtime__buttons">
           {controls.buttons.map((button) => (
             <button
               key={button.id}
               onClick={() => ctx.pushEvent("action", { id: button.id })}
-              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${BUTTON_STYLES[button.tone] ?? BUTTON_STYLES.secondary}`}
+              className={`ke-runtime__button ${BUTTON_TONES[button.tone] ?? BUTTON_TONES.secondary}`}
             >
               {button.label}
             </button>
@@ -133,20 +159,24 @@ function Controls({ ctx, controls }) {
       )}
 
       {controls.select && (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <label className="text-[11px] uppercase tracking-[0.18em] text-stone-400">{controls.select.label}</label>
-          <select
-            value={selectValue}
-            onChange={(event) => setSelectValue(event.target.value)}
-            className="rounded-xl border border-stone-300 bg-white px-3 py-2 font-mono text-xs text-stone-700"
-          >
-            {controls.select.options.map((option) => (
-              <option key={option} value={option}>{option}</option>
-            ))}
-          </select>
+        <div className="ke-runtime__form-row">
+          <label className="ke-runtime__field">
+            <span className="ke-runtime__field-label">{controls.select.label}</span>
+            <select
+              value={selectValue}
+              onChange={(event) => setSelectValue(event.target.value)}
+              className="ke-runtime__input"
+            >
+              {controls.select.options.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
           <button
             onClick={() => ctx.pushEvent("action", { id: controls.select.id, value: selectValue })}
-            className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${BUTTON_STYLES.primary}`}
+            className={`ke-runtime__button ${BUTTON_TONES.primary}`}
           >
             Apply
           </button>
@@ -154,13 +184,15 @@ function Controls({ ctx, controls }) {
       )}
 
       {controls.input && (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <label className="text-[11px] uppercase tracking-[0.18em] text-stone-400">{controls.input.label}</label>
-          <input
-            value={inputValue}
-            onChange={(event) => setInputValue(event.target.value)}
-            className="rounded-xl border border-stone-300 bg-white px-3 py-2 font-mono text-xs text-stone-700"
-          />
+        <div className="ke-runtime__form-row">
+          <label className="ke-runtime__field">
+            <span className="ke-runtime__field-label">{controls.input.label}</span>
+            <input
+              value={inputValue}
+              onChange={(event) => setInputValue(event.target.value)}
+              className="ke-runtime__input"
+            />
+          </label>
           <button
             onClick={() =>
               ctx.pushEvent("action", {
@@ -168,7 +200,7 @@ function Controls({ ctx, controls }) {
                 value: inputValue,
               })
             }
-            className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${BUTTON_STYLES[controls.submit?.tone ?? "primary"]}`}
+            className={`ke-runtime__button ${BUTTON_TONES[controls.submit?.tone ?? "primary"]}`}
           >
             {controls.submit?.label ?? "Apply"}
           </button>
@@ -188,19 +220,32 @@ function RuntimePanel({ ctx, data }) {
   }, [ctx]);
 
   return (
-    <div className="kino-ethercat-runtime space-y-3 p-4 font-sans text-sm">
-      <div className="flex flex-wrap items-center gap-2">
-        <h3 className="text-sm font-semibold tracking-tight text-stone-800">{snapshot.title}</h3>
-        <Badge label={snapshot.status} tone="bg-stone-200 text-stone-700" />
+    <div className="ke-runtime">
+      <div className="ke-runtime__header">
+        <div className="ke-runtime__header-main">
+          <div className="ke-runtime__kind">{snapshot.kind}</div>
+          <h3 className="ke-runtime__title">{snapshot.title}</h3>
+        </div>
+        <Badge label={snapshot.status} />
       </div>
 
       <Message message={snapshot.message} />
       <Summary items={snapshot.summary} />
-      <Controls ctx={ctx} controls={snapshot.controls} />
-      {snapshot.tables.map((table) => (
-        <TableSection key={table.title} table={table} />
-      ))}
-      <Details items={snapshot.details} />
+
+      <div className="ke-runtime__content">
+        <div className="ke-runtime__main">
+          <Controls ctx={ctx} controls={snapshot.controls} />
+          {snapshot.tables.map((table) => (
+            <TableSection key={table.title} table={table} />
+          ))}
+        </div>
+
+        {snapshot.details.length > 0 && (
+          <div className="ke-runtime__side">
+            <Details items={snapshot.details} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
