@@ -8,7 +8,7 @@ defmodule KinoEtherCAT.Runtime do
 
   alias EtherCAT.{Bus, Domain, Master, Slave}
 
-  @spec master() :: Master.t()
+  @spec master() :: %Master{}
   def master do
     case fetch_master_state() do
       {:ok, _state_name, %Master{} = master} -> master
@@ -16,7 +16,7 @@ defmodule KinoEtherCAT.Runtime do
     end
   end
 
-  @spec slave(atom()) :: Slave.t()
+  @spec slave(atom()) :: %Slave{}
   def slave(name) when is_atom(name) do
     case fetch_slave_state(name) do
       {:ok, _state_name, %Slave{} = slave} -> slave
@@ -24,7 +24,7 @@ defmodule KinoEtherCAT.Runtime do
     end
   end
 
-  @spec domain(atom()) :: Domain.t()
+  @spec domain(atom()) :: %Domain{}
   def domain(id) when is_atom(id) do
     case fetch_domain_state(id) do
       {:ok, _state_name, %Domain{} = domain} -> domain
@@ -43,7 +43,7 @@ defmodule KinoEtherCAT.Runtime do
     end
   end
 
-  @spec bus() :: Bus.t()
+  @spec bus() :: %Bus{}
   def bus do
     case fetch_bus_state() do
       {:ok, _state_name, %Bus{} = bus} -> bus

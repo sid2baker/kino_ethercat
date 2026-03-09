@@ -1,7 +1,7 @@
 defmodule KinoEtherCAT.MixProject do
   use Mix.Project
 
-  @version "0.2.0-dev"
+  @version "0.2.0"
   @source_url "https://github.com/sid2baker/kino_ethercat"
 
   def project do
@@ -29,7 +29,7 @@ defmodule KinoEtherCAT.MixProject do
   defp deps do
     [
       {:kino, "~> 0.18"},
-      {:ethercat, github: "sid2baker/ethercat"},
+      {:ethercat, "~> 0.2.0"},
       {:ex_doc, "~> 0.36", only: :dev, runtime: false},
       {:usage_rules, "~> 1.1", only: [:dev]}
     ]

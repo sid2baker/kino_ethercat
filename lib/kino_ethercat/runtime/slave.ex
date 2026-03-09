@@ -6,7 +6,7 @@ defmodule KinoEtherCAT.Runtime.Slave do
 
   alias KinoEtherCAT.Runtime.Live
 
-  @spec new(EtherCAT.Slave.t()) :: Kino.JS.Live.t()
+  @spec new(%EtherCAT.Slave{}) :: Kino.JS.Live.t()
   def new(resource), do: Kino.JS.Live.new(__MODULE__, resource)
 
   @impl true

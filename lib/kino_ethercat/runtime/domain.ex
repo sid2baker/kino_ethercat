@@ -6,7 +6,7 @@ defmodule KinoEtherCAT.Runtime.Domain do
 
   alias KinoEtherCAT.Runtime.Live
 
-  @spec new(EtherCAT.Domain.t()) :: Kino.JS.Live.t()
+  @spec new(%EtherCAT.Domain{}) :: Kino.JS.Live.t()
   def new(resource), do: Kino.JS.Live.new(__MODULE__, resource)
 
   @impl true

@@ -20,19 +20,19 @@ defmodule KinoEtherCAT do
 
   alias KinoEtherCAT.Runtime
 
-  @spec master() :: EtherCAT.Master.t()
+  @spec master() :: %EtherCAT.Master{}
   def master, do: Runtime.master()
 
-  @spec slave(atom()) :: EtherCAT.Slave.t()
+  @spec slave(atom()) :: %EtherCAT.Slave{}
   def slave(name), do: Runtime.slave(name)
 
-  @spec domain(atom()) :: EtherCAT.Domain.t()
+  @spec domain(atom()) :: %EtherCAT.Domain{}
   def domain(id), do: Runtime.domain(id)
 
   @spec dc() :: struct()
   def dc, do: Runtime.dc()
 
-  @spec bus() :: EtherCAT.Bus.t()
+  @spec bus() :: %EtherCAT.Bus{}
   def bus, do: Runtime.bus()
 
   @doc """
