@@ -2,41 +2,240 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer components {
+.kino-ethercat-diagnostics {
+  --ke-panel: #fcfbf8;
+  --ke-panel-alt: #f4f1e8;
+  --ke-line: #d0c6b3;
+  --ke-line-strong: #aa9d84;
+  --ke-ink: #1f2933;
+  --ke-muted: #5c6773;
+  --ke-accent: #0f766e;
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem;
+  border: 1px solid var(--ke-line-strong);
+  border-radius: 8px;
+  background: var(--ke-panel);
+  color: var(--ke-ink);
+  font-family:
+    "IBM Plex Sans",
+    "Avenir Next",
+    "Segoe UI",
+    sans-serif;
+}
+
+.kino-ethercat-diagnostics .font-mono,
+.ke-diagnostics__legend-item,
+.ke-diagnostics__timeline-scroll,
+.ke-diagnostics__table-wrap table {
+  font-family:
+    "IBM Plex Mono",
+    "JetBrains Mono",
+    "SFMono-Regular",
+    ui-monospace,
+    monospace;
+}
+
+.ke-diagnostics__header {
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid var(--ke-line);
+}
+
+.ke-diagnostics__header .text-lg {
+  font-size: 1rem !important;
+  font-weight: 700;
+}
+
+.ke-diagnostics__header-stats {
+  justify-items: end;
+}
+
+.ke-diagnostics__section,
+.ke-diagnostics__chart-panel {
+  border-color: var(--ke-line) !important;
+  border-radius: 6px !important;
+  background: var(--ke-panel-alt) !important;
+  box-shadow: none !important;
+}
+
+.ke-diagnostics__chart-panel {
+  padding: 0.75rem !important;
+}
+
+.ke-diagnostics__section-header,
+.ke-diagnostics__chart-header {
+  align-items: flex-start;
+}
+
+.ke-diagnostics__accent-dot {
+  flex: none;
+  width: 0.7rem !important;
+  height: 0.7rem !important;
+}
+
+.kino-ethercat-diagnostics .rounded-xl {
+  border-radius: 6px !important;
+}
+
+.kino-ethercat-diagnostics .rounded-full {
+  border-radius: 4px !important;
+}
+
+.kino-ethercat-diagnostics .border-stone-200 {
+  border-color: var(--ke-line) !important;
+}
+
+.kino-ethercat-diagnostics .bg-white\/80,
+.kino-ethercat-diagnostics .bg-white\/70 {
+  background: white !important;
+}
+
+.kino-ethercat-diagnostics .bg-stone-50,
+.kino-ethercat-diagnostics .bg-stone-50\/80,
+.kino-ethercat-diagnostics .bg-stone-100\/80 {
+  background: var(--ke-panel-alt) !important;
+}
+
+.kino-ethercat-diagnostics .text-stone-800,
+.kino-ethercat-diagnostics .text-stone-700 {
+  color: var(--ke-ink) !important;
+}
+
+.kino-ethercat-diagnostics .text-stone-500,
+.kino-ethercat-diagnostics .text-stone-400,
+.kino-ethercat-diagnostics .text-stone-600 {
+  color: var(--ke-muted) !important;
+}
+
+.kino-ethercat-diagnostics .text-\[11px\],
+.kino-ethercat-diagnostics .text-xs {
+  font-size: 0.72rem !important;
+}
+
+.kino-ethercat-diagnostics .uppercase {
+  letter-spacing: 0.14em;
+}
+
+.ke-diagnostics__legend {
+  gap: 0.5rem;
+}
+
+.ke-diagnostics__legend-item {
+  font-size: 0.68rem !important;
+}
+
+.ke-diagnostics__legend-swatch {
+  width: 0.55rem !important;
+  height: 0.55rem !important;
+}
+
+.ke-diagnostics__chart .uplot {
+  font-family:
+    "IBM Plex Mono",
+    "JetBrains Mono",
+    "SFMono-Regular",
+    ui-monospace,
+    monospace;
+  font-size: 11px;
+}
+
+.ke-diagnostics__chart .u-title {
+  display: none;
+}
+
+.ke-diagnostics__chart .u-legend {
+  font-size: 10px;
+  color: var(--ke-muted);
+}
+
+.ke-diagnostics__chart .flex.h-\[210px\] {
+  border: 1px dashed var(--ke-line-strong);
+  border-radius: 6px !important;
+  background: white !important;
+}
+
+.kino-ethercat-diagnostics .grid.grid-cols-2.gap-2 {
+  gap: 0.35rem 0.7rem !important;
+}
+
+.kino-ethercat-diagnostics .overflow-x-auto {
+  border: 1px solid var(--ke-line);
+  border-radius: 6px;
+  background: white;
+}
+
+.kino-ethercat-diagnostics table {
+  min-width: 640px;
+}
+
+.kino-ethercat-diagnostics th {
+  padding: 0.5rem 0.6rem !important;
+  background: #efe9dc;
+  border-bottom: 1px solid var(--ke-line);
+  color: var(--ke-muted) !important;
+  font-size: 10px !important;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.kino-ethercat-diagnostics td {
+  padding: 0.5rem 0.6rem !important;
+  border-top: 1px solid var(--ke-line);
+  font-size: 0.73rem !important;
+}
+
+.kino-ethercat-diagnostics tbody tr:nth-child(even) {
+  background: #faf8f3;
+}
+
+.ke-diagnostics__timeline-scroll {
+  max-height: 24rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  display: grid;
+  gap: 0.45rem;
+  padding-right: 0.1rem;
+}
+
+.ke-diagnostics__timeline-scroll > div {
+  border-radius: 6px !important;
+  border-width: 1px !important;
+  padding: 0.55rem 0.65rem !important;
+}
+
+.ke-diagnostics__timeline-scroll::-webkit-scrollbar {
+  width: 0.55rem;
+}
+
+.ke-diagnostics__timeline-scroll::-webkit-scrollbar-thumb {
+  background: rgba(120, 113, 108, 0.35);
+  border-radius: 9999px;
+}
+
+.ke-diagnostics__timeline-scroll::-webkit-scrollbar-track {
+  background: rgba(231, 229, 228, 0.65);
+  border-radius: 9999px;
+}
+
+@media (max-width: 1024px) {
+  .kino-ethercat-diagnostics .xl\:grid-cols-\[1\.5fr_1fr\],
+  .kino-ethercat-diagnostics .xl\:grid-cols-\[1\.2fr_1fr\] {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 640px) {
   .kino-ethercat-diagnostics {
-    @apply rounded-2xl border border-stone-200 bg-gradient-to-br from-stone-50 via-white to-sky-50 shadow-sm;
+    padding: 0.75rem;
   }
 
-  .ke-diagnostics__chart .uplot {
-    @apply font-mono text-[11px];
+  .ke-diagnostics__header-stats {
+    justify-items: start;
   }
 
-  .ke-diagnostics__chart .u-title {
-    display: none;
-  }
-
-  .ke-diagnostics__chart .u-legend {
-    @apply text-[10px] text-stone-500;
-  }
-
-  .ke-diagnostics__timeline-scroll {
-    max-height: 24rem;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    scrollbar-gutter: stable;
-  }
-
-  .ke-diagnostics__timeline-scroll::-webkit-scrollbar {
-    width: 0.55rem;
-  }
-
-  .ke-diagnostics__timeline-scroll::-webkit-scrollbar-thumb {
-    background: rgba(120, 113, 108, 0.35);
-    border-radius: 9999px;
-  }
-
-  .ke-diagnostics__timeline-scroll::-webkit-scrollbar-track {
-    background: rgba(231, 229, 228, 0.65);
-    border-radius: 9999px;
+  .kino-ethercat-diagnostics .grid.grid-cols-2.gap-2 {
+    grid-template-columns: 1fr !important;
   }
 }

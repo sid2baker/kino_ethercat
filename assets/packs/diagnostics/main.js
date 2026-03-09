@@ -246,16 +246,16 @@ function ChartPanel({ title, subtitle, series, height = 210, yUnit = "", emptyLa
   const data = buildChartData(series);
 
   return (
-    <div className="rounded-2xl border border-stone-200 bg-white/70 p-3">
-      <div className="mb-3 flex items-start justify-between gap-2">
-        <div>
+    <div className="ke-diagnostics__chart-panel rounded-2xl border border-stone-200 bg-white/70 p-3">
+      <div className="ke-diagnostics__chart-header mb-3 flex items-start justify-between gap-2">
+        <div className="ke-diagnostics__chart-copy">
           <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{title}</div>
           <div className="mt-1 font-mono text-[11px] text-stone-500">{subtitle}</div>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="ke-diagnostics__legend flex flex-wrap gap-2">
           {series.map((entry) => (
-            <div key={entry.label} className="inline-flex items-center gap-1 font-mono text-[10px] text-stone-500">
-              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: entry.stroke }} />
+            <div key={entry.label} className="ke-diagnostics__legend-item inline-flex items-center gap-1 font-mono text-[10px] text-stone-500">
+              <span className="ke-diagnostics__legend-swatch inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: entry.stroke }} />
               {entry.label}
             </div>
           ))}
@@ -277,9 +277,9 @@ function ChartPanel({ title, subtitle, series, height = 210, yUnit = "", emptyLa
 
 function SummaryHeader({ data }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3">
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-center gap-2">
+    <div className="ke-diagnostics__header flex flex-wrap items-start justify-between gap-3">
+      <div className="ke-diagnostics__header-main space-y-2">
+        <div className="ke-diagnostics__header-row flex flex-wrap items-center gap-2">
           <h3 className="text-lg font-semibold tracking-tight text-stone-800">Master diagnostics</h3>
           <Badge label={data.state} tone={badgeClass(STATE_STYLES, data.state)} />
           <Badge label={data.dc?.lock_state ?? "disabled"} tone={badgeClass(LOCK_STYLES, data.dc?.lock_state ?? "disabled")} />
@@ -288,7 +288,7 @@ function SummaryHeader({ data }) {
           {data.last_failure ? `last failure ${data.last_failure}` : "no recorded master failure"}
         </div>
       </div>
-      <div className="grid gap-2 text-right text-xs text-stone-500">
+      <div className="ke-diagnostics__header-stats grid gap-2 text-right text-xs text-stone-500">
         <div className="font-mono">{sliceWindowLabel(data.slice_ms)}</div>
         <div className="font-mono">expired realtime {formatCount(data.bus.expired_realtime)}</div>
         <div className="font-mono">bus exceptions {formatCount(data.bus.exceptions)}</div>
@@ -299,13 +299,13 @@ function SummaryHeader({ data }) {
 
 function MetricCard({ title, accent, summary, children }) {
   return (
-    <section className="rounded-2xl border border-stone-200 bg-white/80 p-3">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <div>
+    <section className="ke-diagnostics__section rounded-2xl border border-stone-200 bg-white/80 p-3">
+      <div className="ke-diagnostics__section-header mb-3 flex items-center justify-between gap-2">
+        <div className="ke-diagnostics__section-copy">
           <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{title}</div>
           <div className="mt-1 font-mono text-xs text-stone-600">{summary}</div>
         </div>
-        <div className="h-3 w-3 rounded-full" style={{ backgroundColor: accent }} />
+        <div className="ke-diagnostics__accent-dot h-3 w-3 rounded-full" style={{ backgroundColor: accent }} />
       </div>
       {children}
     </section>
@@ -401,7 +401,7 @@ function FrameSection({ frames, links }) {
         )}
       </MetricCard>
 
-      <section className="rounded-2xl border border-stone-200 bg-white/80 p-3">
+      <section className="ke-diagnostics__section rounded-2xl border border-stone-200 bg-white/80 p-3">
         <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Links</div>
         {links.length === 0 ? (
           <div className="rounded-xl bg-stone-50 px-3 py-4 text-center font-mono text-xs text-stone-400">No link telemetry yet</div>
@@ -428,7 +428,7 @@ function FrameSection({ frames, links }) {
 
 function DcSection({ dc }) {
   return (
-    <section className="rounded-2xl border border-stone-200 bg-white/80 p-3">
+    <section className="ke-diagnostics__section rounded-2xl border border-stone-200 bg-white/80 p-3">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Distributed Clocks</div>
         <Badge label={dc.lock_state} tone={badgeClass(LOCK_STYLES, dc.lock_state)} />
@@ -471,7 +471,7 @@ function DcSection({ dc }) {
 
 function DomainsSection({ domains }) {
   return (
-    <section className="rounded-2xl border border-stone-200 bg-white/80 p-3">
+    <section className="ke-diagnostics__section rounded-2xl border border-stone-200 bg-white/80 p-3">
       <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Domains</div>
       {domains.length === 0 ? (
         <div className="rounded-xl bg-stone-50 px-3 py-4 text-center font-mono text-xs text-stone-400">No domains running</div>
@@ -519,7 +519,7 @@ function DomainsSection({ domains }) {
 
 function SlavesSection({ slaves }) {
   return (
-    <section className="rounded-2xl border border-stone-200 bg-white/80 p-3">
+    <section className="ke-diagnostics__section rounded-2xl border border-stone-200 bg-white/80 p-3">
       <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Slaves</div>
       {slaves.length === 0 ? (
         <div className="rounded-xl bg-stone-50 px-3 py-4 text-center font-mono text-xs text-stone-400">No slaves running</div>
@@ -561,7 +561,7 @@ function SlavesSection({ slaves }) {
 
 function TimelineSection({ timeline }) {
   return (
-    <section className="rounded-2xl border border-stone-200 bg-white/80 p-3">
+    <section className="ke-diagnostics__section rounded-2xl border border-stone-200 bg-white/80 p-3">
       <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Event Timeline</div>
       {timeline.length === 0 ? (
         <div className="rounded-xl bg-stone-50 px-3 py-4 text-center font-mono text-xs text-stone-400">No fault or recovery events yet</div>
@@ -592,7 +592,7 @@ function Diagnostics({ ctx, data }) {
   }, [ctx]);
 
   return (
-    <div className="kino-ethercat-diagnostics space-y-3 p-4 font-sans text-sm">
+    <div className="kino-ethercat-diagnostics">
       <SummaryHeader data={snapshot} />
       <TransactionSection transactions={snapshot.bus.transactions} queues={snapshot.bus.queues} />
       <FrameSection frames={snapshot.bus.frames} links={snapshot.bus.links} />
