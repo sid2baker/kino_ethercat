@@ -137,9 +137,15 @@ defmodule KinoEtherCAT.SmartCells.SetupSource do
   defp normalize_domains(_domains), do: [default_domain()]
 
   defp normalize_domain(domain) when is_map(domain) do
+    cycle_time_ms =
+      domain
+      |> Map.get("cycle_time_ms", domain_ms_from_legacy(domain))
+      |> positive_integer(domain_ms_from_legacy(domain))
+
     %{
       id: domain |> Map.get("id", "main") |> String.trim(),
-      cycle_time_us: domain |> Map.get("cycle_time_us", 10_000) |> positive_integer(10_000),
+      cycle_time_ms: cycle_time_ms,
+      cycle_time_us: cycle_time_ms * 1_000,
       miss_threshold: domain |> Map.get("miss_threshold", 1_000) |> positive_integer(1_000)
     }
   end
@@ -239,18 +245,34 @@ defmodule KinoEtherCAT.SmartCells.SetupSource do
     [
       %{
         "id" => Map.get(attrs, "domain_id", "main"),
-        "cycle_time_us" => Map.get(attrs, "cycle_time_us", 10_000),
+        "cycle_time_ms" => legacy_cycle_time_ms(attrs),
         "miss_threshold" => 1_000
       }
     ]
   end
 
   defp default_domain do
-    %{id: "main", cycle_time_us: 10_000, miss_threshold: 1_000}
+    %{id: "main", cycle_time_ms: 10, cycle_time_us: 10_000, miss_threshold: 1_000}
   end
 
-  defp default_dc_cycle_ns([domain | _rest]), do: domain.cycle_time_us * 1_000
+  defp default_dc_cycle_ns([domain | _rest]), do: domain.cycle_time_ms * 1_000_000
   defp default_dc_cycle_ns([]), do: 10_000_000
+
+  defp domain_ms_from_legacy(domain) do
+    domain
+    |> Map.get("cycle_time_us", 10_000)
+    |> positive_integer(10_000)
+    |> Kernel.div(1_000)
+    |> max(1)
+  end
+
+  defp legacy_cycle_time_ms(attrs) do
+    attrs
+    |> Map.get("cycle_time_us", 10_000)
+    |> positive_integer(10_000)
+    |> Kernel.div(1_000)
+    |> max(1)
+  end
 
   defp indent_lines(content, spaces) do
     padding = String.duplicate(" ", spaces)

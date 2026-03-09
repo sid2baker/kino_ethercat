@@ -10,12 +10,12 @@ defmodule KinoEtherCAT.SmartCellsTest do
         "domains" => [
           %{
             "id" => "fast",
-            "cycle_time_us" => 1_000,
+            "cycle_time_ms" => 1,
             "miss_threshold" => 1_000
           },
           %{
             "id" => "slow",
-            "cycle_time_us" => 4_000,
+            "cycle_time_ms" => 4,
             "miss_threshold" => 250
           }
         ],

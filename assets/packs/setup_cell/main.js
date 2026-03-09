@@ -34,7 +34,7 @@ function nextDomain(domains) {
 
   return {
     id: `domain_${suffix}`,
-    cycle_time_us: 10000,
+    cycle_time_ms: 10,
     miss_threshold: 1000,
   };
 }
@@ -142,15 +142,15 @@ function DomainCard({ domain, index, canRemove, onChange, onCommit, onRemove }) 
         </label>
 
         <label className="ke-setup__field">
-          <span className="ke-setup__label">Cycle Time (us)</span>
+          <span className="ke-setup__label">Cycle Time (ms)</span>
           <input
             className="ke-setup__input"
             type="number"
-            min="1000"
-            step="1000"
-            value={domain.cycle_time_us}
-            onChange={(event) => onChange({ cycle_time_us: Number(event.target.value) || 10000 })}
-            onBlur={(event) => onCommit({ cycle_time_us: Number(event.target.value) || 10000 })}
+            min="1"
+            step="1"
+            value={domain.cycle_time_ms}
+            onChange={(event) => onChange({ cycle_time_ms: Number(event.target.value) || 10 })}
+            onBlur={(event) => onCommit({ cycle_time_ms: Number(event.target.value) || 10 })}
           />
         </label>
 
