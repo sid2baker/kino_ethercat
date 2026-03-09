@@ -86,7 +86,7 @@
   text-transform: uppercase;
 }
 
-.ke-setup__phase {
+.ke-setup__state {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -98,30 +98,35 @@
   letter-spacing: 0.14em;
 }
 
-.ke-setup__phase--idle {
+.ke-setup__state--idle {
   background: #e2e8f0;
   color: #475569;
 }
 
-.ke-setup__phase--scanning,
-.ke-setup__phase--configuring {
+.ke-setup__state--discovering,
+.ke-setup__state--awaiting_preop {
   background: #dbeafe;
   color: #1d4ed8;
 }
 
-.ke-setup__phase--preop_ready {
+.ke-setup__state--preop_ready {
   background: #fef3c7;
   color: #b45309;
 }
 
-.ke-setup__phase--operational {
+.ke-setup__state--operational {
   background: #dcfce7;
   color: #15803d;
 }
 
-.ke-setup__phase--degraded {
+.ke-setup__state--activation_blocked {
   background: #fee2e2;
   color: #b91c1c;
+}
+
+.ke-setup__state--recovering {
+  background: #fef3c7;
+  color: #b45309;
 }
 
 .ke-setup__toolbar {

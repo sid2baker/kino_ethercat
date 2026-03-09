@@ -16,17 +16,17 @@ running setup reacts when you disconnect and reconnect a slave segment.
 ## Helpers
 
 ```elixir
-await_phase = fn expected_phase, timeout_ms ->
+await_state = fn expected_state, timeout_ms ->
   deadline = System.monotonic_time(:millisecond) + timeout_ms
 
-  Stream.repeatedly(fn -> EtherCAT.phase() end)
-  |> Enum.reduce_while(nil, fn phase, _acc ->
+  Stream.repeatedly(fn -> EtherCAT.state() end)
+  |> Enum.reduce_while(nil, fn state, _acc ->
     cond do
-      phase == expected_phase ->
+      state == expected_state ->
         {:halt, :ok}
 
       System.monotonic_time(:millisecond) >= deadline ->
-        {:halt, {:error, {:timeout, expected_phase, phase}}}
+        {:halt, {:error, {:timeout, expected_state, state}}}
 
       true ->
         Process.sleep(100)
@@ -61,7 +61,7 @@ end
 
 ```elixir
 %{
-  phase: EtherCAT.phase(),
+  state: EtherCAT.state(),
   outputs: EtherCAT.slave_info(:outputs),
   diagnostics: EtherCAT.domain_info(:main)
 }
@@ -75,9 +75,9 @@ Disconnect the cable after `:outputs`, then evaluate the next cell.
 
 ```elixir
 %{
-  degraded: await_phase.(:degraded, 10_000),
+  recovering: await_state.(:recovering, 10_000),
   outputs: await_slave_state.(:outputs, :safeop, 10_000),
-  phase_after: EtherCAT.phase(),
+  state_after: EtherCAT.state(),
   outputs_after: EtherCAT.slave_info(:outputs)
 }
 ```
@@ -91,9 +91,9 @@ the next cell.
 
 ```elixir
 %{
-  operational: await_phase.(:operational, 15_000),
+  operational: await_state.(:operational, 15_000),
   outputs: await_slave_state.(:outputs, :op, 15_000),
-  phase_after: EtherCAT.phase(),
+  state_after: EtherCAT.state(),
   outputs_after: EtherCAT.slave_info(:outputs)
 }
 ```
@@ -102,7 +102,7 @@ the next cell.
 
 ```elixir
 %{
-  phase: EtherCAT.phase(),
+  state: EtherCAT.state(),
   outputs: EtherCAT.slave_info(:outputs)
 }
 ```

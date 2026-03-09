@@ -12,7 +12,7 @@ defmodule KinoEtherCAT.Runtime do
   def master do
     case fetch_master_state() do
       {:ok, _state_name, %Master{} = master} -> master
-      _ -> %Master{activation_phase: :idle}
+      _ -> struct(Master, activation_phase: :idle)
     end
   end
 
@@ -20,7 +20,7 @@ defmodule KinoEtherCAT.Runtime do
   def slave(name) when is_atom(name) do
     case fetch_slave_state(name) do
       {:ok, _state_name, %Slave{} = slave} -> slave
-      _ -> %Slave{name: name}
+      _ -> struct(Slave, name: name)
     end
   end
 
@@ -28,7 +28,7 @@ defmodule KinoEtherCAT.Runtime do
   def domain(id) when is_atom(id) do
     case fetch_domain_state(id) do
       {:ok, _state_name, %Domain{} = domain} -> domain
-      _ -> %Domain{id: id}
+      _ -> struct(Domain, id: id)
     end
   end
 
@@ -63,8 +63,7 @@ defmodule KinoEtherCAT.Runtime do
   def payload(resource, message \\ nil)
 
   def payload(%Master{} = master, message) do
-    phase = runtime_phase(master.activation_phase || :idle)
-    state_name = fetch_state_name(master)
+    public_state = runtime_state(fetch_state_name(master) || :idle)
     slaves = runtime_slaves()
     domains = runtime_domains()
     dc_status = dc_snapshot(dc())
@@ -110,11 +109,10 @@ defmodule KinoEtherCAT.Runtime do
     %{
       kind: "master",
       title: "EtherCAT Master",
-      status: to_string(phase),
+      status: to_string(public_state),
       message: message,
       summary: [
-        %{label: "Phase", value: to_string(phase)},
-        %{label: "State", value: to_string(state_name || :unknown)},
+        %{label: "State", value: to_string(public_state)},
         %{label: "Slaves", value: Integer.to_string(length(slaves))},
         %{label: "Domains", value: Integer.to_string(length(domains))},
         %{label: "DC lock", value: to_string(dc_status.lock_state || :disabled)},
@@ -502,9 +500,9 @@ defmodule KinoEtherCAT.Runtime do
     end
   end
 
-  defp runtime_phase(default) do
-    case safe(fn -> EtherCAT.phase() end, default) do
-      phase when is_atom(phase) -> phase
+  defp runtime_state(default) do
+    case safe(fn -> EtherCAT.state() end, default) do
+      state when is_atom(state) -> state
       _ -> default
     end
   end

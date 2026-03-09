@@ -132,7 +132,7 @@ defmodule KinoEtherCAT.Diagnostics.Panel do
 
   defp fetch_snapshot do
     %{
-      phase: to_string(safe(fn -> EtherCAT.phase() end, :idle)),
+      state: to_string(safe(fn -> EtherCAT.state() end, :idle)),
       last_failure: format_failure(safe(fn -> EtherCAT.last_failure() end, nil)),
       slaves: fetch_slaves(),
       domains: fetch_domains(),

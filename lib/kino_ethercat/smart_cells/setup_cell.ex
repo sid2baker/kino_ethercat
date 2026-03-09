@@ -9,13 +9,13 @@ defmodule KinoEtherCAT.SmartCells.Setup do
   def init(attrs, ctx) do
     config = normalize_attrs(attrs)
     status = if config.slaves == [], do: :idle, else: :discovered
-    Process.send_after(self(), :poll_phase, 500)
+    Process.send_after(self(), :poll_state, 500)
 
     {:ok,
      assign(ctx,
        status: status,
        error: nil,
-       master_phase: runtime_phase(),
+       master_state: runtime_state(),
        master_pid: Process.whereis(EtherCAT.Master),
        interface: config.interface,
        slaves: config.slaves,
@@ -54,7 +54,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
       assign(ctx,
         status: :idle,
         error: nil,
-        master_phase: :idle,
+        master_state: :idle,
         master_pid: nil
       )
 
@@ -89,7 +89,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
         status: :discovered,
         slaves: slaves,
         error: nil,
-        master_phase: runtime_phase(),
+        master_state: runtime_state(),
         master_pid: Process.whereis(EtherCAT.Master)
       )
 
@@ -103,14 +103,14 @@ defmodule KinoEtherCAT.SmartCells.Setup do
     {:noreply, ctx}
   end
 
-  def handle_info(:poll_phase, ctx) do
-    Process.send_after(self(), :poll_phase, 2_000)
+  def handle_info(:poll_state, ctx) do
+    Process.send_after(self(), :poll_state, 2_000)
 
-    phase = runtime_phase()
+    state = runtime_state()
     pid = Process.whereis(EtherCAT.Master)
 
-    if phase != ctx.assigns.master_phase or pid != ctx.assigns.master_pid do
-      ctx = assign(ctx, master_phase: phase, master_pid: pid)
+    if state != ctx.assigns.master_state or pid != ctx.assigns.master_pid do
+      ctx = assign(ctx, master_state: state, master_pid: pid)
       broadcast_event(ctx, "snapshot", payload(ctx.assigns))
       {:noreply, ctx}
     else
@@ -214,7 +214,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
       lock_threshold_ns: assigns.lock_threshold_ns,
       lock_timeout_ms: assigns.lock_timeout_ms,
       warmup_cycles: assigns.warmup_cycles,
-      master_phase: to_string(assigns.master_phase),
+      master_state: to_string(assigns.master_state),
       master_pid: format_pid(assigns.master_pid),
       available_drivers:
         Enum.map(KinoEtherCAT.Driver.all(), fn %{module: mod, name: name} ->
@@ -342,9 +342,9 @@ defmodule KinoEtherCAT.SmartCells.Setup do
   defp default_dc_cycle_ns([domain | _rest]), do: domain["cycle_time_us"] * 1_000
   defp default_dc_cycle_ns([]), do: 10_000_000
 
-  defp runtime_phase do
-    case EtherCAT.phase() do
-      phase when is_atom(phase) -> phase
+  defp runtime_state do
+    case EtherCAT.state() do
+      state when is_atom(state) -> state
       _ -> :idle
     end
   rescue

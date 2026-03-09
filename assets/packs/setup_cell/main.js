@@ -99,8 +99,8 @@ function driverSelectValue(slave, availableDrivers) {
   return slave.driver === "" || known.includes(slave.driver) ? slave.driver : CUSTOM;
 }
 
-function PhaseBadge({ phase }) {
-  return <span className={`ke-setup__phase ke-setup__phase--${phase ?? "idle"}`}>{phase ?? "idle"}</span>;
+function StateBadge({ state }) {
+  return <span className={`ke-setup__state ke-setup__state--${state ?? "idle"}`}>{state ?? "idle"}</span>;
 }
 
 function Section({ title, eyebrow, children, actions = null }) {
@@ -300,15 +300,15 @@ function SetupCell({ ctx, data }) {
           <h2 className="ke-setup__title">Discover live, persist static startup</h2>
           <p className="ke-setup__description">
             Scan the running bus, assign drivers and domains, then keep the notebook output as a single
-            static <code>EtherCAT.start/1</code> call. The generated cell returns the master pid once the
-            session is operational.
+            static <code>EtherCAT.start/1</code> call. The generated cell finishes with master and
+            diagnostics tabs once the session is operational.
           </p>
         </div>
 
         <div className="ke-setup__status-panel">
           <div className="ke-setup__status-row">
-            <span className="ke-setup__status-label">Phase</span>
-            <PhaseBadge phase={state.master_phase} />
+            <span className="ke-setup__status-label">State</span>
+            <StateBadge state={state.master_state} />
           </div>
           <div className="ke-setup__status-row">
             <span className="ke-setup__status-label">Master PID</span>

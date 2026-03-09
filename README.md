@@ -28,14 +28,14 @@ KinoEtherCAT registers multiple Smart Cells in Livebook (available via **+ Smart
 
 ### EtherCAT Setup
 
-Scans the bus, discovers connected slaves, lets you assign names and drivers, and generates a static `EtherCAT.start/1` call that returns the running master pid.
+Scans the bus, discovers connected slaves, lets you assign names and drivers, and generates a static `EtherCAT.start/1` call that ends with master and diagnostics tabs.
 
 - Set the network interface and click **Scan Bus**
 - Assign a human-readable name to each slave
 - Pick a built-in driver from the dropdown (auto-detected by vendor/product ID) or type a custom module name
 - Configure multiple domains and assign each slave to a domain
 - Tune grouped DC settings without leaving the cell
-- The master phase badge (top-right) shows live EtherCAT state
+- The master state badge (top-right) shows the live EtherCAT lifecycle state
 
 ### EtherCAT Visualizer
 

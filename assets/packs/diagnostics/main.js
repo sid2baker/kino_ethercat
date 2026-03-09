@@ -11,13 +11,14 @@ export async function init(ctx, data) {
   root.render(<Diagnostics ctx={ctx} data={data} />);
 }
 
-const PHASE_STYLES = {
+const STATE_STYLES = {
   idle: "bg-stone-200 text-stone-600",
-  scanning: "bg-sky-100 text-sky-800",
-  configuring: "bg-amber-100 text-amber-800",
+  discovering: "bg-sky-100 text-sky-800",
+  awaiting_preop: "bg-sky-100 text-sky-800",
   preop_ready: "bg-amber-100 text-amber-800",
   operational: "bg-emerald-100 text-emerald-800",
-  degraded: "bg-rose-100 text-rose-800",
+  activation_blocked: "bg-rose-100 text-rose-800",
+  recovering: "bg-amber-100 text-amber-800",
 };
 
 const EVENT_STYLES = {
@@ -280,7 +281,7 @@ function SummaryHeader({ data }) {
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="text-lg font-semibold tracking-tight text-stone-800">Master diagnostics</h3>
-          <Badge label={data.phase} tone={badgeClass(PHASE_STYLES, data.phase)} />
+          <Badge label={data.state} tone={badgeClass(STATE_STYLES, data.state)} />
           <Badge label={data.dc?.lock_state ?? "disabled"} tone={badgeClass(LOCK_STYLES, data.dc?.lock_state ?? "disabled")} />
         </div>
         <div className="font-mono text-xs text-stone-500">

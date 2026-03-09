@@ -20,7 +20,7 @@ defmodule KinoEtherCAT.Diagnostics.State do
       event_limit: event_limit,
       slice_ms: slice_ms,
       snapshot: %{
-        phase: "idle",
+        state: "idle",
         last_failure: nil,
         slaves: [],
         domains: [],
@@ -320,7 +320,7 @@ defmodule KinoEtherCAT.Diagnostics.State do
   @spec payload(map()) :: map()
   def payload(state) do
     %{
-      phase: state.snapshot.phase,
+      state: state.snapshot.state,
       last_failure: state.snapshot.last_failure,
       slice_ms: state.slice_ms,
       slaves: payload_slaves(state),

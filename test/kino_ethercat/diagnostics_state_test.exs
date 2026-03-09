@@ -7,7 +7,7 @@ defmodule KinoEtherCAT.DiagnosticsStateTest do
     state =
       State.new(history_limit: 5)
       |> State.apply_poll_snapshot(%{
-        phase: "operational",
+        state: "operational",
         last_failure: nil,
         slaves: [],
         domains: [],
@@ -26,7 +26,7 @@ defmodule KinoEtherCAT.DiagnosticsStateTest do
 
     payload = State.payload(state)
 
-    assert payload.phase == "operational"
+    assert payload.state == "operational"
     assert payload.slice_ms == 1_000
     assert payload.bus.queues.realtime.peak_depth == 3
     assert_in_delta List.last(payload.bus.queues.realtime.slices).value, 3.0, 0.1
