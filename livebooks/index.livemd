@@ -1,0 +1,12 @@
+# Kino EtherCAT
+
+Welcome to the interactive documentation and testing suite for `kino_ethercat`.
+
+## Testing & Diagnostics
+
+The following notebooks are available for testing and verifying your EtherCAT setup:
+
+* [Loopback Smoke Test](./testing/loopback_smoke.livemd)
+* [Distributed Clocks (DC) Lock](./testing/dc_lock.livemd)
+* [Fault Tolerance (Manual)](./testing/fault_tolerance_manual.livemd)
+* [Watchdog Recovery](./testing/watchdog_recovery.livemd)

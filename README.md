@@ -1,5 +1,7 @@
 # KinoEtherCAT
 
+[![Run in Livebook](https://livebook.dev/badges/run-in-livebook-latest.svg)](https://livebook.dev/run?url=https%3A%2F%2Fgithub.com%2Fsid2baker%2Fkino_ethercat%2Fblob%2Fmain%2Flivebooks%2Findex.livemd)
+
 [Livebook](https://livebook.dev) and [Kino](https://github.com/livebook-dev/kino) tools for [EtherCAT](https://github.com/sid2baker/ethercat) discovery, runtime inspection, diagnostics, and hardware bring-up.
 
 ## Installation
