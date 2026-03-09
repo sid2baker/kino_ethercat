@@ -28,7 +28,7 @@ defmodule KinoEtherCAT.SlaveSnapshotTest do
       SlaveSnapshot.build(
         :rack,
         info,
-        %{ch1: 1, temperature: {:ok, 25.0}},
+        %{ch1: {1, 101}, temperature: {:ok, 25.0}},
         [%{id: "main", state: "cycling", miss_count: 0, total_miss_count: 0, expected_wkc: 3}],
         nil,
         nil,
@@ -39,9 +39,52 @@ defmodule KinoEtherCAT.SlaveSnapshotTest do
     assert snapshot.summary.name == "rack"
     assert snapshot.summary.driver == "KinoEtherCAT.Driver.EL1809"
     assert snapshot.summary.identity.vendor_id == 0x2
-    assert [%{name: "ch1", active: true, display: "1"} | _] = snapshot.inputs
-    assert Enum.any?(snapshot.inputs, &(&1.name == "temperature" and &1.display == "{:ok, 25.0}"))
+    assert [%{name: "ch1", active: true, display: "1", updated_at_us: 101} | _] = snapshot.inputs
+
+    assert Enum.any?(
+             snapshot.inputs,
+             &(&1.name == "temperature" and &1.display == "{:ok, 25.0}" and
+                 &1.updated_at_us == nil)
+           )
+
     assert [%{name: "q1", writable: true, display: "awaiting data"}] = snapshot.outputs
+  end
+
+  test "extracts input sample timestamps from read_input tuples" do
+    info = %{
+      name: :rack,
+      station: 0x1001,
+      al_state: :op,
+      driver: KinoEtherCAT.Driver.EL1809,
+      coe: true,
+      configuration_error: nil,
+      identity: nil,
+      signals: [
+        %{name: :ch1, domain: :main, direction: :input, bit_size: 1},
+        %{name: :temperature, domain: :main, direction: :input, bit_size: 16}
+      ]
+    }
+
+    snapshot =
+      SlaveSnapshot.build(
+        :rack,
+        info,
+        %{ch1: {1, 101}, temperature: {24.5, 202}},
+        [],
+        nil,
+        nil,
+        []
+      )
+
+    assert Enum.any?(
+             snapshot.inputs,
+             &(&1.name == "ch1" and &1.updated_at_us == 101 and &1.display == "1")
+           )
+
+    assert Enum.any?(
+             snapshot.inputs,
+             &(&1.name == "temperature" and &1.updated_at_us == 202 and &1.display == "24.5")
+           )
   end
 
   test "builds an unavailable snapshot when the slave is missing" do

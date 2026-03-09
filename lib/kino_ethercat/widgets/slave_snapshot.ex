@@ -51,7 +51,8 @@ defmodule KinoEtherCAT.Widgets.SlaveSnapshot do
 
   defp signal_view(signal, values) do
     known? = Map.has_key?(values, signal.name)
-    value = Map.get(values, signal.name)
+    sample = Map.get(values, signal.name)
+    value = sample_value(sample)
     bit_signal? = signal.bit_size == 1
 
     %{
@@ -63,6 +64,7 @@ defmodule KinoEtherCAT.Widgets.SlaveSnapshot do
       known: known?,
       active: if(bit_signal? and known?, do: active?(value), else: nil),
       display: display_value(value, known?),
+      updated_at_us: updated_at_us(sample),
       writable: signal.direction == :output and bit_signal?
     }
   end
@@ -93,6 +95,12 @@ defmodule KinoEtherCAT.Widgets.SlaveSnapshot do
 
   defp display_value(_value, false), do: "awaiting data"
   defp display_value(value, true), do: inspect(value, pretty: false, limit: 8)
+
+  defp sample_value({value, updated_at_us}) when is_integer(updated_at_us), do: value
+  defp sample_value(value), do: value
+
+  defp updated_at_us({_value, updated_at_us}) when is_integer(updated_at_us), do: updated_at_us
+  defp updated_at_us(_value), do: nil
 
   defp active?(true), do: true
   defp active?(false), do: false

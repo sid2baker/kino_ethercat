@@ -75,9 +75,11 @@ defmodule KinoEtherCAT.Widgets.SlavePanel do
   @impl true
   def handle_info({:ethercat, :signal, slave_name, signal_name, value}, ctx)
       when slave_name == ctx.assigns.slave_name do
+    next_value = latest_signal_value(ctx.assigns, signal_name, value)
+
     state =
       ctx.assigns
-      |> update_in([:pending], &Map.put(&1, signal_name, value))
+      |> update_in([:pending], &Map.put(&1, signal_name, next_value))
       |> schedule_flush()
 
     {:noreply, assign(ctx, state)}
@@ -170,6 +172,19 @@ defmodule KinoEtherCAT.Widgets.SlavePanel do
         _ -> acc
       end
     end)
+  end
+
+  defp latest_signal_value(state, signal_name, fallback_value) do
+    case Map.get(state.signal_meta, to_string(signal_name)) do
+      %{direction: :input, name: input_name} ->
+        case EtherCAT.read_input(state.slave_name, input_name) do
+          {:ok, value} -> value
+          {:error, _reason} -> fallback_value
+        end
+
+      _ ->
+        fallback_value
+    end
   end
 
   defp fetch_domains(signals) do

@@ -11,9 +11,13 @@ export async function init(ctx, data) {
 
 function Value({ ctx, data }) {
   const [value, setValue] = useState(data.value);
+  const [updatedAtUs, setUpdatedAtUs] = useState(data.updated_at_us);
 
   useEffect(() => {
-    ctx.handleEvent("value_updated", ({ value }) => setValue(value));
+    ctx.handleEvent("value_updated", ({ value, updated_at_us }) => {
+      setValue(value);
+      setUpdatedAtUs(updated_at_us);
+    });
   }, []);
 
   return (
@@ -21,6 +25,9 @@ function Value({ ctx, data }) {
       <div className="text-xs text-gray-400 font-mono mb-0.5">{data.label}</div>
       <div className="text-sm text-gray-700 font-mono break-all">
         {value ?? <span className="text-gray-300">—</span>}
+      </div>
+      <div className="mt-1 text-[11px] text-gray-400 font-mono">
+        {updatedAtUs == null ? "awaiting sample time" : `updated ${updatedAtUs} us`}
       </div>
     </div>
   );

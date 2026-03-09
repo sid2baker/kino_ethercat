@@ -179,6 +179,11 @@ function SignalCard({ signal, ctx }) {
       <div className="mt-3 rounded-lg bg-white px-3 py-2 font-mono text-xs text-stone-700">
         {signal.display}
       </div>
+      {signal.updated_at_us != null && (
+        <div className="mt-1 font-mono text-[11px] text-stone-400">
+          updated {signal.updated_at_us} us
+        </div>
+      )}
 
       {signal.writable ? (
         <div className="mt-3 flex gap-2">
