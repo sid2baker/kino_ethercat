@@ -23,22 +23,26 @@ function Switch({ ctx, data }) {
   }
 
   return (
-    <div className="flex items-center gap-3 p-2">
-      <button
-        onClick={handleToggle}
-        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
-          isOn ? "bg-green-500" : "bg-gray-300"
-        }`}
-        role="switch"
-        aria-checked={isOn}
-      >
-        <span
-          className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-md transform transition-transform duration-200 ${
-            isOn ? "translate-x-5" : "translate-x-0"
-          }`}
-        />
-      </button>
-      <span className="text-sm text-gray-700 font-mono">{data.label}</span>
+    <div className="ke-switch">
+      <div className="ke-switch__copy">
+        <div className="ke-switch__label">{data.label}</div>
+        <div className="ke-switch__meta">manual output control</div>
+      </div>
+
+      <div className="ke-switch__controls">
+        <span className={`ke-switch__badge ${isOn ? "ke-switch__badge--on" : "ke-switch__badge--off"}`}>
+          {isOn ? "on" : "off"}
+        </span>
+
+        <button
+          onClick={handleToggle}
+          className={`ke-switch__toggle ${isOn ? "ke-switch__toggle--on" : "ke-switch__toggle--off"}`}
+          role="switch"
+          aria-checked={isOn}
+        >
+          <span className={`ke-switch__thumb ${isOn ? "ke-switch__thumb--on" : "ke-switch__thumb--off"}`} />
+        </button>
+      </div>
     </div>
   );
 }

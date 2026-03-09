@@ -11,10 +11,10 @@ export async function init(ctx, data) {
 }
 
 const COLOR_MAP = {
-  green: { on: "bg-green-400 shadow-green-400", off: "bg-green-900" },
-  red: { on: "bg-red-400 shadow-red-400", off: "bg-red-900" },
-  yellow: { on: "bg-yellow-300 shadow-yellow-300", off: "bg-yellow-900" },
-  blue: { on: "bg-blue-400 shadow-blue-400", off: "bg-blue-900" },
+  green: { on: "ke-indicator__dot--green-on", off: "ke-indicator__dot--green-off" },
+  red: { on: "ke-indicator__dot--red-on", off: "ke-indicator__dot--red-off" },
+  yellow: { on: "ke-indicator__dot--yellow-on", off: "ke-indicator__dot--yellow-off" },
+  blue: { on: "ke-indicator__dot--blue-on", off: "ke-indicator__dot--blue-off" },
 };
 
 function LED({ ctx, data }) {
@@ -27,13 +27,17 @@ function LED({ ctx, data }) {
   }, []);
 
   return (
-    <div className="flex items-center gap-2 p-2">
-      <div
-        className={`w-4 h-4 rounded-full transition-all duration-150 ${
-          isOn ? `${colors.on} shadow-[0_0_8px_2px]` : colors.off
-        }`}
-      />
-      <span className="text-sm text-gray-700 font-mono">{data.label}</span>
+    <div className="ke-indicator">
+      <div className="ke-indicator__main">
+        <span className={`ke-indicator__dot ${isOn ? colors.on : colors.off}`} />
+        <div className="ke-indicator__copy">
+          <div className="ke-indicator__label">{data.label}</div>
+          <div className="ke-indicator__meta">{isOn ? "active" : "inactive"}</div>
+        </div>
+      </div>
+      <span className={`ke-indicator__badge ${isOn ? "ke-indicator__badge--on" : "ke-indicator__badge--off"}`}>
+        {isOn ? "on" : "off"}
+      </span>
     </div>
   );
 }

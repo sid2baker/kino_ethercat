@@ -12,6 +12,13 @@ defmodule KinoEtherCAT.RuntimeTest do
     assert dc_resource?(KinoEtherCAT.dc())
   end
 
+  test "dc status resources stay renderable" do
+    if Code.ensure_loaded?(EtherCAT.DC.Status) and
+         function_exported?(EtherCAT.DC.Status, :__struct__, 0) do
+      assert not is_nil(Kino.Render.impl_for(struct(EtherCAT.DC.Status)))
+    end
+  end
+
   test "runtime payloads expose top-level controls and degrade gracefully when not started" do
     assert %{kind: "master", controls: %{buttons: buttons}} = Runtime.payload(%Master{})
     assert Enum.any?(buttons, &(&1.id == "activate"))
