@@ -12,7 +12,9 @@ defmodule KinoEtherCAT.Widgets.LED do
       :ok ->
         label = Keyword.get(opts, :label, "#{signal}")
         color = Keyword.get(opts, :color, "green")
-        {:ok, assign(ctx, slave: slave, signal: signal, value: 0, label: label, color: color)}
+        value = initial_value(slave, signal)
+
+        {:ok, assign(ctx, slave: slave, signal: signal, value: value, label: label, color: color)}
 
       {:error, reason} ->
         {:stop, reason}
@@ -27,7 +29,18 @@ defmodule KinoEtherCAT.Widgets.LED do
 
   @impl true
   def handle_info({:ethercat, :signal, _slave, _signal, value}, ctx) do
+    value = normalize_value(value)
     broadcast_event(ctx, "value_updated", %{value: value})
     {:noreply, assign(ctx, value: value)}
   end
+
+  defp initial_value(slave, signal) do
+    case EtherCAT.read_input(slave, signal) do
+      {:ok, value} -> normalize_value(value)
+      {:error, _reason} -> 0
+    end
+  end
+
+  defp normalize_value({value, updated_at_us}) when is_integer(updated_at_us), do: value
+  defp normalize_value(value), do: value
 end

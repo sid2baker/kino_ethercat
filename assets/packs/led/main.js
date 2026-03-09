@@ -20,7 +20,7 @@ const COLOR_MAP = {
 function LED({ ctx, data }) {
   const [value, setValue] = useState(data.value);
   const colors = COLOR_MAP[data.color] ?? COLOR_MAP.green;
-  const isOn = value === 1;
+  const isOn = isActive(value);
 
   useEffect(() => {
     ctx.handleEvent("value_updated", ({ value }) => setValue(value));
@@ -36,4 +36,20 @@ function LED({ ctx, data }) {
       <span className="text-sm text-gray-700 font-mono">{data.label}</span>
     </div>
   );
+}
+
+function isActive(value) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    return value !== 0;
+  }
+
+  if (typeof value === "string") {
+    return value !== "0" && value.toLowerCase() !== "false" && value !== "";
+  }
+
+  return false;
 }
