@@ -140,16 +140,19 @@ export async function init(ctx, payload) {
       )
       .join("");
 
+    const description = state.description
+      ? `<div class="kino-ethercat-explorer__description">${escapeHtml(state.description)}</div>`
+      : "";
+
     ctx.root.innerHTML = `
       <div class="kino-ethercat-explorer">
         <div class="kino-ethercat-explorer__header">
-          <div>
-            <div class="kino-ethercat-explorer__eyebrow">Smart Cell</div>
+          <div class="kino-ethercat-explorer__header-main">
             <h3 class="kino-ethercat-explorer__title">${escapeHtml(state.title)}</h3>
+            ${description}
           </div>
           <div class="kino-ethercat-explorer__actions">${actions}</div>
         </div>
-        <p class="kino-ethercat-explorer__description">${escapeHtml(state.description)}</p>
         <div class="kino-ethercat-explorer__grid">${fields}</div>
       </div>
     `;

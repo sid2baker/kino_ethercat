@@ -28,7 +28,7 @@ export async function init(ctx, data) {
 
 function GripIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" className="text-gray-300">
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
       <circle cx="4" cy="3" r="1.2" />
       <circle cx="10" cy="3" r="1.2" />
       <circle cx="4" cy="7" r="1.2" />
@@ -52,7 +52,7 @@ function TrashIcon() {
 
 // ── Sortable slave row ────────────────────────────────────────────────────────
 
-function SlaveRow({ entry, onRemove, onOptsChange }) {
+function SlaveRow({ entry, position, onRemove }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: entry.name });
 
@@ -67,24 +67,24 @@ function SlaveRow({ entry, onRemove, onOptsChange }) {
     <li
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-2 px-2 py-1.5 rounded bg-white border border-gray-200 shadow-sm"
+      className={`ke-visualizer__row${isDragging ? " ke-visualizer__row--dragging" : ""}`}
     >
-      {/* Drag handle */}
       <button
-        className="cursor-grab active:cursor-grabbing touch-none text-gray-300 hover:text-gray-500 flex-shrink-0"
+        className="ke-visualizer__handle"
+        title="Reorder"
         {...attributes}
         {...listeners}
       >
         <GripIcon />
       </button>
 
-      {/* Slave name */}
-      <span className="font-mono text-sm text-gray-700 flex-1">{entry.name}</span>
+      <span className="ke-visualizer__position">{String(position + 1).padStart(2, "0")}</span>
 
-      {/* Remove button */}
+      <span className="ke-visualizer__name">{entry.name}</span>
+
       <button
         onClick={() => onRemove(entry.name)}
-        className="text-gray-300 hover:text-red-400 transition-colors flex-shrink-0"
+        className="ke-visualizer__remove"
         title="Remove"
       >
         <TrashIcon />
@@ -139,64 +139,79 @@ function VisualizerCell({ ctx, data }) {
   };
 
   return (
-    <div className="p-3 space-y-2 font-sans text-sm select-none">
-      {/* Header */}
-      <div className="flex items-center gap-2">
-        <span className="text-gray-600 font-medium">EtherCAT slaves</span>
-        <button
-          onClick={() => ctx.pushEvent("refresh")}
-          className="px-2 py-0.5 text-xs border border-gray-300 rounded text-gray-500 hover:bg-gray-50 hover:border-gray-400 transition-colors"
-        >
-          Refresh
-        </button>
-        <label className="ml-auto flex items-center gap-1 text-xs text-gray-400">
-          <span>panel columns</span>
-          <input
-            type="number"
-            min="1"
-            max="4"
-            placeholder="auto"
-            className="w-11 border border-gray-300 rounded px-1 py-0.5 font-mono text-xs focus:outline-none focus:border-blue-400 text-gray-700"
-            value={columnsInput}
-            onChange={(e) => setColumnsInput(e.target.value)}
-            onBlur={commitColumns}
-            onKeyDown={(e) => e.key === "Enter" && commitColumns()}
-          />
-        </label>
-        {status === "not_running" && (
-          <span className="text-xs text-amber-600 font-mono">EtherCAT not running</span>
-        )}
+    <div className="ke-visualizer">
+      <div className="ke-visualizer__toolbar">
+        <div className="ke-visualizer__heading">
+          <div className="ke-visualizer__title">Dashboard slaves</div>
+          <div className="ke-visualizer__meta">
+            {selected.length} selected
+            <span className={`ke-visualizer__status ke-visualizer__status--${status}`}>
+              {status === "not_running" ? "master offline" : status}
+            </span>
+          </div>
+        </div>
+
+        <div className="ke-visualizer__controls">
+          <label className="ke-visualizer__control">
+            <span>Columns</span>
+            <input
+              type="number"
+              min="1"
+              max="4"
+              placeholder="auto"
+              className="ke-visualizer__input"
+              value={columnsInput}
+              onChange={(e) => setColumnsInput(e.target.value)}
+              onBlur={commitColumns}
+              onKeyDown={(e) => e.key === "Enter" && commitColumns()}
+            />
+          </label>
+
+          <button
+            onClick={() => ctx.pushEvent("refresh")}
+            className="ke-visualizer__button"
+          >
+            Refresh
+          </button>
+        </div>
       </div>
 
-      {/* Sortable list */}
       {selected.length === 0 ? (
-        <p className="text-xs text-gray-400 font-mono">
+        <div className="ke-visualizer__empty">
           {status === "not_running"
-            ? "Start EtherCAT first, then click Refresh."
-            : "No slaves — click Refresh to load."}
-        </p>
+            ? "Start EtherCAT, then refresh to load available slaves."
+            : "No slaves selected. Refresh to load the current bus inventory."}
+        </div>
       ) : (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          modifiers={[restrictToVerticalAxis, restrictToParentElement]}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext
-            items={selected.map((s) => s.name)}
-            strategy={verticalListSortingStrategy}
+        <div className="ke-visualizer__body">
+          <div className="ke-visualizer__list-header">
+            <span className="ke-visualizer__list-header-index">#</span>
+            <span className="ke-visualizer__list-header-name">Slave</span>
+          </div>
+
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+            onDragEnd={handleDragEnd}
           >
-            <ul className="space-y-1.5">
-              {selected.map((entry) => (
-                <SlaveRow
-                  key={entry.name}
-                  entry={entry}
-                  onRemove={handleRemove}
-                />
-              ))}
-            </ul>
-          </SortableContext>
-        </DndContext>
+            <SortableContext
+              items={selected.map((s) => s.name)}
+              strategy={verticalListSortingStrategy}
+            >
+              <ul className="ke-visualizer__list">
+                {selected.map((entry, index) => (
+                  <SlaveRow
+                    key={entry.name}
+                    entry={entry}
+                    position={index}
+                    onRemove={handleRemove}
+                  />
+                ))}
+              </ul>
+            </SortableContext>
+          </DndContext>
+        </div>
       )}
     </div>
   );

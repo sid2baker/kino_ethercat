@@ -297,11 +297,11 @@ function SetupCell({ ctx, data }) {
       <section className="ke-setup__hero">
         <div className="ke-setup__hero-copy">
           <div className="ke-setup__eyebrow">EtherCAT Setup</div>
-          <h2 className="ke-setup__title">Discover live, persist static startup</h2>
+          <h2 className="ke-setup__title">Master configuration</h2>
           <p className="ke-setup__description">
-            Scan the running bus, assign drivers and domains, then keep the notebook output as a single
-            static <code>EtherCAT.start/1</code> call. The generated cell finishes with master and
-            diagnostics tabs once the session is operational.
+            Scan the bus, map discovered slaves to drivers and PDO domains, then persist the result as
+            a single static <code>EtherCAT.start/1</code> call. The generated cell ends with master and
+            diagnostics tabs for the running session.
           </p>
         </div>
 
@@ -358,7 +358,7 @@ function SetupCell({ ctx, data }) {
 
       <div className="ke-setup__grid">
         <Section
-          eyebrow="Routing"
+          eyebrow="PDO"
           title="Domains"
           actions={
             <button type="button" className="ke-setup__button ke-setup__button--secondary" onClick={addDomain}>
@@ -381,7 +381,7 @@ function SetupCell({ ctx, data }) {
           </div>
         </Section>
 
-        <Section eyebrow="Clocking" title="Distributed Clocks">
+        <Section eyebrow="Sync" title="Distributed clocks">
           <div className="ke-setup__dc-grid">
             <label className="ke-setup__toggle">
               <input
@@ -495,7 +495,7 @@ function SetupCell({ ctx, data }) {
         </Section>
       </div>
 
-      <Section eyebrow="Discovery" title="Slave Inventory">
+      <Section eyebrow="Bus" title="Slave inventory">
         {hasDiscovery ? (
           <div className="ke-setup__table-wrap">
             <table className="ke-setup__table">
@@ -528,8 +528,7 @@ function SetupCell({ ctx, data }) {
           </div>
         ) : (
           <div className="ke-setup__empty">
-            Scan the bus to discover slaves, auto-match drivers, and assign each driven slave to a process-data
-            domain.
+            Scan the bus to discover slaves and assign each driven device to a PDO domain.
           </div>
         )}
       </Section>

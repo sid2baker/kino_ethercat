@@ -1,11 +1,21 @@
 .kino-ethercat-explorer {
-  border: 1px solid #e7e5e4;
-  border-radius: 28px;
-  padding: 1.25rem;
-  background:
-    radial-gradient(circle at top left, rgba(251, 191, 36, 0.16), transparent 30%),
-    linear-gradient(160deg, #fffdf8, #f8fafc);
-  box-shadow: 0 8px 20px rgba(28, 25, 23, 0.06);
+  --ke-panel: #fcfbf8;
+  --ke-panel-alt: #f4f1e8;
+  --ke-line: #d0c6b3;
+  --ke-line-strong: #aa9d84;
+  --ke-ink: #1f2933;
+  --ke-muted: #5c6773;
+  --ke-accent: #0f766e;
+  border: 1px solid var(--ke-line-strong);
+  border-radius: 8px;
+  padding: 0.9rem;
+  background: var(--ke-panel);
+  color: var(--ke-ink);
+  font-family:
+    "IBM Plex Sans",
+    "Avenir Next",
+    "Segoe UI",
+    sans-serif;
 }
 
 .kino-ethercat-explorer__header {
@@ -14,93 +24,88 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid var(--ke-line);
 }
 
-.kino-ethercat-explorer__eyebrow {
-  color: #b45309;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
+.kino-ethercat-explorer__header-main {
+  display: grid;
+  gap: 0.3rem;
 }
 
 .kino-ethercat-explorer__title {
-  margin: 0.25rem 0 0;
-  color: #1c1917;
-  font-size: 1rem;
+  margin: 0;
+  color: var(--ke-ink);
+  font-size: 0.95rem;
   font-weight: 700;
-  letter-spacing: -0.02em;
 }
 
 .kino-ethercat-explorer__description {
-  max-width: 48rem;
-  margin: 0.75rem 0 0;
-  color: #57534e;
-  font-size: 0.95rem;
-  line-height: 1.6;
+  max-width: 54rem;
+  color: var(--ke-muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
 }
 
 .kino-ethercat-explorer__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.45rem;
 }
 
 .kino-ethercat-explorer__action {
-  border: 1px solid #d6d3d1;
-  border-radius: 999px;
-  padding: 0.4rem 0.85rem;
-  background: #ffffff;
-  color: #44403c;
-  font-size: 0.75rem;
-  font-weight: 600;
+  min-height: 2rem;
+  border: 1px solid var(--ke-line-strong);
+  border-radius: 6px;
+  padding: 0.35rem 0.7rem;
+  background: var(--ke-panel-alt);
+  color: var(--ke-ink);
+  font-size: 0.74rem;
+  font-weight: 700;
   cursor: pointer;
   transition:
     background-color 120ms ease,
-    border-color 120ms ease,
-    transform 120ms ease;
+    border-color 120ms ease;
 }
 
 .kino-ethercat-explorer__action:hover {
-  border-color: #a8a29e;
-  background: #fafaf9;
-  transform: translateY(-1px);
+  background: #ede7d8;
 }
 
 .kino-ethercat-explorer__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 0.75rem;
-  margin-top: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 0.6rem;
+  margin-top: 0.75rem;
 }
 
 .kino-ethercat-explorer__field {
   display: block;
-  border: 1px solid rgba(231, 229, 228, 0.95);
-  border-radius: 22px;
-  padding: 0.9rem;
-  background: rgba(255, 255, 255, 0.88);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  border: 1px solid var(--ke-line);
+  border-radius: 6px;
+  padding: 0.65rem;
+  background: var(--ke-panel-alt);
 }
 
 .kino-ethercat-explorer__label {
   display: block;
-  color: #78716c;
-  font-size: 11px;
+  color: var(--ke-muted);
+  font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
 .kino-ethercat-explorer__input {
   width: 100%;
-  margin-top: 0.6rem;
-  border: 1px solid #d6d3d1;
-  border-radius: 14px;
-  padding: 0.7rem 0.8rem;
+  margin-top: 0.4rem;
+  border: 1px solid var(--ke-line-strong);
+  border-radius: 6px;
+  padding: 0.42rem 0.55rem;
   background: #ffffff;
-  color: #1c1917;
+  color: var(--ke-ink);
   font-family:
+    "IBM Plex Mono",
     "JetBrains Mono",
     "SFMono-Regular",
     ui-monospace,
@@ -114,25 +119,25 @@
 }
 
 .kino-ethercat-explorer__input:focus {
-  border-color: #f59e0b;
-  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.18);
+  border-color: var(--ke-accent);
+  box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.12);
 }
 
 .kino-ethercat-explorer__textarea {
-  min-height: 6rem;
+  min-height: 5rem;
   resize: vertical;
 }
 
 .kino-ethercat-explorer__help {
-  margin-top: 0.55rem;
-  color: #78716c;
-  font-size: 0.76rem;
-  line-height: 1.55;
+  margin-top: 0.4rem;
+  color: var(--ke-muted);
+  font-size: 0.74rem;
+  line-height: 1.45;
 }
 
 @media (max-width: 640px) {
   .kino-ethercat-explorer {
-    padding: 1rem;
+    padding: 0.75rem;
   }
 
   .kino-ethercat-explorer__grid {
