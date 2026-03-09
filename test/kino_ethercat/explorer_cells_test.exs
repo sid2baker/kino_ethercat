@@ -1,11 +1,12 @@
 defmodule KinoEtherCAT.ExplorerCellsTest do
   use ExUnit.Case, async: true
 
-  alias KinoEtherCAT.SmartCells.{RegisterExplorer, SDOExplorer, SIIExplorer}
+  alias KinoEtherCAT.SmartCells.SlaveExplorer
 
-  test "sdo explorer renders upload and download source" do
+  test "slave explorer renders CoE upload and download source" do
     upload =
-      SDOExplorer.to_source(%{
+      SlaveExplorer.to_source(%{
+        "surface" => "sdo",
         "slave" => "slave_1",
         "operation" => "upload",
         "index" => "0x1018",
@@ -16,7 +17,8 @@ defmodule KinoEtherCAT.ExplorerCellsTest do
     assert upload =~ "Base.encode16(binary, case: :upper)"
 
     download =
-      SDOExplorer.to_source(%{
+      SlaveExplorer.to_source(%{
+        "surface" => "sdo",
         "slave" => "slave_1",
         "operation" => "download",
         "index" => "0x7000",
@@ -28,9 +30,10 @@ defmodule KinoEtherCAT.ExplorerCellsTest do
     assert download =~ "EtherCAT.download_sdo(:slave_1, 0x7000, 1, payload)"
   end
 
-  test "register explorer renders preset read and raw write source" do
+  test "slave explorer renders register presets and raw writes" do
     read_source =
-      RegisterExplorer.to_source(%{
+      SlaveExplorer.to_source(%{
+        "surface" => "register",
         "slave" => "slave_2",
         "operation" => "read",
         "register_mode" => "preset",
@@ -42,7 +45,8 @@ defmodule KinoEtherCAT.ExplorerCellsTest do
     assert read_source =~ "Registers.decode_al_status(data)"
 
     write_source =
-      RegisterExplorer.to_source(%{
+      SlaveExplorer.to_source(%{
+        "surface" => "register",
         "slave" => "slave_2",
         "operation" => "write",
         "register_mode" => "raw",
@@ -54,9 +58,10 @@ defmodule KinoEtherCAT.ExplorerCellsTest do
     assert write_source =~ "Transaction.fpwr(station, register)"
   end
 
-  test "sii explorer renders structured reads and raw word writes" do
+  test "slave explorer renders SII reads and word writes" do
     identity_source =
-      SIIExplorer.to_source(%{
+      SlaveExplorer.to_source(%{
+        "surface" => "sii",
         "slave" => "slave_3",
         "operation" => "identity"
       })
@@ -65,7 +70,8 @@ defmodule KinoEtherCAT.ExplorerCellsTest do
     assert identity_source =~ "SII.read_identity(bus, station)"
 
     write_source =
-      SIIExplorer.to_source(%{
+      SlaveExplorer.to_source(%{
+        "surface" => "sii",
         "slave" => "slave_3",
         "operation" => "write_words",
         "word_address" => "0x0040",

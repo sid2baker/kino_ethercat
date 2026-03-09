@@ -48,17 +48,14 @@ Picks running slaves and generates `KinoEtherCAT.Widgets.dashboard/2` calls for 
 - Click the trash icon to exclude a slave
 - Set **columns** to control dashboard layout
 
-### EtherCAT SDO Explorer
+### EtherCAT Slave Explorer
 
-Generates repeatable CoE upload and download code against the selected configured slave.
+Combines CoE SDO, ESC register, and SII EEPROM tooling in a single Smart Cell.
 
-### EtherCAT Register Explorer
-
-Generates ESC register reads and writes, with presets for common AL, DL, watchdog, and sync manager diagnostics.
-
-### EtherCAT SII Explorer
-
-Generates EEPROM and ESC reload calls for identity, mailbox, sync manager, PDO, and raw word access.
+- Switch between `ESC Registers`, `CoE SDO`, and `SII EEPROM`
+- Refresh the active bus inventory without leaving the cell
+- Reuse the same selected slave while moving between low-level diagnostics
+- Generate repeatable code for mailbox transfers, raw register access, and EEPROM inspection/update
 
 ## Programmatic API
 

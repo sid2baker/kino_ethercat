@@ -85,9 +85,7 @@ defmodule KinoEtherCAT.MixProject do
         "Smart Cells": [
           KinoEtherCAT.SmartCells.Setup,
           KinoEtherCAT.SmartCells.Visualizer,
-          KinoEtherCAT.SmartCells.SDOExplorer,
-          KinoEtherCAT.SmartCells.RegisterExplorer,
-          KinoEtherCAT.SmartCells.SIIExplorer
+          KinoEtherCAT.SmartCells.SlaveExplorer
         ],
         Drivers: [
           KinoEtherCAT.Driver,
