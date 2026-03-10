@@ -5,10 +5,12 @@
   font-size: 12px;
   background: #c0c0c0;
   min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .ke95-shell--compact {
-  min-width: 12rem;
+  min-width: 10rem;
 }
 
 .ke95-shell--minimized .ke95-window__body {
@@ -24,17 +26,20 @@
   gap: 8px;
   padding: 8px;
   background: #c0c0c0;
+  min-width: 0;
 }
 
 .ke95-window__meta {
   display: grid;
   gap: 6px;
   padding: 8px;
+  min-width: 0;
 }
 
 .ke95-window__subtitle {
   line-height: 1.45;
   color: #444;
+  overflow-wrap: anywhere;
 }
 
 .ke95-window__status,
@@ -46,11 +51,12 @@
 }
 
 .ke95-window__toolbar {
-  flex-wrap: nowrap;
+  justify-content: flex-start;
 }
 
 .ke95-window__toolbar button {
   min-width: 7.5rem;
+  flex: 0 0 auto;
 }
 
 .ke95-window__content {
@@ -59,17 +65,36 @@
   min-width: 0;
 }
 
+.ke95-shell--compact .ke95-window__titlebar {
+  min-height: 24px;
+}
+
+.ke95-shell--compact .ke95-window__body,
+.ke95-shell--compact .ke95-window__meta,
+.ke95-shell--compact .ke95-tabs__panel {
+  gap: 6px;
+  padding: 6px;
+}
+
+.ke95-shell--compact .ke95-window__subtitle {
+  line-height: 1.35;
+}
+
 .ke95-tabs {
   display: grid;
   gap: 0;
+  min-width: 0;
 }
 
 .ke95-tabs__nav {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 2px;
   align-items: flex-end;
   padding: 0 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-gutter: stable;
 }
 
 .ke95-tabs__tab {
@@ -78,6 +103,8 @@
   line-height: 1.2;
   cursor: pointer;
   background: #c0c0c0;
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .ke95-tabs__tab--active {
@@ -164,6 +191,7 @@
   display: grid;
   gap: 4px;
   padding: 6px 8px;
+  min-width: 0;
 }
 
 .ke95-summary__value,
@@ -209,6 +237,7 @@
 .ke95-message {
   padding: 6px 8px;
   line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .ke95-message--info {
@@ -225,6 +254,7 @@
 
 .ke95-table-wrap {
   overflow: auto;
+  max-width: 100%;
 }
 
 .ke95-table {
@@ -238,6 +268,7 @@
   text-align: left;
   vertical-align: top;
   border-bottom: 1px solid #808080;
+  overflow-wrap: anywhere;
 }
 
 .ke95-table tbody tr:last-child td {
@@ -254,6 +285,7 @@
 .ke95-scroll {
   overflow: auto;
   max-height: 22rem;
+  scrollbar-gutter: stable;
 }
 
 .ke95-list {
@@ -279,6 +311,7 @@
 .ke95-detail {
   display: grid;
   gap: 4px;
+  min-width: 0;
 }
 
 .ke95-chart {
@@ -294,6 +327,7 @@
 .ke95-note {
   color: #444;
   line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .ke95-fill {
