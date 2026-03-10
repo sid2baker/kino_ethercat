@@ -39,7 +39,20 @@ defmodule KinoEtherCAT.SlaveSnapshotTest do
     assert snapshot.summary.name == "rack"
     assert snapshot.summary.driver == "KinoEtherCAT.Driver.EL1809"
     assert snapshot.summary.identity.vendor_id == 0x2
-    assert [%{name: "ch1", active: true, display: "1", updated_at_us: 101} | _] = snapshot.inputs
+
+    assert [
+             %{
+               name: "ch1",
+               active: true,
+               display: "1",
+               updated_at_us: 101,
+               updated_at: updated_at
+             }
+             | _
+           ] =
+             snapshot.inputs
+
+    assert is_binary(updated_at)
 
     assert Enum.any?(
              snapshot.inputs,
@@ -78,12 +91,14 @@ defmodule KinoEtherCAT.SlaveSnapshotTest do
 
     assert Enum.any?(
              snapshot.inputs,
-             &(&1.name == "ch1" and &1.updated_at_us == 101 and &1.display == "1")
+             &(&1.name == "ch1" and &1.updated_at_us == 101 and is_binary(&1.updated_at) and
+                 &1.display == "1")
            )
 
     assert Enum.any?(
              snapshot.inputs,
-             &(&1.name == "temperature" and &1.updated_at_us == 202 and &1.display == "24.5")
+             &(&1.name == "temperature" and &1.updated_at_us == 202 and is_binary(&1.updated_at) and
+                 &1.display == "24.5")
            )
   end
 

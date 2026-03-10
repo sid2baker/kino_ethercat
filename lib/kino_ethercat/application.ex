@@ -6,6 +6,11 @@ defmodule KinoEtherCAT.Application do
     Kino.SmartCell.register(KinoEtherCAT.SmartCells.Setup)
     Kino.SmartCell.register(KinoEtherCAT.SmartCells.Visualizer)
     Kino.SmartCell.register(KinoEtherCAT.SmartCells.SlaveExplorer)
-    Supervisor.start_link([], strategy: :one_for_one, name: KinoEtherCAT.Supervisor)
+
+    children = [
+      KinoEtherCAT.WidgetLogs
+    ]
+
+    Supervisor.start_link(children, strategy: :one_for_one, name: KinoEtherCAT.Supervisor)
   end
 end

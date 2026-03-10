@@ -161,7 +161,7 @@ function SignalCard({ signal, ctx }) {
       </div>
 
       <Mono as="div">{signal.display}</Mono>
-      {signal.updated_at_us != null ? <Mono as="div">updated {signal.updated_at_us} us</Mono> : null}
+      {signal.updated_at ? <Mono as="div">updated {signal.updated_at}</Mono> : null}
 
       {signal.writable ? (
         <InlineButtons>

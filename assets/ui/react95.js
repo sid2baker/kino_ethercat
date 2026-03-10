@@ -10,10 +10,12 @@ import { Frame } from "@react95/core/Frame";
 import { Input } from "@react95/core/Input";
 import { Modal } from "@react95/core/Modal";
 import { ProgressBar } from "@react95/core/ProgressBar";
+import { Tab as React95Tab } from "@react95/core/Tab";
 import { TextArea } from "@react95/core/TextArea";
+import { Tabs as React95Tabs } from "@react95/core/Tabs";
 import { TitleBar } from "@react95/core/TitleBar";
 
-export { Button, Checkbox, Fieldset, Frame, Input, Modal, ProgressBar, TextArea, TitleBar };
+export { Button, Checkbox, Fieldset, Frame, Input, Modal, ProgressBar, React95Tab as Tab, TextArea, React95Tabs as Tabs, TitleBar };
 
 function useWindowControls(windowRef) {
   const [fullscreenActive, setFullscreenActive] = useState(false);
@@ -155,6 +157,15 @@ export function ModalShell({ title, subtitle = null, status = null, toolbar = nu
       title={title}
       hasWindowButton={false}
       dragOptions={{ disabled: true }}
+      style={{
+        position: "relative",
+        top: 0,
+        left: 0,
+        width: "100%",
+        maxWidth: "100%",
+        minWidth: 0,
+        touchAction: "auto",
+      }}
       className={`ke95-modal${compact ? " ke95-modal--compact" : ""}${minimized ? " ke95-modal--minimized" : ""}`}
       titleBarOptions={[
         <MinimizeToggle
@@ -189,54 +200,6 @@ export function ModalShell({ title, subtitle = null, status = null, toolbar = nu
       </Modal.Content>
     </Modal>
   );
-}
-
-export function Tabs({ children, defaultActiveTab = null, className = "" }) {
-  const items = React.Children.toArray(children).filter(Boolean);
-  const firstTitle = items[0]?.props?.title ?? null;
-  const [activeTab, setActiveTab] = useState(defaultActiveTab ?? firstTitle);
-
-  useEffect(() => {
-    if (!items.some((item) => item.props?.title === activeTab)) {
-      setActiveTab(defaultActiveTab ?? firstTitle);
-    }
-  }, [activeTab, defaultActiveTab, firstTitle, items]);
-
-  const activeItem = items.find((item) => item.props?.title === activeTab) ?? items[0] ?? null;
-
-  return (
-    <div className={`ke95-tabs ${className}`.trim()}>
-      <div className="ke95-tabs__nav" role="tablist">
-        {items.map((item) => {
-          const title = item.props?.title ?? "";
-          const active = title === activeTab;
-
-          return (
-            <Frame
-              key={title}
-              as="button"
-              className={`ke95-tabs__tab${active ? " ke95-tabs__tab--active" : ""}`}
-              onClick={() => setActiveTab(title)}
-              role="tab"
-              aria-selected={active}
-              tabIndex={active ? 0 : -1}
-              type="button"
-            >
-              {title}
-            </Frame>
-          );
-        })}
-      </div>
-
-      <Frame boxShadow="out" className="ke95-tabs__panel" role="tabpanel">
-        {activeItem?.props?.children}
-      </Frame>
-    </div>
-  );
-}
-
-export function Tab(_props) {
-  return null;
 }
 
 export function Panel({ title, actions = null, children, className = "" }) {

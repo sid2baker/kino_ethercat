@@ -9,6 +9,7 @@ defmodule KinoEtherCAT.Runtime do
   require Logger
 
   alias EtherCAT.{Bus, Domain, Master, Slave}
+  alias KinoEtherCAT.WidgetLogs
 
   @spec master() :: %Master{}
   def master do
@@ -60,6 +61,19 @@ defmodule KinoEtherCAT.Runtime do
   def refresh(%Bus{}), do: bus()
   def refresh(resource) when is_struct(resource, EtherCAT.DC), do: dc()
   def refresh(resource) when is_struct(resource, EtherCAT.DC.Status), do: dc()
+
+  @spec subscribe_logs(pid(), struct()) :: :ok
+  def subscribe_logs(pid, resource) when is_pid(pid) do
+    WidgetLogs.subscribe(pid, resource)
+  end
+
+  @spec log_scope(struct()) :: WidgetLogs.scope() | nil
+  def log_scope(resource) do
+    case WidgetLogs.scope(resource) do
+      {:ok, scope} -> scope
+      :error -> nil
+    end
+  end
 
   @spec payload(struct(), map() | nil) :: map()
   def payload(resource, message \\ nil)
@@ -113,6 +127,7 @@ defmodule KinoEtherCAT.Runtime do
       title: "EtherCAT Master",
       status: to_string(public_state),
       message: message,
+      logs: payload_logs(master),
       summary: [
         %{label: "State", value: to_string(public_state)},
         %{label: "Slaves", value: Integer.to_string(length(slaves))},
@@ -174,6 +189,7 @@ defmodule KinoEtherCAT.Runtime do
           title: "Slave #{name}",
           status: to_string(info.al_state),
           message: message,
+          logs: payload_logs(slave),
           summary: [
             %{label: "State", value: to_string(state_name || info.al_state)},
             %{label: "Station", value: hex(info.station, 4)},
@@ -204,7 +220,7 @@ defmodule KinoEtherCAT.Runtime do
         }
 
       {:error, reason} ->
-        unavailable_payload("slave", "Slave #{name}", reason, message)
+        unavailable_payload(slave, "slave", "Slave #{name}", reason, message)
     end
   end
 
@@ -219,6 +235,7 @@ defmodule KinoEtherCAT.Runtime do
           title: "Domain #{id}",
           status: to_string(info.state),
           message: message,
+          logs: payload_logs(%Domain{id: id}),
           summary: [
             %{label: "State", value: to_string(state_name || info.state)},
             %{label: "Cycle", value: "#{info.cycle_time_us} us"},
@@ -248,7 +265,7 @@ defmodule KinoEtherCAT.Runtime do
         }
 
       {:error, reason} ->
-        unavailable_payload("domain", "Domain #{id}", reason, message)
+        unavailable_payload(%Domain{id: id}, "domain", "Domain #{id}", reason, message)
     end
   end
 
@@ -261,6 +278,7 @@ defmodule KinoEtherCAT.Runtime do
       title: "Bus",
       status: to_string(state_name || :not_started),
       message: message,
+      logs: payload_logs(bus),
       summary: [
         %{label: "Frame timeout", value: "#{bus.frame_timeout_ms || 25} ms"},
         %{label: "Timeouts", value: Integer.to_string(bus.timeout_count || 0)},
@@ -298,6 +316,7 @@ defmodule KinoEtherCAT.Runtime do
       title: "Distributed Clocks",
       status: to_string(status.lock_state),
       message: message,
+      logs: payload_logs(resource),
       summary: [
         %{label: "Configured", value: to_string(status.configured?)},
         %{label: "Active", value: to_string(status.active?)},
@@ -643,12 +662,13 @@ defmodule KinoEtherCAT.Runtime do
 
   defp parse_positive_integer(_value), do: {:error, :invalid_integer}
 
-  defp unavailable_payload(kind, title, reason, message) do
+  defp unavailable_payload(resource, kind, title, reason, message) do
     %{
       kind: kind,
       title: title,
       status: "unavailable",
       message: message || error_message(reason),
+      logs: payload_logs(resource),
       summary: [],
       tables: [],
       details: [%{label: "Reason", value: format_term(reason)}],
@@ -658,6 +678,19 @@ defmodule KinoEtherCAT.Runtime do
 
   defp info_message(text), do: %{level: "info", text: text}
   defp error_message(reason), do: %{level: "error", text: format_term(reason)}
+
+  defp payload_logs(resource) do
+    resource
+    |> WidgetLogs.entries()
+    |> Enum.map(fn entry ->
+      %{
+        id: entry.id,
+        time: format_log_time(entry.at_ms),
+        level: entry.level,
+        text: entry.text
+      }
+    end)
+  end
 
   defp current_log_level do
     level = safe(fn -> Logger.level() end, :info)
@@ -675,6 +708,17 @@ defmodule KinoEtherCAT.Runtime do
 
   defp format_term(value) when is_binary(value), do: value
   defp format_term(value), do: inspect(value, pretty: false, limit: 20)
+
+  defp format_log_time(at_ms) when is_integer(at_ms) do
+    case DateTime.from_unix(at_ms, :millisecond) do
+      {:ok, datetime} ->
+        milliseconds = at_ms |> rem(1_000) |> Integer.to_string() |> String.pad_leading(3, "0")
+        Calendar.strftime(datetime, "%H:%M:%S") <> "." <> milliseconds
+
+      {:error, _reason} ->
+        Integer.to_string(at_ms)
+    end
+  end
 
   defp hex(nil, _pad), do: "n/a"
 

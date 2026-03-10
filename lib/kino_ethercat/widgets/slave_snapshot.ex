@@ -25,9 +25,11 @@ defmodule KinoEtherCAT.Widgets.SlaveSnapshot do
   end
 
   def build(slave_name, info, values, domain_snapshots, write_error, runtime_error, opts) do
+    time_offset_us = time_offset_us()
+
     {inputs, outputs} =
       info.signals
-      |> Enum.map(&signal_view(&1, values))
+      |> Enum.map(&signal_view(&1, values, time_offset_us))
       |> Enum.split_with(&(&1.direction == "input"))
 
     %{
@@ -49,7 +51,7 @@ defmodule KinoEtherCAT.Widgets.SlaveSnapshot do
     }
   end
 
-  defp signal_view(signal, values) do
+  defp signal_view(signal, values, time_offset_us) do
     known? = Map.has_key?(values, signal.name)
     sample = Map.get(values, signal.name)
     value = sample_value(sample)
@@ -65,6 +67,7 @@ defmodule KinoEtherCAT.Widgets.SlaveSnapshot do
       active: if(bit_signal? and known?, do: active?(value), else: nil),
       display: display_value(value, known?),
       updated_at_us: updated_at_us(sample),
+      updated_at: updated_at(sample, time_offset_us),
       writable: signal.direction == :output and bit_signal?
     }
   end
@@ -102,9 +105,36 @@ defmodule KinoEtherCAT.Widgets.SlaveSnapshot do
   defp updated_at_us({_value, updated_at_us}) when is_integer(updated_at_us), do: updated_at_us
   defp updated_at_us(_value), do: nil
 
+  defp updated_at({_value, updated_at_us}, time_offset_us) when is_integer(updated_at_us) do
+    format_wall_clock(updated_at_us + time_offset_us)
+  end
+
+  defp updated_at(_value, _time_offset_us), do: nil
+
   defp active?(true), do: true
   defp active?(false), do: false
   defp active?(value) when is_integer(value), do: value != 0
   defp active?(value) when is_float(value), do: value != 0.0
   defp active?(value), do: value not in [nil, "", :off]
+
+  defp time_offset_us do
+    System.system_time(:microsecond) - System.monotonic_time(:microsecond)
+  end
+
+  defp format_wall_clock(system_time_us) when is_integer(system_time_us) do
+    case DateTime.from_unix(system_time_us, :microsecond) do
+      {:ok, datetime} ->
+        milliseconds =
+          system_time_us
+          |> div(1_000)
+          |> rem(1_000)
+          |> Integer.to_string()
+          |> String.pad_leading(3, "0")
+
+        Calendar.strftime(datetime, "%H:%M:%S") <> "." <> milliseconds
+
+      {:error, _reason} ->
+        nil
+    end
+  end
 end

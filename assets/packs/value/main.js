@@ -13,12 +13,12 @@ export async function init(ctx, data) {
 
 function Value({ ctx, data }) {
   const [value, setValue] = useState(data.value);
-  const [updatedAtUs, setUpdatedAtUs] = useState(data.updated_at_us);
+  const [updatedAt, setUpdatedAt] = useState(data.updated_at);
 
   useEffect(() => {
-    ctx.handleEvent("value_updated", ({ value, updated_at_us }) => {
+    ctx.handleEvent("value_updated", ({ value, updated_at }) => {
       setValue(value);
-      setUpdatedAtUs(updated_at_us);
+      setUpdatedAt(updated_at);
     });
   }, [ctx]);
 
@@ -29,7 +29,7 @@ function Value({ ctx, data }) {
           {value ?? "—"}
         </Mono>
         <Mono as="div" className="ke95-value__meta">
-          {updatedAtUs == null ? "awaiting sample time" : `updated ${updatedAtUs} us`}
+          {updatedAt == null ? "awaiting sample time" : `updated ${updatedAt}`}
         </Mono>
       </Frame>
     </Shell>

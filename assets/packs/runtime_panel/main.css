@@ -1,1 +1,25 @@
 /* Shared React95 theme and layout styles are imported from ../shared/react95.js. */
+
+.ke95-runtime-log {
+  display: grid;
+  gap: 0.4rem;
+  max-height: 16rem;
+  overflow: auto;
+  padding: 0.5rem;
+}
+
+.ke95-runtime-log__row {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 0.5rem;
+  align-items: start;
+}
+
+.ke95-runtime-log__time {
+  min-width: 5.5rem;
+}
+
+.ke95-runtime-log__message {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

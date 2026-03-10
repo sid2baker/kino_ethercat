@@ -19,7 +19,8 @@ defmodule KinoEtherCAT.Widgets.Value do
            signal: signal,
            label: label,
            value: sample.value,
-           updated_at_us: sample.updated_at_us
+           updated_at_us: sample.updated_at_us,
+           updated_at: sample.updated_at
          )}
 
       {:error, reason} ->
@@ -33,7 +34,8 @@ defmodule KinoEtherCAT.Widgets.Value do
      %{
        label: ctx.assigns.label,
        value: ctx.assigns.value,
-       updated_at_us: ctx.assigns.updated_at_us
+       updated_at_us: ctx.assigns.updated_at_us,
+       updated_at: ctx.assigns.updated_at
      }, ctx}
   end
 
@@ -41,22 +43,66 @@ defmodule KinoEtherCAT.Widgets.Value do
   def handle_info({:ethercat, :signal, _slave, _signal, value}, ctx) do
     sample = input_sample(ctx.assigns.slave, ctx.assigns.signal, value, ctx.assigns.updated_at_us)
     broadcast_event(ctx, "value_updated", sample)
-    {:noreply, assign(ctx, value: sample.value, updated_at_us: sample.updated_at_us)}
+
+    {:noreply,
+     assign(ctx,
+       value: sample.value,
+       updated_at_us: sample.updated_at_us,
+       updated_at: sample.updated_at
+     )}
   end
 
   defp input_sample(slave, signal, fallback_value \\ nil, fallback_updated_at_us \\ nil) do
     case EtherCAT.read_input(slave, signal) do
       {:ok, {value, updated_at_us}} when is_integer(updated_at_us) ->
-        %{value: inspect(value), updated_at_us: updated_at_us}
+        %{
+          value: inspect(value),
+          updated_at_us: updated_at_us,
+          updated_at: format_sample_time(updated_at_us)
+        }
 
       {:ok, value} ->
-        %{value: inspect(value), updated_at_us: fallback_updated_at_us}
+        %{
+          value: inspect(value),
+          updated_at_us: fallback_updated_at_us,
+          updated_at: format_sample_time(fallback_updated_at_us)
+        }
 
       {:error, _reason} when is_nil(fallback_value) ->
-        %{value: nil, updated_at_us: fallback_updated_at_us}
+        %{
+          value: nil,
+          updated_at_us: fallback_updated_at_us,
+          updated_at: format_sample_time(fallback_updated_at_us)
+        }
 
       {:error, _reason} ->
-        %{value: inspect(fallback_value), updated_at_us: fallback_updated_at_us}
+        %{
+          value: inspect(fallback_value),
+          updated_at_us: fallback_updated_at_us,
+          updated_at: format_sample_time(fallback_updated_at_us)
+        }
     end
   end
+
+  defp format_sample_time(updated_at_us) when is_integer(updated_at_us) do
+    wall_clock_us =
+      updated_at_us + System.system_time(:microsecond) - System.monotonic_time(:microsecond)
+
+    case DateTime.from_unix(wall_clock_us, :microsecond) do
+      {:ok, datetime} ->
+        milliseconds =
+          wall_clock_us
+          |> div(1_000)
+          |> rem(1_000)
+          |> Integer.to_string()
+          |> String.pad_leading(3, "0")
+
+        Calendar.strftime(datetime, "%H:%M:%S") <> "." <> milliseconds
+
+      {:error, _reason} ->
+        nil
+    end
+  end
+
+  defp format_sample_time(_updated_at_us), do: nil
 end

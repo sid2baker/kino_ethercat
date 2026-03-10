@@ -31,6 +31,17 @@ const MESSAGE_TONES = {
   error: "error",
 };
 
+const LOG_TONES = {
+  debug: "neutral",
+  info: "neutral",
+  notice: "ok",
+  warning: "warn",
+  error: "danger",
+  critical: "danger",
+  alert: "danger",
+  emergency: "danger",
+};
+
 function statusTone(status) {
   const value = String(status ?? "").toLowerCase();
 
@@ -94,6 +105,10 @@ function RuntimePanel({ ctx, data }) {
           <TableSection table={table} />
         </Panel>
       ))}
+
+      <Panel title="Logs">
+        <LogSection logs={snapshot.logs ?? []} />
+      </Panel>
     </Shell>
   );
 }
@@ -181,6 +196,28 @@ function Details({ items }) {
         </Frame>
       ))}
     </div>
+  );
+}
+
+function LogSection({ logs }) {
+  if (!logs.length) {
+    return <EmptyState>No logs captured for this resource yet.</EmptyState>;
+  }
+
+  return (
+    <Frame boxShadow="in" className="ke95-runtime-log">
+      {logs.map((entry) => (
+        <div key={entry.id} className="ke95-runtime-log__row">
+          <Mono as="div" className="ke95-runtime-log__time">
+            {entry.time}
+          </Mono>
+          <StatusBadge tone={LOG_TONES[entry.level] ?? "neutral"}>{entry.level}</StatusBadge>
+          <Mono as="div" className="ke95-runtime-log__message">
+            {entry.text}
+          </Mono>
+        </div>
+      ))}
+    </Frame>
   );
 }
 

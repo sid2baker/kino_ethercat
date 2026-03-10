@@ -17,4 +17,7 @@ defmodule KinoEtherCAT.Runtime.Slave do
 
   @impl true
   def handle_event(event, params, ctx), do: Live.handle_event(event, params, ctx)
+
+  @impl true
+  def handle_info(message, ctx), do: Live.handle_info(message, ctx)
 end
