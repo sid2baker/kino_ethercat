@@ -29,7 +29,7 @@ defmodule KinoEtherCAT.MixProject do
   defp deps do
     [
       {:kino, "~> 0.18"},
-      {:ethercat, "~> 0.2.0"},
+      {:ethercat, path: "../ethercat"},
       {:ex_doc, "~> 0.36", only: :dev, runtime: false},
       {:usage_rules, "~> 1.1", only: [:dev]}
     ]

@@ -8,6 +8,8 @@ defmodule KinoEtherCAT.Runtime do
 
   require Logger
 
+  alias EtherCAT.Domain.API, as: DomainAPI
+  alias EtherCAT.Slave.API, as: SlaveAPI
   alias EtherCAT.{Bus, Domain, Master, Slave}
   alias KinoEtherCAT.WidgetLogs
 
@@ -381,7 +383,7 @@ defmodule KinoEtherCAT.Runtime do
     with {:ok, target} <- transition_target(target) do
       run_action(
         resource,
-        fn -> EtherCAT.Slave.request(name, target) end,
+        fn -> SlaveAPI.request(name, target) end,
         "Slave transitioned to #{target}"
       )
     else
@@ -390,18 +392,18 @@ defmodule KinoEtherCAT.Runtime do
   end
 
   def perform(%Domain{id: id} = resource, "start_cycling", _params) do
-    run_action(resource, fn -> EtherCAT.Domain.start_cycling(id) end, "Domain cycling started")
+    run_action(resource, fn -> DomainAPI.start_cycling(id) end, "Domain cycling started")
   end
 
   def perform(%Domain{id: id} = resource, "stop_cycling", _params) do
-    run_action(resource, fn -> EtherCAT.Domain.stop_cycling(id) end, "Domain cycling stopped")
+    run_action(resource, fn -> DomainAPI.stop_cycling(id) end, "Domain cycling stopped")
   end
 
   def perform(%Domain{id: id} = resource, "update_cycle_time", %{"value" => value}) do
     with {:ok, cycle_time_us} <- parse_positive_integer(value) do
       run_action(
         resource,
-        fn -> EtherCAT.Domain.update_cycle_time(id, cycle_time_us) end,
+        fn -> DomainAPI.update_cycle_time(id, cycle_time_us) end,
         "Domain cycle updated to #{cycle_time_us} us"
       )
     else

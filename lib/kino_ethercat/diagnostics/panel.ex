@@ -12,6 +12,7 @@ defmodule KinoEtherCAT.Diagnostics.Panel do
   use Kino.JS, assets_path: "lib/assets/diagnostics/build"
   use Kino.JS.Live
 
+  alias EtherCAT.Slave.API, as: SlaveAPI
   alias KinoEtherCAT.Diagnostics.State
 
   @poll_ms 1_000
@@ -152,7 +153,7 @@ defmodule KinoEtherCAT.Diagnostics.Panel do
             end
 
           al_error =
-            case EtherCAT.Slave.error(name) do
+            case SlaveAPI.error(name) do
               code when is_integer(code) -> code
               _ -> nil
             end

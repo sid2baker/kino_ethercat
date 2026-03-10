@@ -46,6 +46,12 @@ mix usage_rules.search_docs "making requests" -p req
 mix usage_rules.search_docs "Enum.zip" --query-by title
 ```
 
+## Pre-1.0 Dependencies
+
+- Treat local pre-1.0 dependencies as the source of truth during development.
+- For EtherCAT specifically, inspect the sibling checkout at `../ethercat` before updating callers.
+- Do not add compatibility fallbacks for old pre-1.0 EtherCAT APIs. Align the code directly to the current local API instead.
+
 
 <!-- usage_rules-end -->
 <!-- usage_rules:elixir-start -->
