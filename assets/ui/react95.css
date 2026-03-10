@@ -4,10 +4,15 @@
   color: #222;
   font-size: 12px;
   background: #c0c0c0;
+  min-width: 0;
 }
 
 .ke95-shell--compact {
   min-width: 12rem;
+}
+
+.ke95-shell--minimized .ke95-window__body {
+  display: none;
 }
 
 .ke95-window__titlebar {
@@ -52,6 +57,46 @@
   display: grid;
   gap: 8px;
   min-width: 0;
+}
+
+.ke95-tabs {
+  display: grid;
+  gap: 0;
+}
+
+.ke95-tabs__nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  align-items: flex-end;
+  padding: 0 4px;
+}
+
+.ke95-tabs__tab {
+  padding: 4px 8px;
+  font: inherit;
+  line-height: 1.2;
+  cursor: pointer;
+  background: #c0c0c0;
+}
+
+.ke95-tabs__tab--active {
+  position: relative;
+  top: 1px;
+  padding-top: 5px;
+  background: #c0c0c0;
+  box-shadow:
+    inset 1px 1px 0 #fff,
+    inset -1px 0 0 #808080,
+    inset 0 -1px 0 #c0c0c0;
+}
+
+.ke95-tabs__panel {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  min-width: 0;
+  background: #c0c0c0;
 }
 
 .ke95-panel {

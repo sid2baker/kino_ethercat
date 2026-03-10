@@ -9,17 +9,17 @@ import { Fieldset } from "@react95/core/Fieldset";
 import { Frame } from "@react95/core/Frame";
 import { Input } from "@react95/core/Input";
 import { ProgressBar } from "@react95/core/ProgressBar";
-import { Tab } from "@react95/core/Tab";
-import { Tabs } from "@react95/core/Tabs";
 import { TextArea } from "@react95/core/TextArea";
 import { TitleBar } from "@react95/core/TitleBar";
 
-export { Button, Checkbox, Fieldset, Frame, Input, ProgressBar, Tab, Tabs, TextArea, TitleBar };
+export { Button, Checkbox, Fieldset, Frame, Input, ProgressBar, TextArea, TitleBar };
 
 export function Shell({ title, subtitle = null, status = null, toolbar = null, children, compact = false }) {
   const windowRef = useRef(null);
   const [fullscreenActive, setFullscreenActive] = useState(false);
   const [fullscreenSupported, setFullscreenSupported] = useState(false);
+  const [minimized, setMinimized] = useState(false);
+  const [layoutVersion, setLayoutVersion] = useState(0);
 
   useEffect(() => {
     const element = windowRef.current;
@@ -28,6 +28,7 @@ export function Shell({ title, subtitle = null, status = null, toolbar = null, c
     const doc = element.ownerDocument;
     const onFullscreenChange = () => {
       setFullscreenActive(doc.fullscreenElement === element);
+      setLayoutVersion((value) => value + 1);
     };
 
     setFullscreenSupported(typeof element.requestFullscreen === "function");
@@ -57,14 +58,46 @@ export function Shell({ title, subtitle = null, status = null, toolbar = null, c
     }
   };
 
+  const toggleMinimized = async () => {
+    if (minimized) {
+      setMinimized(false);
+      setLayoutVersion((value) => value + 1);
+      return;
+    }
+
+    if (fullscreenActive) {
+      const element = windowRef.current;
+      const doc = element?.ownerDocument;
+
+      try {
+        await doc?.exitFullscreen?.();
+      } catch (_error) {
+        // Ignore browsers that reject fullscreen transitions in iframes.
+      }
+    }
+
+    setMinimized(true);
+    setLayoutVersion((value) => value + 1);
+  };
+
+  const MinimizeToggle = minimized ? TitleBar.Restore : TitleBar.Minimize;
   const WindowToggle = fullscreenActive ? TitleBar.Restore : TitleBar.Maximize;
+  const content =
+    typeof children === "function"
+      ? children({ fullscreenActive, fullscreenSupported, minimized, layoutVersion })
+      : children;
 
   return (
-    <Frame ref={windowRef} boxShadow="out" className={`ke95-shell${compact ? " ke95-shell--compact" : ""}`}>
+    <Frame
+      ref={windowRef}
+      boxShadow="out"
+      className={`ke95-shell${compact ? " ke95-shell--compact" : ""}${minimized ? " ke95-shell--minimized" : ""}`}
+    >
       <TitleBar title={title} className="ke95-window__titlebar">
         <TitleBar.OptionsBox>
+          <MinimizeToggle onClick={toggleMinimized} title={minimized ? "Restore window" : "Minimize window"} />
           <WindowToggle
-            disabled={!fullscreenSupported}
+            disabled={!fullscreenSupported || minimized}
             onClick={toggleFullscreen}
             title={fullscreenActive ? "Exit fullscreen" : "Enter fullscreen"}
           />
@@ -81,10 +114,58 @@ export function Shell({ title, subtitle = null, status = null, toolbar = null, c
           </Frame>
         ) : null}
 
-        <div className="ke95-window__content">{children}</div>
+        <div className="ke95-window__content">{content}</div>
       </div>
     </Frame>
   );
+}
+
+export function Tabs({ children, defaultActiveTab = null, className = "" }) {
+  const items = React.Children.toArray(children).filter(Boolean);
+  const firstTitle = items[0]?.props?.title ?? null;
+  const [activeTab, setActiveTab] = useState(defaultActiveTab ?? firstTitle);
+
+  useEffect(() => {
+    if (!items.some((item) => item.props?.title === activeTab)) {
+      setActiveTab(defaultActiveTab ?? firstTitle);
+    }
+  }, [activeTab, defaultActiveTab, firstTitle, items]);
+
+  const activeItem = items.find((item) => item.props?.title === activeTab) ?? items[0] ?? null;
+
+  return (
+    <div className={`ke95-tabs ${className}`.trim()}>
+      <div className="ke95-tabs__nav" role="tablist">
+        {items.map((item) => {
+          const title = item.props?.title ?? "";
+          const active = title === activeTab;
+
+          return (
+            <Frame
+              key={title}
+              as="button"
+              className={`ke95-tabs__tab${active ? " ke95-tabs__tab--active" : ""}`}
+              onClick={() => setActiveTab(title)}
+              role="tab"
+              aria-selected={active}
+              tabIndex={active ? 0 : -1}
+              type="button"
+            >
+              {title}
+            </Frame>
+          );
+        })}
+      </div>
+
+      <Frame boxShadow="out" className="ke95-tabs__panel" role="tabpanel">
+        {activeItem?.props?.children}
+      </Frame>
+    </div>
+  );
+}
+
+export function Tab(_props) {
+  return null;
 }
 
 export function Panel({ title, actions = null, children, className = "" }) {

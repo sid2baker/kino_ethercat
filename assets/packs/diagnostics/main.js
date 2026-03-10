@@ -1,7 +1,7 @@
 import "./main.css";
 import "uplot/dist/uPlot.min.css";
 
-import React, { startTransition, useEffect, useMemo, useRef, useState } from "react";
+import React, { createContext, startTransition, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import uPlot from "uplot";
 
@@ -17,6 +17,8 @@ import {
   Tab,
   Tabs,
 } from "../../ui/react95";
+
+const LayoutVersionContext = createContext(0);
 
 export async function init(ctx, data) {
   await ctx.importCSS("main.css");
@@ -239,6 +241,7 @@ function UPlotChart({ options, data, className, chartKey }) {
 }
 
 function ChartPanel({ title, subtitle, series, height = 210, yUnit = "", emptyLabel = "No samples yet" }) {
+  const layoutVersion = useContext(LayoutVersionContext);
   const [ref, width] = useChartWidth();
   const seriesKey = series.map((entry) => `${entry.label}:${entry.stroke}:${entry.fill ?? ""}`).join("|");
   const options = useMemo(() => chartOptions(width, height, series, yUnit), [width, height, yUnit, seriesKey]);
@@ -262,7 +265,12 @@ function ChartPanel({ title, subtitle, series, height = 210, yUnit = "", emptyLa
 
       <div ref={ref} className="ke95-chart">
         {data ? (
-          <UPlotChart options={options} data={data} className="ke95-diagnostics__plot-root" chartKey={`${seriesKey}:${yUnit}`} />
+          <UPlotChart
+            options={options}
+            data={data}
+            className="ke95-diagnostics__plot-root"
+            chartKey={`${seriesKey}:${yUnit}:${layoutVersion}`}
+          />
         ) : (
           <Frame boxShadow="in" className="ke95-chart__empty">
             <Mono>{emptyLabel}</Mono>
@@ -295,38 +303,52 @@ function Diagnostics({ ctx, data }) {
         </>
       }
     >
-      <SummaryGrid
-        items={[
-          { label: "Slice window", value: sliceWindowLabel(snapshot.slice_ms) },
-          { label: "Expired RT", value: formatCount(snapshot.bus.expired_realtime) },
-          { label: "Bus exceptions", value: formatCount(snapshot.bus.exceptions) },
-          { label: "Slaves", value: String(snapshot.slaves.length) },
-          { label: "Domains", value: String(snapshot.domains.length) },
-          { label: "DC state", value: snapshot.dc?.lock_state ?? "disabled" },
-        ]}
-      />
+      {({ layoutVersion }) => (
+        <LayoutVersionContext.Provider value={layoutVersion}>
+          <SummaryGrid
+            items={[
+              { label: "Slice window", value: sliceWindowLabel(snapshot.slice_ms) },
+              { label: "Expired RT", value: formatCount(snapshot.bus.expired_realtime) },
+              { label: "Bus exceptions", value: formatCount(snapshot.bus.exceptions) },
+              { label: "Slaves", value: String(snapshot.slaves.length) },
+              { label: "Domains", value: String(snapshot.domains.length) },
+              { label: "DC state", value: snapshot.dc?.lock_state ?? "disabled" },
+            ]}
+          />
 
-      <Tabs defaultActiveTab="Performance">
-        <Tab title="Performance">
-          <div className="ke95-grid">
-            <div className="ke95-grid ke95-grid--2">
-              <TransactionCard title="Realtime bus" accent="#0f766e" transaction={snapshot.bus.transactions.realtime} queue={snapshot.bus.queues.realtime} />
-              <TransactionCard title="Reliable bus" accent="#1d4ed8" transaction={snapshot.bus.transactions.reliable} queue={snapshot.bus.queues.reliable} />
-            </div>
-            <FrameSection frames={snapshot.bus.frames} links={snapshot.bus.links} />
-            <DcSection dc={snapshot.dc} />
-          </div>
-        </Tab>
-        <Tab title="Domains">
-          <DomainsSection domains={snapshot.domains} />
-        </Tab>
-        <Tab title="Slaves">
-          <SlavesSection slaves={snapshot.slaves} />
-        </Tab>
-        <Tab title="Events">
-          <TimelineSection timeline={snapshot.timeline} />
-        </Tab>
-      </Tabs>
+          <Tabs defaultActiveTab="Performance">
+            <Tab title="Performance">
+              <div className="ke95-grid">
+                <div className="ke95-grid ke95-grid--2">
+                  <TransactionCard
+                    title="Realtime bus"
+                    accent="#0f766e"
+                    transaction={snapshot.bus.transactions.realtime}
+                    queue={snapshot.bus.queues.realtime}
+                  />
+                  <TransactionCard
+                    title="Reliable bus"
+                    accent="#1d4ed8"
+                    transaction={snapshot.bus.transactions.reliable}
+                    queue={snapshot.bus.queues.reliable}
+                  />
+                </div>
+                <FrameSection frames={snapshot.bus.frames} links={snapshot.bus.links} />
+                <DcSection dc={snapshot.dc} />
+              </div>
+            </Tab>
+            <Tab title="Domains">
+              <DomainsSection domains={snapshot.domains} />
+            </Tab>
+            <Tab title="Slaves">
+              <SlavesSection slaves={snapshot.slaves} />
+            </Tab>
+            <Tab title="Events">
+              <TimelineSection timeline={snapshot.timeline} />
+            </Tab>
+          </Tabs>
+        </LayoutVersionContext.Provider>
+      )}
     </Shell>
   );
 }
