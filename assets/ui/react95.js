@@ -152,11 +152,11 @@ export function Shell({ title, subtitle = null, status = null, toolbar = null, c
 
       <div className="ke95-window__body">
         {subtitle || status || toolbar ? (
-          <Frame boxShadow="in" className="ke95-window__meta">
+          <Fieldset className="ke95-window__meta">
             {subtitle ? <div className="ke95-window__subtitle">{subtitle}</div> : null}
             {status ? <div className="ke95-window__status">{status}</div> : null}
             {toolbar ? <div className="ke95-window__toolbar">{toolbar}</div> : null}
-          </Frame>
+          </Fieldset>
         ) : null}
 
         <div className="ke95-window__content">{content}</div>
@@ -214,11 +214,11 @@ export function ModalShell({ title, subtitle = null, status = null, toolbar = nu
     >
       <Modal.Content className="ke95-modal__content">
         {subtitle || status || toolbar ? (
-          <Frame boxShadow="in" className="ke95-window__meta">
+          <Fieldset className="ke95-window__meta">
             {subtitle ? <div className="ke95-window__subtitle">{subtitle}</div> : null}
             {status ? <div className="ke95-window__status">{status}</div> : null}
             {toolbar ? <div className="ke95-window__toolbar">{toolbar}</div> : null}
-          </Frame>
+          </Fieldset>
         ) : null}
 
         <div className="ke95-window__content">{content}</div>
