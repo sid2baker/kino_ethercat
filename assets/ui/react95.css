@@ -1,4 +1,8 @@
 .ke95-shell {
+  --r95-color-headerBackground: #008000;
+  --r95-color-headerNotActiveBackground: #008000;
+  --r95-color-headerText: #fff;
+  --r95-color-headerNotActiveText: #fff;
   display: grid;
   gap: 0;
   color: #222;
@@ -7,6 +11,53 @@
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
+}
+
+.ke95-modal {
+  --r95-color-headerBackground: #008000;
+  --r95-color-headerNotActiveBackground: #008000;
+  --r95-color-headerText: #fff;
+  --r95-color-headerNotActiveText: #fff;
+  position: relative;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  color: #222;
+  font-size: 12px;
+  background: #c0c0c0;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  touch-action: auto;
+}
+
+.ke95-modal .draggable {
+  min-height: 28px;
+  margin-bottom: 0;
+}
+
+.ke95-modal__content {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  margin: 0;
+  min-width: 0;
+  background: #c0c0c0;
+}
+
+.ke95-modal--compact {
+  min-width: 10rem;
+}
+
+.ke95-modal--compact .draggable {
+  min-height: 24px;
+}
+
+.ke95-modal--minimized .ke95-modal__content {
+  display: none;
 }
 
 .ke95-shell--compact {
@@ -19,6 +70,15 @@
 
 .ke95-window__titlebar {
   min-height: 28px;
+}
+
+.ke95-window__close:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.ke95-window__close:disabled img {
+  filter: grayscale(1);
 }
 
 .ke95-window__body {
@@ -69,6 +129,9 @@
   min-height: 24px;
 }
 
+.ke95-modal--compact .ke95-modal__content,
+.ke95-modal--compact .ke95-window__meta,
+.ke95-modal--compact .ke95-tabs__panel,
 .ke95-shell--compact .ke95-window__body,
 .ke95-shell--compact .ke95-window__meta,
 .ke95-shell--compact .ke95-tabs__panel {
@@ -76,6 +139,7 @@
   padding: 6px;
 }
 
+.ke95-modal--compact .ke95-window__subtitle,
 .ke95-shell--compact .ke95-window__subtitle {
   line-height: 1.35;
 }

@@ -8,14 +8,14 @@ import { Checkbox } from "@react95/core/Checkbox";
 import { Fieldset } from "@react95/core/Fieldset";
 import { Frame } from "@react95/core/Frame";
 import { Input } from "@react95/core/Input";
+import { Modal } from "@react95/core/Modal";
 import { ProgressBar } from "@react95/core/ProgressBar";
 import { TextArea } from "@react95/core/TextArea";
 import { TitleBar } from "@react95/core/TitleBar";
 
-export { Button, Checkbox, Fieldset, Frame, Input, ProgressBar, TextArea, TitleBar };
+export { Button, Checkbox, Fieldset, Frame, Input, Modal, ProgressBar, TextArea, TitleBar };
 
-export function Shell({ title, subtitle = null, status = null, toolbar = null, children, compact = false }) {
-  const windowRef = useRef(null);
+function useWindowControls(windowRef) {
   const [fullscreenActive, setFullscreenActive] = useState(false);
   const [fullscreenSupported, setFullscreenSupported] = useState(false);
   const [minimized, setMinimized] = useState(false);
@@ -80,6 +80,20 @@ export function Shell({ title, subtitle = null, status = null, toolbar = null, c
     setLayoutVersion((value) => value + 1);
   };
 
+  return {
+    fullscreenActive,
+    fullscreenSupported,
+    layoutVersion,
+    minimized,
+    toggleFullscreen,
+    toggleMinimized,
+  };
+}
+
+export function Shell({ title, subtitle = null, status = null, toolbar = null, children, compact = false }) {
+  const windowRef = useRef(null);
+  const { fullscreenActive, fullscreenSupported, minimized, layoutVersion, toggleFullscreen, toggleMinimized } =
+    useWindowControls(windowRef);
   const MinimizeToggle = minimized ? TitleBar.Restore : TitleBar.Minimize;
   const WindowToggle = fullscreenActive ? TitleBar.Restore : TitleBar.Maximize;
   const content =
@@ -101,7 +115,11 @@ export function Shell({ title, subtitle = null, status = null, toolbar = null, c
             onClick={toggleFullscreen}
             title={fullscreenActive ? "Exit fullscreen" : "Enter fullscreen"}
           />
-          <TitleBar.Close disabled title="Close unavailable inside Livebook" />
+          <TitleBar.Close
+            className="ke95-window__close"
+            disabled
+            title="Close unavailable inside Livebook"
+          />
         </TitleBar.OptionsBox>
       </TitleBar>
 
@@ -117,6 +135,59 @@ export function Shell({ title, subtitle = null, status = null, toolbar = null, c
         <div className="ke95-window__content">{content}</div>
       </div>
     </Frame>
+  );
+}
+
+export function ModalShell({ title, subtitle = null, status = null, toolbar = null, children, compact = false }) {
+  const windowRef = useRef(null);
+  const { fullscreenActive, fullscreenSupported, minimized, layoutVersion, toggleFullscreen, toggleMinimized } =
+    useWindowControls(windowRef);
+  const MinimizeToggle = minimized ? TitleBar.Restore : TitleBar.Minimize;
+  const WindowToggle = fullscreenActive ? TitleBar.Restore : TitleBar.Maximize;
+  const content =
+    typeof children === "function"
+      ? children({ fullscreenActive, fullscreenSupported, minimized, layoutVersion })
+      : children;
+
+  return (
+    <Modal
+      ref={windowRef}
+      title={title}
+      hasWindowButton={false}
+      dragOptions={{ disabled: true }}
+      className={`ke95-modal${compact ? " ke95-modal--compact" : ""}${minimized ? " ke95-modal--minimized" : ""}`}
+      titleBarOptions={[
+        <MinimizeToggle
+          key="minimize"
+          onClick={toggleMinimized}
+          title={minimized ? "Restore window" : "Minimize window"}
+        />,
+        <WindowToggle
+          key="fullscreen"
+          disabled={!fullscreenSupported || minimized}
+          onClick={toggleFullscreen}
+          title={fullscreenActive ? "Exit fullscreen" : "Enter fullscreen"}
+        />,
+        <TitleBar.Close
+          key="close"
+          className="ke95-window__close"
+          disabled
+          title="Close unavailable inside Livebook"
+        />,
+      ]}
+    >
+      <Modal.Content className="ke95-modal__content">
+        {subtitle || status || toolbar ? (
+          <Frame boxShadow="in" className="ke95-window__meta">
+            {subtitle ? <div className="ke95-window__subtitle">{subtitle}</div> : null}
+            {status ? <div className="ke95-window__status">{status}</div> : null}
+            {toolbar ? <div className="ke95-window__toolbar">{toolbar}</div> : null}
+          </Frame>
+        ) : null}
+
+        <div className="ke95-window__content">{content}</div>
+      </Modal.Content>
+    </Modal>
   );
 }
 

@@ -9,9 +9,9 @@ import {
   DataTable,
   EmptyState,
   Frame,
+  ModalShell,
   Mono,
   Panel,
-  Shell,
   StatusBadge,
   SummaryGrid,
   Tab,
@@ -291,7 +291,7 @@ function Diagnostics({ ctx, data }) {
   }, [ctx]);
 
   return (
-    <Shell
+    <ModalShell
       title="Master diagnostics"
       subtitle={snapshot.last_failure ? `last failure ${snapshot.last_failure}` : "no recorded master failure"}
       status={
@@ -351,7 +351,7 @@ function Diagnostics({ ctx, data }) {
           </Tabs>
         </LayoutVersionContext.Provider>
       )}
-    </Shell>
+    </ModalShell>
   );
 }
 

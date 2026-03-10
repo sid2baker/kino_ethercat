@@ -100,11 +100,11 @@ function RuntimePanel({ ctx, data }) {
 
 function Controls({ ctx, controls }) {
   const [inputValue, setInputValue] = useState(controls?.input?.value ?? "");
-  const [selectValue, setSelectValue] = useState(controls?.select?.options?.[0] ?? "");
+  const [selectValue, setSelectValue] = useState(controls?.select?.value ?? controls?.select?.options?.[0] ?? "");
 
   useEffect(() => {
     setInputValue(controls?.input?.value ?? "");
-    setSelectValue(controls?.select?.options?.[0] ?? "");
+    setSelectValue(controls?.select?.value ?? controls?.select?.options?.[0] ?? "");
   }, [controls]);
 
   if (!controls) {

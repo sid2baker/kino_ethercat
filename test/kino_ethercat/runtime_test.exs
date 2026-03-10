@@ -30,8 +30,13 @@ defmodule KinoEtherCAT.RuntimeTest do
   end
 
   test "runtime payloads expose top-level controls and degrade gracefully when not started" do
-    assert %{kind: "master", controls: %{buttons: buttons}} = Runtime.payload(%Master{})
+    assert %{kind: "master", controls: %{buttons: buttons, select: select}} =
+             Runtime.payload(%Master{})
+
     assert Enum.any?(buttons, &(&1.id == "activate"))
+    assert select.id == "set_log_level"
+    assert select.label == "Elixir log level"
+    assert select.value in select.options
 
     assert %{kind: "slave", status: "unavailable"} =
              Runtime.payload(%Slave{name: :rack_1})
@@ -62,6 +67,9 @@ defmodule KinoEtherCAT.RuntimeTest do
 
     assert {:error, %Slave{name: :rack_1}, %{level: "error", text: ":invalid_transition"}} =
              Runtime.perform(%Slave{name: :rack_1}, "transition", %{"value" => "invalid"})
+
+    assert {:error, %Master{}, %{level: "error", text: ":invalid_log_level"}} =
+             Runtime.perform(%Master{}, "set_log_level", %{"value" => "verbose"})
   end
 
   defp default_dc_resource do

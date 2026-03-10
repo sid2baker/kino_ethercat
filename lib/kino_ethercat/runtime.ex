@@ -6,6 +6,8 @@ defmodule KinoEtherCAT.Runtime do
   for `Kino.Render` protocol implementations to build rich Livebook views.
   """
 
+  require Logger
+
   alias EtherCAT.{Bus, Domain, Master, Slave}
 
   @spec master() :: %Master{}
@@ -116,6 +118,7 @@ defmodule KinoEtherCAT.Runtime do
         %{label: "Slaves", value: Integer.to_string(length(slaves))},
         %{label: "Domains", value: Integer.to_string(length(domains))},
         %{label: "DC lock", value: to_string(dc_status.lock_state || :disabled)},
+        %{label: "Log level", value: Atom.to_string(current_log_level())},
         %{
           label: "Pending PREOP",
           value: Integer.to_string(MapSet.size(master.pending_preop || MapSet.new()))
@@ -136,7 +139,13 @@ defmodule KinoEtherCAT.Runtime do
           %{id: "refresh", label: "Refresh", tone: "secondary"},
           %{id: "activate", label: "Activate", tone: "primary"},
           %{id: "stop", label: "Stop", tone: "danger"}
-        ]
+        ],
+        select: %{
+          id: "set_log_level",
+          label: "Elixir log level",
+          options: Enum.map(log_level_options(), &Atom.to_string/1),
+          value: Atom.to_string(current_log_level())
+        }
       }
     }
   end
@@ -335,6 +344,18 @@ defmodule KinoEtherCAT.Runtime do
 
   def perform(%Master{} = resource, "stop", _params) do
     run_action(resource, fn -> EtherCAT.stop() end, "Master stopped")
+  end
+
+  def perform(%Master{} = resource, "set_log_level", %{"value" => value}) do
+    with {:ok, level} <- parse_log_level(value) do
+      run_action(
+        resource,
+        fn -> Logger.configure(level: level) end,
+        "Logger level set to #{level}"
+      )
+    else
+      {:error, reason} -> {:error, resource, error_message(reason)}
+    end
   end
 
   def perform(%Slave{name: name} = resource, "transition", %{"value" => target}) do
@@ -601,6 +622,18 @@ defmodule KinoEtherCAT.Runtime do
 
   defp transition_target(_target), do: {:error, :invalid_transition}
 
+  defp parse_log_level("debug"), do: {:ok, :debug}
+  defp parse_log_level("info"), do: {:ok, :info}
+  defp parse_log_level("notice"), do: {:ok, :notice}
+  defp parse_log_level("warning"), do: {:ok, :warning}
+  defp parse_log_level("error"), do: {:ok, :error}
+  defp parse_log_level("critical"), do: {:ok, :critical}
+  defp parse_log_level("alert"), do: {:ok, :alert}
+  defp parse_log_level("emergency"), do: {:ok, :emergency}
+  defp parse_log_level("none"), do: {:ok, :none}
+  defp parse_log_level("all"), do: {:ok, :all}
+  defp parse_log_level(_target), do: {:error, :invalid_log_level}
+
   defp parse_positive_integer(value) when is_binary(value) do
     case Integer.parse(String.trim(value)) do
       {int, ""} when int > 0 -> {:ok, int}
@@ -625,6 +658,20 @@ defmodule KinoEtherCAT.Runtime do
 
   defp info_message(text), do: %{level: "info", text: text}
   defp error_message(reason), do: %{level: "error", text: format_term(reason)}
+
+  defp current_log_level do
+    level = safe(fn -> Logger.level() end, :info)
+
+    if level in log_level_options() do
+      level
+    else
+      :info
+    end
+  end
+
+  defp log_level_options do
+    [:debug, :info, :notice, :warning, :error, :critical, :alert, :emergency, :none, :all]
+  end
 
   defp format_term(value) when is_binary(value), do: value
   defp format_term(value), do: inspect(value, pretty: false, limit: 20)
