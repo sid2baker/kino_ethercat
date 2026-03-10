@@ -128,6 +128,7 @@ defmodule KinoEtherCAT.Runtime do
       status: to_string(public_state),
       message: message,
       logs: payload_logs(master),
+      log_controls: log_controls(master),
       summary: [
         %{label: "State", value: to_string(public_state)},
         %{label: "Slaves", value: Integer.to_string(length(slaves))},
@@ -154,8 +155,7 @@ defmodule KinoEtherCAT.Runtime do
           %{id: "refresh", label: "Refresh", tone: "secondary"},
           %{id: "activate", label: "Activate", tone: "primary"},
           %{id: "stop", label: "Stop", tone: "danger"}
-        ],
-        log_select: log_level_control(master)
+        ]
       }
     }
   end
@@ -185,6 +185,7 @@ defmodule KinoEtherCAT.Runtime do
           status: to_string(info.al_state),
           message: message,
           logs: payload_logs(slave),
+          log_controls: log_controls(slave),
           summary: [
             %{label: "State", value: to_string(state_name || info.al_state)},
             %{label: "Station", value: hex(info.station, 4)},
@@ -211,8 +212,7 @@ defmodule KinoEtherCAT.Runtime do
           ],
           controls: %{
             buttons: [%{id: "refresh", label: "Refresh", tone: "secondary"}],
-            select: %{id: "transition", label: "Transition", options: ~w(init preop safeop op)},
-            log_select: log_level_control(slave)
+            select: %{id: "transition", label: "Transition", options: ~w(init preop safeop op)}
           }
         }
 
@@ -233,6 +233,7 @@ defmodule KinoEtherCAT.Runtime do
           status: to_string(info.state),
           message: message,
           logs: payload_logs(%Domain{id: id}),
+          log_controls: log_controls(%Domain{id: id}),
           summary: [
             %{label: "State", value: to_string(state_name || info.state)},
             %{label: "Cycle", value: "#{info.cycle_time_us} us"},
@@ -254,7 +255,6 @@ defmodule KinoEtherCAT.Runtime do
               %{id: "start_cycling", label: "Start", tone: "primary"},
               %{id: "stop_cycling", label: "Stop", tone: "danger"}
             ],
-            log_select: log_level_control(%Domain{id: id}),
             input: %{
               id: "cycle_time_us",
               label: "Update cycle (us)",
@@ -278,6 +278,7 @@ defmodule KinoEtherCAT.Runtime do
       status: to_string(state_name || :not_started),
       message: message,
       logs: payload_logs(bus),
+      log_controls: log_controls(bus),
       summary: [
         %{label: "Frame timeout", value: "#{bus.frame_timeout_ms || 25} ms"},
         %{label: "Timeouts", value: Integer.to_string(bus.timeout_count || 0)},
@@ -294,7 +295,6 @@ defmodule KinoEtherCAT.Runtime do
       ],
       controls: %{
         buttons: [%{id: "refresh", label: "Refresh", tone: "secondary"}],
-        log_select: log_level_control(bus),
         input: %{id: "frame_timeout_ms", label: "Frame timeout (ms)", value: "25"},
         submit: %{id: "set_frame_timeout", label: "Apply timeout", tone: "primary"}
       }
@@ -318,6 +318,7 @@ defmodule KinoEtherCAT.Runtime do
       status: to_string(status.lock_state),
       message: message,
       logs: payload_logs(resource),
+      log_controls: log_controls(resource),
       summary: [
         %{label: "Configured", value: to_string(status.configured?)},
         %{label: "Active", value: to_string(status.active?)},
@@ -345,7 +346,6 @@ defmodule KinoEtherCAT.Runtime do
       ],
       controls: %{
         buttons: [%{id: "refresh", label: "Refresh", tone: "secondary"}],
-        log_select: log_level_control(resource),
         input: %{id: "timeout_ms", label: "Await lock (ms)", value: "5000"},
         submit: %{id: "await_dc_locked", label: "Await lock", tone: "primary"}
       }
@@ -378,6 +378,10 @@ defmodule KinoEtherCAT.Runtime do
     else
       {:error, reason} -> {:error, resource, error_message(reason)}
     end
+  end
+
+  def perform(resource, "clear_logs", _params) do
+    run_action(resource, fn -> WidgetLogs.clear(resource) end, "Logs cleared")
   end
 
   def perform(%Slave{name: name} = resource, "transition", %{"value" => target}) do
@@ -672,13 +676,11 @@ defmodule KinoEtherCAT.Runtime do
       status: "unavailable",
       message: message || error_message(reason),
       logs: payload_logs(resource),
+      log_controls: log_controls(resource),
       summary: [],
       tables: [],
       details: [%{label: "Reason", value: format_term(reason)}],
-      controls: %{
-        buttons: [%{id: "refresh", label: "Refresh", tone: "secondary"}],
-        log_select: log_level_control(resource)
-      }
+      controls: %{buttons: [%{id: "refresh", label: "Refresh", tone: "secondary"}]}
     }
   end
 
@@ -710,6 +712,13 @@ defmodule KinoEtherCAT.Runtime do
       label: "Widget log level",
       options: Enum.map(log_level_options(), &Atom.to_string/1),
       value: Atom.to_string(current_log_level(resource))
+    }
+  end
+
+  defp log_controls(resource) do
+    %{
+      select: log_level_control(resource),
+      buttons: [%{id: "clear_logs", label: "Clear logs", tone: "secondary"}]
     }
   end
 

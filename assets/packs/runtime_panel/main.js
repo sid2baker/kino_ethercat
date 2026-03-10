@@ -107,7 +107,7 @@ function RuntimePanel({ ctx, data }) {
       ))}
 
       <Panel title="Logs">
-        <LogSection logs={snapshot.logs ?? []} />
+        <LogSection ctx={ctx} logs={snapshot.logs ?? []} controls={snapshot.log_controls} />
       </Panel>
     </Shell>
   );
@@ -116,7 +116,6 @@ function RuntimePanel({ ctx, data }) {
 function Controls({ ctx, controls }) {
   const [inputValue, setInputValue] = useState(controls?.input?.value ?? "");
   const [selectValue, setSelectValue] = useState(selectControlValue(controls?.select));
-  const [logSelectValue, setLogSelectValue] = useState(selectControlValue(controls?.log_select));
 
   useEffect(() => {
     setInputValue(controls?.input?.value ?? "");
@@ -125,10 +124,6 @@ function Controls({ ctx, controls }) {
   useEffect(() => {
     setSelectValue(selectControlValue(controls?.select));
   }, [controls?.select?.id, controls?.select?.value, selectControlOptionsKey(controls?.select)]);
-
-  useEffect(() => {
-    setLogSelectValue(selectControlValue(controls?.log_select));
-  }, [controls?.log_select?.id, controls?.log_select?.value, selectControlOptionsKey(controls?.log_select)]);
 
   if (!controls) {
     return <EmptyState>No runtime controls available.</EmptyState>;
@@ -176,15 +171,6 @@ function Controls({ ctx, controls }) {
           </Button>
         </div>
       ) : null}
-
-      {controls.log_select ? (
-        <SelectControl
-          control={controls.log_select}
-          value={logSelectValue}
-          onChange={setLogSelectValue}
-          onApply={(value) => ctx.pushEvent("action", { id: controls.log_select.id, value })}
-        />
-      ) : null}
     </div>
   );
 }
@@ -229,25 +215,55 @@ function Details({ items }) {
   );
 }
 
-function LogSection({ logs }) {
-  if (!logs.length) {
-    return <EmptyState>No logs captured for this resource yet.</EmptyState>;
-  }
+function LogSection({ ctx, logs, controls }) {
+  const [logSelectValue, setLogSelectValue] = useState(selectControlValue(controls?.select));
+
+  useEffect(() => {
+    setLogSelectValue(selectControlValue(controls?.select));
+  }, [controls?.select?.id, controls?.select?.value, selectControlOptionsKey(controls?.select)]);
 
   return (
-    <Frame boxShadow="in" className="ke95-runtime-log">
-      {logs.map((entry) => (
-        <div key={entry.id} className="ke95-runtime-log__row">
-          <Mono as="div" className="ke95-runtime-log__time">
-            {entry.time}
-          </Mono>
-          <StatusBadge tone={LOG_TONES[entry.level] ?? "neutral"}>{entry.level}</StatusBadge>
-          <Mono as="div" className="ke95-runtime-log__message">
-            {entry.text}
-          </Mono>
-        </div>
-      ))}
-    </Frame>
+    <div className="ke95-grid">
+      {controls ? (
+        <>
+          {controls.select ? (
+            <SelectControl
+              control={controls.select}
+              value={logSelectValue}
+              onChange={setLogSelectValue}
+              onApply={(value) => ctx.pushEvent("action", { id: controls.select.id, value })}
+            />
+          ) : null}
+          {controls.buttons?.length > 0 ? (
+            <InlineButtons>
+              {controls.buttons.map((button) => (
+                <Button key={button.id} onClick={() => ctx.pushEvent("action", { id: button.id })}>
+                  {button.label}
+                </Button>
+              ))}
+            </InlineButtons>
+          ) : null}
+        </>
+      ) : null}
+
+      {logs.length ? (
+        <Frame boxShadow="in" className="ke95-runtime-log">
+          {logs.map((entry) => (
+            <div key={entry.id} className="ke95-runtime-log__row">
+              <Mono as="div" className="ke95-runtime-log__time">
+                {entry.time}
+              </Mono>
+              <StatusBadge tone={LOG_TONES[entry.level] ?? "neutral"}>{entry.level}</StatusBadge>
+              <Mono as="div" className="ke95-runtime-log__message">
+                {entry.text}
+              </Mono>
+            </div>
+          ))}
+        </Frame>
+      ) : (
+        <EmptyState>No logs captured for this resource yet.</EmptyState>
+      )}
+    </div>
   );
 }
 

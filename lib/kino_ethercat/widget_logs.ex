@@ -110,6 +110,19 @@ defmodule KinoEtherCAT.WidgetLogs do
     :exit, _ -> :ok
   end
 
+  @spec clear(struct() | scope()) :: :ok | {:error, :invalid_scope}
+  def clear(resource_or_scope) do
+    with {:ok, scope} <- scope(resource_or_scope),
+         router when is_pid(router) <- Process.whereis(__MODULE__) do
+      GenServer.call(router, {:clear, scope})
+    else
+      :error -> {:error, :invalid_scope}
+      _ -> :ok
+    end
+  catch
+    :exit, _ -> :ok
+  end
+
   @spec entries(struct() | scope()) :: [entry()]
   def entries(resource_or_scope) do
     with {:ok, scope} <- scope(resource_or_scope),
@@ -203,6 +216,12 @@ defmodule KinoEtherCAT.WidgetLogs do
     levels = Map.put(state.levels, scope, level)
     notify_subscribers(state.subscribers, scope)
     {:reply, :ok, %{state | levels: levels}}
+  end
+
+  def handle_call({:clear, scope}, _from, state) do
+    entries = Map.delete(state.entries, scope)
+    notify_subscribers(state.subscribers, scope)
+    {:reply, :ok, %{state | entries: entries}}
   end
 
   @impl true

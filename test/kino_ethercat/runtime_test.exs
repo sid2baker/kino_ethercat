@@ -30,36 +30,42 @@ defmodule KinoEtherCAT.RuntimeTest do
   end
 
   test "runtime payloads expose top-level controls and degrade gracefully when not started" do
-    assert %{kind: "master", controls: %{buttons: buttons, log_select: log_select}} =
+    assert %{kind: "master", controls: %{buttons: buttons}, log_controls: log_controls} =
              Runtime.payload(%Master{})
 
     assert Enum.any?(buttons, &(&1.id == "activate"))
-    assert log_select.id == "set_log_level"
-    assert log_select.label == "Widget log level"
-    assert log_select.value in log_select.options
+    assert log_controls.select.id == "set_log_level"
+    assert log_controls.select.label == "Widget log level"
+    assert log_controls.select.value in log_controls.select.options
+    assert Enum.any?(log_controls.buttons, &(&1.id == "clear_logs"))
 
-    assert %{kind: "slave", status: "unavailable", controls: %{log_select: slave_log_select}} =
+    assert %{kind: "slave", status: "unavailable", log_controls: slave_log_controls} =
              Runtime.payload(%Slave{name: :rack_1})
 
-    assert slave_log_select.value in slave_log_select.options
+    assert slave_log_controls.select.value in slave_log_controls.select.options
 
-    assert %{kind: "domain", status: "unavailable", controls: %{log_select: domain_log_select}} =
+    assert %{kind: "domain", status: "unavailable", log_controls: domain_log_controls} =
              Runtime.payload(%Domain{id: :main})
 
-    assert domain_log_select.value in domain_log_select.options
+    assert domain_log_controls.select.value in domain_log_controls.select.options
 
     assert %{
              kind: "bus",
-             controls: %{submit: %{id: "set_frame_timeout"}, log_select: bus_log_select}
+             controls: %{submit: %{id: "set_frame_timeout"}},
+             log_controls: bus_log_controls
            } =
              Runtime.payload(struct(Bus))
 
-    assert bus_log_select.value in bus_log_select.options
+    assert bus_log_controls.select.value in bus_log_controls.select.options
 
-    assert %{kind: "dc", controls: %{submit: %{id: "await_dc_locked"}, log_select: dc_log_select}} =
+    assert %{
+             kind: "dc",
+             controls: %{submit: %{id: "await_dc_locked"}},
+             log_controls: dc_log_controls
+           } =
              Runtime.payload(default_dc_resource())
 
-    assert dc_log_select.value in dc_log_select.options
+    assert dc_log_controls.select.value in dc_log_controls.select.options
   end
 
   test "runtime actions validate numeric inputs before touching EtherCAT" do

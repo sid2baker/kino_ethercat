@@ -111,6 +111,34 @@ defmodule KinoEtherCAT.WidgetLogsTest do
     end)
   end
 
+  test "clearing logs only removes the targeted scope buffer" do
+    master_token = unique_token("clear-master")
+    slave_token = unique_token("clear-slave")
+
+    Logger.log(:info, "[Master] #{master_token}", application: :ethercat)
+    Logger.log(:info, "[Slave rack_1] #{slave_token}", application: :ethercat)
+
+    assert_eventually(fn ->
+      assert Enum.any?(Runtime.payload(%Master{}).logs, &String.contains?(&1.text, master_token))
+
+      assert Enum.any?(
+               Runtime.payload(%Slave{name: :rack_1}).logs,
+               &String.contains?(&1.text, slave_token)
+             )
+    end)
+
+    assert :ok = WidgetLogs.clear(:master)
+
+    assert_eventually(fn ->
+      refute Enum.any?(Runtime.payload(%Master{}).logs, &String.contains?(&1.text, master_token))
+
+      assert Enum.any?(
+               Runtime.payload(%Slave{name: :rack_1}).logs,
+               &String.contains?(&1.text, slave_token)
+             )
+    end)
+  end
+
   defp assert_eventually(fun, attempts \\ 40)
 
   defp assert_eventually(fun, attempts) when attempts > 0 do
