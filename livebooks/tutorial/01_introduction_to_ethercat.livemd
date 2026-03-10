@@ -1,0 +1,88 @@
+# 01. Introduction to EtherCAT
+
+Open this notebook with a Mix project runtime rooted at this repository.
+
+This notebook explains only the core EtherCAT ideas you need before touching
+real I/O.
+
+The follow-up tutorials build on this:
+
+* [02. Simple IO Loopback](./02_simple_io_loopback.livemd)
+* [03. Subscriptions](./03_subscriptions.livemd)
+* [04. Multidomain](./04_multidomain.livemd)
+
+## Master, Slaves, Process Data
+
+In this project, `EtherCAT` is a master-owned runtime:
+
+* the `Master` owns the session lifecycle
+* `Slaves` are the devices on the EtherCAT bus
+* `process data` is the cyclic input/output data exchanged with those slaves
+
+The mental model is:
+
+* outputs are staged in the master process image
+* inputs are refreshed from the bus into the master process image
+* your application reads and writes named signals against that image
+
+## PREOP vs OP
+
+Two states matter most at the beginning:
+
+* `PREOP` means the session is up and the slaves are configured enough to be usable
+* `OP` means cyclic process-data exchange is running
+
+In this runtime, the public checkpoints are:
+
+* `EtherCAT.await_running/1` for “usable session”
+* `EtherCAT.await_operational/1` for “cyclic OP is running”
+
+## Cyclic Exchange
+
+EtherCAT is not a request/response API for every signal read.
+
+Instead, domains run cyclic exchange:
+
+* output values are written into the next cycle
+* the master exchanges frames with the bus
+* fresh input samples become available after a successful cycle
+
+That is why `EtherCAT.write_output/3` stages a value for the next cycle, and
+`EtherCAT.read_input/2` returns the latest cached sample rather than directly
+reading hardware on demand.
+
+## The Basic Session Flow
+
+This is the safe baseline for a notebook session:
+
+```elixir
+:ok = EtherCAT.start(...)
+:ok = EtherCAT.await_running(15_000)
+
+case EtherCAT.state() do
+  :preop_ready ->
+    :ok = EtherCAT.activate()
+    :ok = EtherCAT.await_operational(15_000)
+
+  :operational ->
+    :ok
+end
+
+EtherCAT.stop()
+```
+
+The important distinction is:
+
+* `start/1` begins discovery and startup
+* `await_running/1` waits until the session is usable
+* `activate/0` requests cyclic operation
+* `await_operational/1` waits until OP is actually running
+* `stop/0` tears the session down cleanly
+
+## What You Will See Next
+
+The next tutorials make this concrete:
+
+* [02. Simple IO Loopback](./02_simple_io_loopback.livemd) shows one fixed loopback bench, one domain, and no DC
+* [03. Subscriptions](./03_subscriptions.livemd) shows the reactive message model
+* [04. Multidomain](./04_multidomain.livemd) introduces multiple domains and different cycle times

@@ -2,6 +2,21 @@
 
 Welcome to the interactive documentation and testing suite for `kino_ethercat`.
 
+## Tutorials
+
+* [01. Introduction to EtherCAT](./tutorial/01_introduction_to_ethercat.livemd)  
+  Only the essentials: master, slaves, process data, PREOP vs OP, cyclic
+  exchange, and the basic session flow.
+* [02. Simple IO Loopback](./tutorial/02_simple_io_loopback.livemd)  
+  One fixed loopback bench, one domain, no DC, diagnostics, and simple output
+  writes matched to input reads.
+* [03. Subscriptions](./tutorial/03_subscriptions.livemd)  
+  The reactive model with `EtherCAT.subscribe/2`, change messages, and a small
+  event-collection example.
+* [04. Multidomain](./tutorial/04_multidomain.livemd)  
+  Why multiple domains exist, how process data is assigned, and what different
+  cycle times change operationally.
+
 ## Testing & Diagnostics
 
 The public `EtherCAT.state/0` lifecycle is:

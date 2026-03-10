@@ -1,0 +1,141 @@
+# 03. Subscriptions
+
+Open this notebook with a Mix project runtime rooted at this repository.
+
+This notebook uses the same simple loopback bench as the previous tutorial:
+
+* `:coupler`
+* `:inputs` as `KinoEtherCAT.Driver.EL1809`
+* `:outputs` as `KinoEtherCAT.Driver.EL2809`
+* one domain: `:main`
+* no Distributed Clocks
+
+The goal here is to show the reactive model: subscribe once, then receive
+messages when signals change.
+
+## When To Poll vs Subscribe
+
+Use polling when:
+
+* you only need the latest value now
+* you do not care about every intermediate change
+
+Use subscriptions when:
+
+* you want to react to every change
+* you want to accumulate events over time
+* you are building event-driven notebook logic
+
+## Start Session
+
+```elixir
+alias EtherCAT.Domain.Config, as: DomainConfig
+alias EtherCAT.Slave.Config, as: SlaveConfig
+
+_ = EtherCAT.stop()
+
+:ok =
+  EtherCAT.start(
+    interface: "eth0",
+    domains: [
+      %DomainConfig{id: :main, cycle_time_us: 1_000, miss_threshold: 1_000}
+    ],
+    dc: nil,
+    slaves: [
+      %SlaveConfig{name: :coupler, target_state: :op},
+      %SlaveConfig{
+        name: :inputs,
+        driver: KinoEtherCAT.Driver.EL1809,
+        process_data: {:all, :main},
+        target_state: :op
+      },
+      %SlaveConfig{
+        name: :outputs,
+        driver: KinoEtherCAT.Driver.EL2809,
+        process_data: {:all, :main},
+        target_state: :op
+      }
+    ]
+  )
+
+:ok = EtherCAT.await_running(15_000)
+
+case EtherCAT.state() do
+  :preop_ready ->
+    :ok = EtherCAT.activate()
+    :ok = EtherCAT.await_operational(15_000)
+
+  :operational ->
+    :ok
+
+  other ->
+    {:error, {:unexpected_state, other}}
+end
+```
+
+## Polling Once
+
+```elixir
+EtherCAT.read_input(:inputs, :ch1)
+```
+
+## Subscribe And Collect Changes
+
+`EtherCAT.subscribe/2` delivers messages like:
+
+`{:ethercat, :signal, slave_name, signal_name, value}`
+
+```elixir
+drain_mailbox = fn drain_mailbox ->
+  receive do
+    {:ethercat, _kind, _slave, _name, _value} ->
+      drain_mailbox.(drain_mailbox)
+  after
+    0 -> :ok
+  end
+end
+
+collect_messages = fn count, timeout_ms ->
+  for _ <- 1..count do
+    receive do
+      {:ethercat, :signal, slave, signal, value} ->
+        %{
+          slave: slave,
+          signal: signal,
+          value: value,
+          received_at_ms: System.system_time(:millisecond)
+        }
+    after
+      timeout_ms ->
+        :timeout
+    end
+  end
+end
+
+:ok = EtherCAT.subscribe(:inputs, :ch1)
+drain_mailbox.(drain_mailbox)
+
+for value <- [1, 0, 1, 0] do
+  :ok = EtherCAT.write_output(:outputs, :ch1, value)
+  Process.sleep(75)
+end
+
+%{
+  state: EtherCAT.state(),
+  messages: collect_messages.(4, 1_000),
+  latest_input: EtherCAT.read_input(:inputs, :ch1)
+}
+```
+
+## Diagnostics
+
+```elixir
+KinoEtherCAT.diagnostics()
+```
+
+## Tidy Up
+
+```elixir
+:ok = EtherCAT.write_output(:outputs, :ch1, 0)
+EtherCAT.stop()
+```
