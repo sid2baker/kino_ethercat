@@ -2,6 +2,14 @@ defmodule KinoEtherCAT.Runtime.Render do
   @moduledoc false
 
   def to_livebook(kino), do: Kino.Render.to_livebook(kino)
+
+  def dc_to_livebook(resource) do
+    overview = KinoEtherCAT.Runtime.DC.new(resource)
+    raw = Kino.Inspect.new(resource)
+
+    Kino.Layout.tabs(Overview: overview, Raw: raw)
+    |> Kino.Render.to_livebook()
+  end
 end
 
 defimpl Kino.Render, for: EtherCAT.Master do
@@ -35,8 +43,7 @@ end
 if function_exported?(EtherCAT.DC, :__struct__, 0) do
   defimpl Kino.Render, for: EtherCAT.DC do
     def to_livebook(resource) do
-      kino = KinoEtherCAT.Runtime.DC.new(resource)
-      KinoEtherCAT.Runtime.Render.to_livebook(kino)
+      KinoEtherCAT.Runtime.Render.dc_to_livebook(resource)
     end
   end
 end
@@ -45,8 +52,7 @@ if Code.ensure_loaded?(EtherCAT.DC.Status) and
      function_exported?(EtherCAT.DC.Status, :__struct__, 0) do
   defimpl Kino.Render, for: EtherCAT.DC.Status do
     def to_livebook(resource) do
-      kino = KinoEtherCAT.Runtime.DC.new(resource)
-      KinoEtherCAT.Runtime.Render.to_livebook(kino)
+      KinoEtherCAT.Runtime.Render.dc_to_livebook(resource)
     end
   end
 end

@@ -19,6 +19,16 @@ defmodule KinoEtherCAT.RuntimeTest do
     end
   end
 
+  test "dc resources render with an overview and raw fallback" do
+    Application.ensure_all_started(:kino)
+
+    assert %{type: :tabs, labels: ["Overview", "Raw"], outputs: [overview, raw]} =
+             Kino.Render.to_livebook(default_dc_resource())
+
+    assert %{type: :js} = overview
+    assert %{type: :terminal_text} = raw
+  end
+
   test "runtime payloads expose top-level controls and degrade gracefully when not started" do
     assert %{kind: "master", controls: %{buttons: buttons}} = Runtime.payload(%Master{})
     assert Enum.any?(buttons, &(&1.id == "activate"))
