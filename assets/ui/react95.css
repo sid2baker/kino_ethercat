@@ -42,6 +42,22 @@
   justify-content: flex-end;
 }
 
+.ke95-header__status,
+.ke95-header__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.ke95-header__toolbar {
+  flex-wrap: nowrap;
+}
+
+.ke95-header__toolbar button {
+  min-width: 7.5rem;
+}
+
 .ke95-panel {
   display: grid;
   gap: 8px;
@@ -241,6 +257,21 @@
 
 .ke95-fill {
   width: 100%;
+}
+
+.ke95-select {
+  min-width: 0;
+}
+
+.ke95-select__control {
+  width: 100%;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 3px 4px;
 }
 
 @media (max-width: 640px) {

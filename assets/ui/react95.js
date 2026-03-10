@@ -5,7 +5,6 @@ import "./react95.css";
 import React from "react";
 import { Button } from "@react95/core/Button";
 import { Checkbox } from "@react95/core/Checkbox";
-import { Dropdown } from "@react95/core/Dropdown";
 import { Fieldset } from "@react95/core/Fieldset";
 import { Frame } from "@react95/core/Frame";
 import { Input } from "@react95/core/Input";
@@ -14,7 +13,7 @@ import { Tab } from "@react95/core/Tab";
 import { Tabs } from "@react95/core/Tabs";
 import { TextArea } from "@react95/core/TextArea";
 
-export { Button, Checkbox, Dropdown, Fieldset, Frame, Input, ProgressBar, Tab, Tabs, TextArea };
+export { Button, Checkbox, Fieldset, Frame, Input, ProgressBar, Tab, Tabs, TextArea };
 
 export function Shell({ title, subtitle = null, status = null, toolbar = null, children, compact = false }) {
   return (
@@ -24,7 +23,12 @@ export function Shell({ title, subtitle = null, status = null, toolbar = null, c
           <div className="ke95-header__title">{title}</div>
           {subtitle ? <div className="ke95-header__subtitle">{subtitle}</div> : null}
         </div>
-        {status || toolbar ? <div className="ke95-header__meta">{status}{toolbar}</div> : null}
+        {status || toolbar ? (
+          <div className="ke95-header__meta">
+            {status ? <div className="ke95-header__status">{status}</div> : null}
+            {toolbar ? <div className="ke95-header__toolbar">{toolbar}</div> : null}
+          </div>
+        ) : null}
       </Frame>
       {children}
     </div>
@@ -106,4 +110,19 @@ export function DataTable({ headers, children, className = "" }) {
 
 export function Mono({ as: Component = "span", children, className = "" }) {
   return <Component className={`ke95-mono ${className}`.trim()}>{children}</Component>;
+}
+
+export function Dropdown({ options = null, children = null, className = "", ...props }) {
+  return (
+    <Frame boxShadow="in" className={`ke95-select ${className}`.trim()}>
+      <select {...props} className="ke95-select__control">
+        {children ??
+          (options ?? []).map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+      </select>
+    </Frame>
+  );
 }

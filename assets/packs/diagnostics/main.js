@@ -14,6 +14,8 @@ import {
   Shell,
   StatusBadge,
   SummaryGrid,
+  Tab,
+  Tabs,
 } from "../../ui/react95";
 
 export async function init(ctx, data) {
@@ -304,16 +306,27 @@ function Diagnostics({ ctx, data }) {
         ]}
       />
 
-      <div className="ke95-grid ke95-grid--2">
-        <TransactionCard title="Realtime bus" accent="#0f766e" transaction={snapshot.bus.transactions.realtime} queue={snapshot.bus.queues.realtime} />
-        <TransactionCard title="Reliable bus" accent="#1d4ed8" transaction={snapshot.bus.transactions.reliable} queue={snapshot.bus.queues.reliable} />
-      </div>
-
-      <FrameSection frames={snapshot.bus.frames} links={snapshot.bus.links} />
-      <DcSection dc={snapshot.dc} />
-      <DomainsSection domains={snapshot.domains} />
-      <SlavesSection slaves={snapshot.slaves} />
-      <TimelineSection timeline={snapshot.timeline} />
+      <Tabs defaultActiveTab="Performance">
+        <Tab title="Performance">
+          <div className="ke95-grid">
+            <div className="ke95-grid ke95-grid--2">
+              <TransactionCard title="Realtime bus" accent="#0f766e" transaction={snapshot.bus.transactions.realtime} queue={snapshot.bus.queues.realtime} />
+              <TransactionCard title="Reliable bus" accent="#1d4ed8" transaction={snapshot.bus.transactions.reliable} queue={snapshot.bus.queues.reliable} />
+            </div>
+            <FrameSection frames={snapshot.bus.frames} links={snapshot.bus.links} />
+            <DcSection dc={snapshot.dc} />
+          </div>
+        </Tab>
+        <Tab title="Domains">
+          <DomainsSection domains={snapshot.domains} />
+        </Tab>
+        <Tab title="Slaves">
+          <SlavesSection slaves={snapshot.slaves} />
+        </Tab>
+        <Tab title="Events">
+          <TimelineSection timeline={snapshot.timeline} />
+        </Tab>
+      </Tabs>
     </Shell>
   );
 }
