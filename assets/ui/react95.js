@@ -22,6 +22,7 @@ function useWindowControls(windowRef) {
   const [fullscreenSupported, setFullscreenSupported] = useState(false);
   const [minimized, setMinimized] = useState(false);
   const [layoutVersion, setLayoutVersion] = useState(0);
+  const toggleMinimizedRef = useRef(null);
 
   useEffect(() => {
     const element = windowRef.current;
@@ -81,6 +82,30 @@ function useWindowControls(windowRef) {
     setMinimized(true);
     setLayoutVersion((value) => value + 1);
   };
+
+  useEffect(() => {
+    toggleMinimizedRef.current = toggleMinimized;
+  }, [toggleMinimized]);
+
+  useEffect(() => {
+    const element = windowRef.current;
+    if (!element) return undefined;
+
+    const titleBar = element.querySelector(".ke95-window__titlebar, .draggable");
+    if (!titleBar) return undefined;
+
+    const onTitleBarClick = (event) => {
+      if (!(event.target instanceof Element)) return;
+      if (event.target.closest("button")) return;
+      void toggleMinimizedRef.current?.();
+    };
+
+    titleBar.addEventListener("click", onTitleBarClick);
+
+    return () => {
+      titleBar.removeEventListener("click", onTitleBarClick);
+    };
+  }, [windowRef]);
 
   return {
     fullscreenActive,

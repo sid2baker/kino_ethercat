@@ -39,6 +39,11 @@
   display: none;
 }
 
+.ke95-window__titlebar,
+.ke95-modal .draggable {
+  box-shadow: var(--r95-shadow-out);
+}
+
 .ke95-shell--compact {
   min-width: 10rem;
 }
