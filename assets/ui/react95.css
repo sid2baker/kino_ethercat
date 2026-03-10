@@ -1,61 +1,57 @@
 .ke95-shell {
   display: grid;
-  gap: 8px;
+  gap: 0;
   color: #222;
   font-size: 12px;
+  background: #c0c0c0;
 }
 
 .ke95-shell--compact {
   min-width: 12rem;
 }
 
-.ke95-header {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: flex-start;
+.ke95-window__titlebar {
+  min-height: 28px;
+}
+
+.ke95-window__body {
+  display: grid;
   gap: 8px;
+  padding: 8px;
+  background: #c0c0c0;
+}
+
+.ke95-window__meta {
+  display: grid;
+  gap: 6px;
   padding: 8px;
 }
 
-.ke95-header__copy {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-
-.ke95-header__title {
-  font-weight: 700;
-  font-size: 13px;
-}
-
-.ke95-header__subtitle {
+.ke95-window__subtitle {
   line-height: 1.45;
   color: #444;
 }
 
-.ke95-header__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: flex-start;
-  justify-content: flex-end;
-}
-
-.ke95-header__status,
-.ke95-header__toolbar {
+.ke95-window__status,
+.ke95-window__toolbar {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   align-items: center;
 }
 
-.ke95-header__toolbar {
+.ke95-window__toolbar {
   flex-wrap: nowrap;
 }
 
-.ke95-header__toolbar button {
+.ke95-window__toolbar button {
   min-width: 7.5rem;
+}
+
+.ke95-window__content {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
 }
 
 .ke95-panel {

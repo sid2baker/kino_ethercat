@@ -2,7 +2,7 @@ import "@react95/core/GlobalStyle";
 import "@react95/core/themes/win95.css";
 import "./react95.css";
 
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Button } from "@react95/core/Button";
 import { Checkbox } from "@react95/core/Checkbox";
 import { Fieldset } from "@react95/core/Fieldset";
@@ -12,26 +12,78 @@ import { ProgressBar } from "@react95/core/ProgressBar";
 import { Tab } from "@react95/core/Tab";
 import { Tabs } from "@react95/core/Tabs";
 import { TextArea } from "@react95/core/TextArea";
+import { TitleBar } from "@react95/core/TitleBar";
 
-export { Button, Checkbox, Fieldset, Frame, Input, ProgressBar, Tab, Tabs, TextArea };
+export { Button, Checkbox, Fieldset, Frame, Input, ProgressBar, Tab, Tabs, TextArea, TitleBar };
 
 export function Shell({ title, subtitle = null, status = null, toolbar = null, children, compact = false }) {
+  const windowRef = useRef(null);
+  const [fullscreenActive, setFullscreenActive] = useState(false);
+  const [fullscreenSupported, setFullscreenSupported] = useState(false);
+
+  useEffect(() => {
+    const element = windowRef.current;
+    if (!element) return undefined;
+
+    const doc = element.ownerDocument;
+    const onFullscreenChange = () => {
+      setFullscreenActive(doc.fullscreenElement === element);
+    };
+
+    setFullscreenSupported(typeof element.requestFullscreen === "function");
+    onFullscreenChange();
+
+    doc.addEventListener("fullscreenchange", onFullscreenChange);
+
+    return () => {
+      doc.removeEventListener("fullscreenchange", onFullscreenChange);
+    };
+  }, []);
+
+  const toggleFullscreen = async () => {
+    const element = windowRef.current;
+    if (!element || typeof element.requestFullscreen !== "function") return;
+
+    const doc = element.ownerDocument;
+
+    try {
+      if (doc.fullscreenElement === element) {
+        await doc.exitFullscreen?.();
+      } else {
+        await element.requestFullscreen();
+      }
+    } catch (_error) {
+      // Livebook iframes may reject fullscreen depending on browser policy.
+    }
+  };
+
+  const WindowToggle = fullscreenActive ? TitleBar.Restore : TitleBar.Maximize;
+
   return (
-    <div className={`ke95-shell${compact ? " ke95-shell--compact" : ""}`}>
-      <Frame boxShadow="out" className="ke95-header">
-        <div className="ke95-header__copy">
-          <div className="ke95-header__title">{title}</div>
-          {subtitle ? <div className="ke95-header__subtitle">{subtitle}</div> : null}
-        </div>
-        {status || toolbar ? (
-          <div className="ke95-header__meta">
-            {status ? <div className="ke95-header__status">{status}</div> : null}
-            {toolbar ? <div className="ke95-header__toolbar">{toolbar}</div> : null}
-          </div>
+    <Frame ref={windowRef} boxShadow="out" className={`ke95-shell${compact ? " ke95-shell--compact" : ""}`}>
+      <TitleBar title={title} className="ke95-window__titlebar">
+        <TitleBar.OptionsBox>
+          <WindowToggle
+            disabled={!fullscreenSupported}
+            onClick={toggleFullscreen}
+            title={fullscreenActive ? "Exit fullscreen" : "Enter fullscreen"}
+          />
+          <TitleBar.Close disabled title="Close unavailable inside Livebook" />
+        </TitleBar.OptionsBox>
+      </TitleBar>
+
+      <div className="ke95-window__body">
+        {subtitle || status || toolbar ? (
+          <Frame boxShadow="in" className="ke95-window__meta">
+            {subtitle ? <div className="ke95-window__subtitle">{subtitle}</div> : null}
+            {status ? <div className="ke95-window__status">{status}</div> : null}
+            {toolbar ? <div className="ke95-window__toolbar">{toolbar}</div> : null}
+          </Frame>
         ) : null}
-      </Frame>
-      {children}
-    </div>
+
+        <div className="ke95-window__content">{children}</div>
+      </div>
+    </Frame>
   );
 }
 
