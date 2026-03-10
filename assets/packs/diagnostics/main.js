@@ -334,8 +334,10 @@ function Diagnostics({ ctx, data }) {
                   />
                 </div>
                 <FrameSection frames={snapshot.bus.frames} links={snapshot.bus.links} />
-                <DcSection dc={snapshot.dc} />
               </div>
+            </Tab>
+            <Tab title="DC">
+              <DcSection dc={snapshot.dc} />
             </Tab>
             <Tab title="Domains">
               <DomainsSection domains={snapshot.domains} />

@@ -33,8 +33,8 @@ defmodule KinoEtherCAT.SmartCells.SetupSource do
       ":ok = EtherCAT.await_running()\n",
       ":ok = EtherCAT.await_operational()\n\n",
       "Kino.Layout.tabs(\n",
-      "  master: KinoEtherCAT.master(),\n",
-      "  diagnostics: KinoEtherCAT.diagnostics()\n",
+      "  Master: KinoEtherCAT.master(),\n",
+      "  \"Task Manager\": KinoEtherCAT.diagnostics()\n",
       ")\n"
     ])
   end

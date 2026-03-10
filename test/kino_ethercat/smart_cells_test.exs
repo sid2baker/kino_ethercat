@@ -59,8 +59,8 @@ defmodule KinoEtherCAT.SmartCellsTest do
     assert source =~ ~s(warmup_cycles: 8)
     assert source =~ ":ok = EtherCAT.await_operational()"
     assert source =~ "Kino.Layout.tabs("
-    assert source =~ "master: KinoEtherCAT.master()"
-    assert source =~ "diagnostics: KinoEtherCAT.diagnostics()"
+    assert source =~ "Master: KinoEtherCAT.master()"
+    assert source =~ ~s|"Task Manager": KinoEtherCAT.diagnostics()|
     refute source =~ "String.to_atom"
     refute source =~ "EtherCAT.configure_slave"
     refute source =~ "backup_interface"
