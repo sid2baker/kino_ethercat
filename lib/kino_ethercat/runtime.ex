@@ -6,10 +6,12 @@ defmodule KinoEtherCAT.Runtime do
   for `Kino.Render` protocol implementations to build rich Livebook views.
   """
 
+  alias EtherCAT.Bus.Link.{Redundant, SinglePort}
+  alias EtherCAT.Domain.Config, as: DomainConfig
   alias EtherCAT.Domain.API, as: DomainAPI
   alias EtherCAT.Slave.API, as: SlaveAPI
   alias EtherCAT.{Bus, Domain, Master, Slave}
-  alias KinoEtherCAT.WidgetLogs
+  alias KinoEtherCAT.{StartConfig, WidgetLogs}
 
   @spec master() :: %Master{}
   def master do
@@ -80,9 +82,13 @@ defmodule KinoEtherCAT.Runtime do
 
   def payload(%Master{} = master, message) do
     public_state = runtime_state(fetch_state_name(master) || :idle)
+    remember_start_options(master)
     slaves = runtime_slaves()
     domains = runtime_domains()
     dc_status = dc_snapshot(dc())
+    start_available? = master_start_available?(public_state)
+    activation_available? = master_activation_available?(public_state)
+    stop_available? = master_stop_available?(public_state)
 
     slave_rows =
       Enum.map(slaves, fn %{name: name, station: station} ->
@@ -134,7 +140,7 @@ defmodule KinoEtherCAT.Runtime do
         %{label: "Slaves", value: Integer.to_string(length(slaves))},
         %{label: "Domains", value: Integer.to_string(length(domains))},
         %{label: "DC lock", value: to_string(dc_status.lock_state || :disabled)},
-        %{label: "Log level", value: Atom.to_string(current_log_level(master))},
+        %{label: "Log filter", value: Atom.to_string(current_log_level(master))},
         %{
           label: "Pending PREOP",
           value: Integer.to_string(MapSet.size(master.pending_preop || MapSet.new()))
@@ -152,9 +158,20 @@ defmodule KinoEtherCAT.Runtime do
       ],
       controls: %{
         buttons: [
-          %{id: "refresh", label: "Refresh", tone: "secondary"},
-          %{id: "activate", label: "Activate", tone: "primary"},
-          %{id: "stop", label: "Stop", tone: "danger"}
+          %{
+            id: "start",
+            label: "Start",
+            tone: "primary",
+            disabled: not start_available?,
+            title: master_start_title(start_available?)
+          },
+          %{
+            id: "activate",
+            label: "Activate",
+            tone: "primary",
+            disabled: not activation_available?
+          },
+          %{id: "stop", label: "Stop", tone: "danger", disabled: not stop_available?}
         ]
       }
     }
@@ -193,7 +210,7 @@ defmodule KinoEtherCAT.Runtime do
             %{label: "AL error", value: format_term(slave.error_code || "none")},
             %{label: "CoE", value: to_string(info.coe)},
             %{label: "Signals", value: Integer.to_string(length(info.signals))},
-            %{label: "Log level", value: Atom.to_string(current_log_level(slave))}
+            %{label: "Log filter", value: Atom.to_string(current_log_level(slave))}
           ],
           tables: [
             %{
@@ -211,7 +228,6 @@ defmodule KinoEtherCAT.Runtime do
             %{label: "Process data", value: format_term(slave.process_data_request || :none)}
           ],
           controls: %{
-            buttons: [%{id: "refresh", label: "Refresh", tone: "secondary"}],
             select: %{id: "transition", label: "Transition", options: ~w(init preop safeop op)}
           }
         }
@@ -241,7 +257,7 @@ defmodule KinoEtherCAT.Runtime do
             %{label: "Misses", value: Integer.to_string(info.miss_count)},
             %{label: "Total misses", value: Integer.to_string(info.total_miss_count)},
             %{label: "WKC", value: Integer.to_string(info.expected_wkc)},
-            %{label: "Log level", value: Atom.to_string(current_log_level(%Domain{id: id}))}
+            %{label: "Log filter", value: Atom.to_string(current_log_level(%Domain{id: id}))}
           ],
           tables: [],
           details: [
@@ -251,7 +267,6 @@ defmodule KinoEtherCAT.Runtime do
           ],
           controls: %{
             buttons: [
-              %{id: "refresh", label: "Refresh", tone: "secondary"},
               %{id: "start_cycling", label: "Start", tone: "primary"},
               %{id: "stop_cycling", label: "Stop", tone: "danger"}
             ],
@@ -285,7 +300,7 @@ defmodule KinoEtherCAT.Runtime do
         %{label: "Realtime queue", value: Integer.to_string(queue_depths.realtime)},
         %{label: "Reliable queue", value: Integer.to_string(queue_depths.reliable)},
         %{label: "Index", value: Integer.to_string(bus.idx || 0)},
-        %{label: "Log level", value: Atom.to_string(current_log_level(bus))}
+        %{label: "Log filter", value: Atom.to_string(current_log_level(bus))}
       ],
       tables: [],
       details: [
@@ -294,7 +309,6 @@ defmodule KinoEtherCAT.Runtime do
         %{label: "In flight", value: format_term(bus.in_flight || "none")}
       ],
       controls: %{
-        buttons: [%{id: "refresh", label: "Refresh", tone: "secondary"}],
         input: %{id: "frame_timeout_ms", label: "Frame timeout (ms)", value: "25"},
         submit: %{id: "set_frame_timeout", label: "Apply timeout", tone: "primary"}
       }
@@ -342,10 +356,9 @@ defmodule KinoEtherCAT.Runtime do
           value: format_term(status.diagnostic_interval_cycles || "n/a")
         },
         %{label: "Bus", value: format_term(status.bus || "none")},
-        %{label: "Log level", value: Atom.to_string(current_log_level(resource))}
+        %{label: "Log filter", value: Atom.to_string(current_log_level(resource))}
       ],
       controls: %{
-        buttons: [%{id: "refresh", label: "Refresh", tone: "secondary"}],
         input: %{id: "timeout_ms", label: "Await lock (ms)", value: "5000"},
         submit: %{id: "await_dc_locked", label: "Await lock", tone: "primary"}
       }
@@ -358,6 +371,14 @@ defmodule KinoEtherCAT.Runtime do
   def perform(resource, "refresh", _params) do
     refreshed = refresh(resource)
     {:ok, refreshed, info_message("Refreshed")}
+  end
+
+  def perform(%Master{} = resource, "start", _params) do
+    with opts when is_list(opts) <- StartConfig.current() do
+      run_action(resource, fn -> EtherCAT.start(opts) end, "Master start requested")
+    else
+      _ -> {:error, resource, error_message(:missing_start_config)}
+    end
   end
 
   def perform(%Master{} = resource, "activate", _params) do
@@ -373,7 +394,7 @@ defmodule KinoEtherCAT.Runtime do
       run_action(
         resource,
         fn -> WidgetLogs.set_level(resource, level) end,
-        "Widget log level set to #{level}"
+        "Log filter set to #{level}"
       )
     else
       {:error, reason} -> {:error, resource, error_message(reason)}
@@ -680,7 +701,7 @@ defmodule KinoEtherCAT.Runtime do
       summary: [],
       tables: [],
       details: [%{label: "Reason", value: format_term(reason)}],
-      controls: %{buttons: [%{id: "refresh", label: "Refresh", tone: "secondary"}]}
+      controls: nil
     }
   end
 
@@ -703,13 +724,13 @@ defmodule KinoEtherCAT.Runtime do
   defp current_log_level(resource), do: WidgetLogs.level(resource)
 
   defp log_level_options do
-    [:debug, :info, :notice, :warning, :error, :critical, :alert, :emergency, :none, :all]
+    [:all, :debug, :info, :notice, :warning, :error, :critical, :alert, :emergency, :none]
   end
 
   defp log_level_control(resource) do
     %{
       id: "set_log_level",
-      label: "Widget log level",
+      label: "Log filter",
       options: Enum.map(log_level_options(), &Atom.to_string/1),
       value: Atom.to_string(current_log_level(resource))
     }
@@ -721,6 +742,77 @@ defmodule KinoEtherCAT.Runtime do
       buttons: [%{id: "clear_logs", label: "Clear logs", tone: "secondary"}]
     }
   end
+
+  defp remember_start_options(%Master{} = master) do
+    case start_options(master) do
+      {:ok, opts} -> StartConfig.remember(opts)
+      :error -> :ok
+    end
+  end
+
+  defp start_options(%Master{} = master) do
+    with {:ok, _state_name, %Bus{} = bus} <- fetch_bus_state(),
+         bus_opts when is_list(bus_opts) and bus_opts != [] <- bus_start_opts(bus) do
+      {:ok,
+       bus_opts
+       |> Keyword.put(:slaves, master.slave_configs || [])
+       |> Keyword.put(:domains, domain_configs(master.domain_configs || []))
+       |> Keyword.put(:base_station, master.base_station || 0x1000)
+       |> Keyword.put(:dc, master.dc_config)
+       |> Keyword.put(:scan_poll_ms, master.scan_poll_ms || 100)
+       |> Keyword.put(:scan_stable_ms, master.scan_stable_ms || 1_000)
+       |> maybe_put_start_opt(:frame_timeout_ms, master.frame_timeout_override_ms)}
+    else
+      _ -> :error
+    end
+  end
+
+  defp bus_start_opts(%Bus{link: %SinglePort{open_opts: open_opts}}) when is_list(open_opts) do
+    open_opts
+    |> Keyword.drop([:name, :frame_timeout_ms])
+    |> maybe_put_required_bus_opt(:interface, Keyword.get(open_opts, :interface))
+  end
+
+  defp bus_start_opts(%Bus{
+         link: %Redundant{primary_opts: primary_opts, secondary_opts: secondary_opts}
+       })
+       when is_list(primary_opts) and is_list(secondary_opts) do
+    primary_opts
+    |> Keyword.drop([:name, :frame_timeout_ms, :interface])
+    |> maybe_put_required_bus_opt(:interface, Keyword.get(primary_opts, :interface))
+    |> maybe_put_start_opt(:backup_interface, Keyword.get(secondary_opts, :interface))
+  end
+
+  defp bus_start_opts(%Bus{}), do: []
+
+  defp domain_configs(domain_plans) do
+    Enum.map(domain_plans, fn plan ->
+      %DomainConfig{
+        id: plan.id,
+        cycle_time_us: plan.cycle_time_us,
+        miss_threshold: plan.miss_threshold
+      }
+    end)
+  end
+
+  defp maybe_put_start_opt(opts, _key, nil), do: opts
+  defp maybe_put_start_opt(opts, key, value), do: Keyword.put(opts, key, value)
+
+  defp maybe_put_required_bus_opt(_opts, _key, nil), do: []
+  defp maybe_put_required_bus_opt(opts, key, value), do: Keyword.put(opts, key, value)
+
+  defp master_start_available?(:idle), do: StartConfig.available?()
+  defp master_start_available?(_state), do: false
+
+  defp master_activation_available?(state), do: state in [:preop_ready, :activation_blocked]
+
+  defp master_stop_available?(:idle), do: false
+  defp master_stop_available?(_state), do: true
+
+  defp master_start_title(true), do: "Start the remembered EtherCAT session"
+
+  defp master_start_title(false),
+    do: "Start becomes available after EtherCAT has been started with notebook config"
 
   defp format_term(value) when is_binary(value), do: value
   defp format_term(value), do: inspect(value, pretty: false, limit: 20)

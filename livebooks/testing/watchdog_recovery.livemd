@@ -17,6 +17,8 @@ fall to `:safeop`, then restart cycling and confirm recovery to `:op`.
 ## Helpers
 
 ```elixir
+alias EtherCAT.Domain.API, as: DomainAPI
+
 await_input = fn slave, signal, expected, timeout_ms ->
   deadline = System.monotonic_time(:millisecond) + timeout_ms
 
@@ -85,7 +87,7 @@ end)
 ## Stop Cycling And Observe Safe State
 
 ```elixir
-:ok = EtherCAT.Domain.stop_cycling(domain_id)
+:ok = DomainAPI.stop_cycling(domain_id)
 
 safeop = await_slave_state.(:outputs, :safeop, trip_timeout_ms)
 
@@ -103,7 +105,7 @@ loopback_low =
 ## Restart Cycling And Verify Recovery
 
 ```elixir
-:ok = EtherCAT.Domain.start_cycling(domain_id)
+:ok = DomainAPI.start_cycling(domain_id)
 
 recovery = await_slave_state.(:outputs, :op, recover_timeout_ms)
 
@@ -127,6 +129,6 @@ Enum.each(pairs, fn {output_signal, _input_signal} ->
   :ok = EtherCAT.write_output(:outputs, output_signal, 0)
 end)
 
-:ok = EtherCAT.Domain.start_cycling(domain_id)
+:ok = DomainAPI.start_cycling(domain_id)
 :ok
 ```

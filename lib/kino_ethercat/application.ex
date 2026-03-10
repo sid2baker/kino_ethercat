@@ -8,6 +8,7 @@ defmodule KinoEtherCAT.Application do
     Kino.SmartCell.register(KinoEtherCAT.SmartCells.SlaveExplorer)
 
     children = [
+      KinoEtherCAT.StartConfig,
       KinoEtherCAT.WidgetLogs
     ]
 

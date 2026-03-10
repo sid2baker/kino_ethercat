@@ -87,10 +87,11 @@ defmodule KinoEtherCAT.WidgetLogsTest do
 
   test "log levels are scoped per resource" do
     on_exit(fn ->
-      WidgetLogs.set_level(:master, :info)
-      WidgetLogs.set_level({:slave, :rack_1}, :info)
+      WidgetLogs.set_level(:master, :all)
+      WidgetLogs.set_level({:slave, :rack_1}, :all)
     end)
 
+    assert WidgetLogs.level(:master) == :all
     assert :ok = WidgetLogs.set_level(:master, :warning)
     assert :ok = WidgetLogs.set_level({:slave, :rack_1}, :debug)
 

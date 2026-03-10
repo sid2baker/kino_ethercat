@@ -4,9 +4,28 @@ Welcome to the interactive documentation and testing suite for `kino_ethercat`.
 
 ## Testing & Diagnostics
 
-The following notebooks are available for testing and verifying your EtherCAT setup:
+The public `EtherCAT.state/0` lifecycle is:
 
-* [Loopback Smoke Test](./testing/loopback_smoke.livemd)
-* [Distributed Clocks (DC) Lock](./testing/dc_lock.livemd)
-* [Fault Tolerance (Manual)](./testing/fault_tolerance_manual.livemd)
-* [Watchdog Recovery](./testing/watchdog_recovery.livemd)
+`idle -> discovering -> awaiting_preop -> preop_ready -> operational`
+
+with `activation_blocked` and `recovering` as the two non-happy-path runtime
+states. `EtherCAT.await_running/1` waits for a usable session, while
+`EtherCAT.await_operational/1` waits for cyclic OP.
+
+### Start Here
+
+* [Bring-up & Runtime Console](./testing/session_bringup.livemd)  
+  Use this first for repeated manual testing. It combines the setup smart cell,
+  `await_running/1`, optional `activate/0`, and the runtime widgets in one
+  place.
+
+### Scenario Notebooks
+
+* [Loopback Smoke Test](./testing/loopback_smoke.livemd)  
+  Fast digital I/O verification once the session is operational.
+* [Distributed Clocks (DC) Lock](./testing/dc_lock.livemd)  
+  Confirms DC lock and shows the final DC status snapshot.
+* [Fault Tolerance (Manual)](./testing/fault_tolerance_manual.livemd)  
+  Operator-guided disconnect/reconnect check for recovery behavior.
+* [Watchdog Recovery](./testing/watchdog_recovery.livemd)  
+  Stops domain cycling, observes watchdog fallback, then verifies recovery.

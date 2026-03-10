@@ -9,7 +9,7 @@ defmodule KinoEtherCAT.WidgetLogs do
   @handler_id :kino_ethercat_widget_logs
   @default_filter_id :kino_ethercat_widget_logs
   @max_entries 200
-  @default_level :info
+  @default_level :all
   @log_levels [
     :debug,
     :info,

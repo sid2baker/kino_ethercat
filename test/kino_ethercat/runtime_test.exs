@@ -1,8 +1,21 @@
 defmodule KinoEtherCAT.RuntimeTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias EtherCAT.{Bus, Domain, Master, Slave}
-  alias KinoEtherCAT.Runtime
+  alias KinoEtherCAT.{Runtime, StartConfig}
+
+  setup_all do
+    if is_nil(Process.whereis(StartConfig)) do
+      start_supervised!(StartConfig)
+    end
+
+    :ok
+  end
+
+  setup do
+    StartConfig.clear()
+    :ok
+  end
 
   test "resource accessors always return EtherCAT structs" do
     assert %Master{} = KinoEtherCAT.master()
@@ -33,21 +46,23 @@ defmodule KinoEtherCAT.RuntimeTest do
     assert %{kind: "master", controls: %{buttons: buttons}, log_controls: log_controls} =
              Runtime.payload(%Master{})
 
-    assert Enum.any?(buttons, &(&1.id == "activate"))
+    assert Enum.any?(buttons, &(&1.id == "start" and &1.disabled))
+    assert Enum.any?(buttons, &(&1.id == "activate" and &1.disabled))
+    assert Enum.any?(buttons, &(&1.id == "stop" and &1.disabled))
     assert log_controls.select.id == "set_log_level"
-    assert log_controls.select.label == "Widget log level"
-    assert log_controls.select.value in log_controls.select.options
+    assert log_controls.select.label == "Log filter"
+    assert log_controls.select.value == "all"
     assert Enum.any?(log_controls.buttons, &(&1.id == "clear_logs"))
 
     assert %{kind: "slave", status: "unavailable", log_controls: slave_log_controls} =
              Runtime.payload(%Slave{name: :rack_1})
 
-    assert slave_log_controls.select.value in slave_log_controls.select.options
+    assert slave_log_controls.select.value == "all"
 
     assert %{kind: "domain", status: "unavailable", log_controls: domain_log_controls} =
              Runtime.payload(%Domain{id: :main})
 
-    assert domain_log_controls.select.value in domain_log_controls.select.options
+    assert domain_log_controls.select.value == "all"
 
     assert %{
              kind: "bus",
@@ -56,7 +71,7 @@ defmodule KinoEtherCAT.RuntimeTest do
            } =
              Runtime.payload(struct(Bus))
 
-    assert bus_log_controls.select.value in bus_log_controls.select.options
+    assert bus_log_controls.select.value == "all"
 
     assert %{
              kind: "dc",
@@ -65,7 +80,14 @@ defmodule KinoEtherCAT.RuntimeTest do
            } =
              Runtime.payload(default_dc_resource())
 
-    assert dc_log_controls.select.value in dc_log_controls.select.options
+    assert dc_log_controls.select.value == "all"
+  end
+
+  test "master start button becomes available when a start config is remembered" do
+    assert :ok = StartConfig.remember(interface: "eth0")
+
+    assert %{controls: %{buttons: buttons}} = Runtime.payload(%Master{})
+    assert Enum.any?(buttons, &(&1.id == "start" and !&1.disabled))
   end
 
   test "runtime actions validate numeric inputs before touching EtherCAT" do

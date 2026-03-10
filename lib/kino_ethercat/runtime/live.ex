@@ -4,9 +4,12 @@ defmodule KinoEtherCAT.Runtime.Live do
   alias Kino.JS.Live.Context
   alias KinoEtherCAT.Runtime
 
+  @refresh_interval_ms 1_000
+
   def init(resource, ctx) do
     Runtime.subscribe_logs(self(), resource)
     payload = Runtime.payload(resource)
+    schedule_refresh()
 
     {:ok,
      Context.assign(ctx,
@@ -24,14 +27,10 @@ defmodule KinoEtherCAT.Runtime.Live do
   def handle_event("action", %{"id" => id} = params, ctx) do
     case Runtime.perform(ctx.assigns.resource, id, params) do
       {:ok, resource, message} ->
-        payload = Runtime.payload(resource, message)
-        Context.broadcast_event(ctx, "snapshot", payload)
-        {:noreply, Context.assign(ctx, resource: resource, payload: payload)}
+        {:noreply, broadcast_snapshot(ctx, resource, message)}
 
       {:error, resource, message} ->
-        payload = Runtime.payload(resource, message)
-        Context.broadcast_event(ctx, "snapshot", payload)
-        {:noreply, Context.assign(ctx, resource: resource, payload: payload)}
+        {:noreply, broadcast_snapshot(ctx, resource, message)}
     end
   end
 
@@ -44,10 +43,19 @@ defmodule KinoEtherCAT.Runtime.Live do
   end
 
   def handle_info(:refresh_logs, ctx) do
-    payload = Runtime.payload(ctx.assigns.resource, ctx.assigns.payload.message)
-    Context.broadcast_event(ctx, "snapshot", payload)
+    ctx =
+      ctx
+      |> broadcast_snapshot(ctx.assigns.resource, ctx.assigns.payload.message)
+      |> Context.assign(log_refresh_pending?: false)
 
-    {:noreply, Context.assign(ctx, payload: payload, log_refresh_pending?: false)}
+    {:noreply, ctx}
+  end
+
+  def handle_info(:refresh_snapshot, ctx) do
+    resource = Runtime.refresh(ctx.assigns.resource)
+    ctx = broadcast_snapshot(ctx, resource, ctx.assigns.payload.message)
+    schedule_refresh()
+    {:noreply, ctx}
   end
 
   def handle_info(_message, ctx), do: {:noreply, ctx}
@@ -59,5 +67,19 @@ defmodule KinoEtherCAT.Runtime.Live do
       Process.send_after(self(), :refresh_logs, 50)
       {:noreply, Context.assign(ctx, log_refresh_pending?: true)}
     end
+  end
+
+  defp schedule_refresh do
+    Process.send_after(self(), :refresh_snapshot, @refresh_interval_ms)
+  end
+
+  defp broadcast_snapshot(ctx, resource, message) do
+    payload = Runtime.payload(resource, message)
+
+    if payload != ctx.assigns.payload do
+      Context.broadcast_event(ctx, "snapshot", payload)
+    end
+
+    Context.assign(ctx, resource: resource, payload: payload)
   end
 end

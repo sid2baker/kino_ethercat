@@ -80,35 +80,39 @@ function RuntimePanel({ ctx, data }) {
       subtitle={snapshot.kind}
       status={status}
     >
-      <MessageLine tone={MESSAGE_TONES[snapshot.message?.level] ?? "info"}>
-        {snapshot.message?.text ?? null}
-      </MessageLine>
+      {({ fullscreenActive }) => (
+        <div className={`ke95-runtime-panel${fullscreenActive ? " ke95-runtime-panel--fullscreen" : ""}`}>
+          <MessageLine tone={MESSAGE_TONES[snapshot.message?.level] ?? "info"}>
+            {snapshot.message?.text ?? null}
+          </MessageLine>
 
-      <SummaryGrid items={snapshot.summary} />
+          <SummaryGrid items={snapshot.summary} />
 
-      <div className="ke95-grid ke95-grid--2">
-        <Panel title="Controls">
-          <Controls ctx={ctx} controls={snapshot.controls} />
-        </Panel>
+          <div className="ke95-grid ke95-grid--2">
+            <Panel title="Controls" className="ke95-runtime-panel__controls">
+              <Controls ctx={ctx} controls={snapshot.controls} />
+            </Panel>
 
-        {snapshot.details.length > 0 ? (
-          <Panel title="Details">
-            <Details items={snapshot.details} />
+            {snapshot.details.length > 0 ? (
+              <Panel title="Details" className="ke95-runtime-panel__details">
+                <Details items={snapshot.details} />
+              </Panel>
+            ) : (
+              <EmptyState>No extra detail fields for this resource.</EmptyState>
+            )}
+          </div>
+
+          {snapshot.tables.map((table) => (
+            <Panel key={table.title} title={table.title} className="ke95-runtime-panel__table">
+              <TableSection table={table} />
+            </Panel>
+          ))}
+
+          <Panel title="Logs" className="ke95-runtime-panel__logs">
+            <LogSection ctx={ctx} logs={snapshot.logs ?? []} controls={snapshot.log_controls} />
           </Panel>
-        ) : (
-          <EmptyState>No extra detail fields for this resource.</EmptyState>
-        )}
-      </div>
-
-      {snapshot.tables.map((table) => (
-        <Panel key={table.title} title={table.title}>
-          <TableSection table={table} />
-        </Panel>
-      ))}
-
-      <Panel title="Logs">
-        <LogSection ctx={ctx} logs={snapshot.logs ?? []} controls={snapshot.log_controls} />
-      </Panel>
+        </div>
+      )}
     </Shell>
   );
 }
@@ -134,7 +138,12 @@ function Controls({ ctx, controls }) {
       {controls.buttons?.length > 0 ? (
         <InlineButtons>
           {controls.buttons.map((button) => (
-            <Button key={button.id} onClick={() => ctx.pushEvent("action", { id: button.id })}>
+            <Button
+              key={button.id}
+              disabled={button.disabled}
+              title={button.title}
+              onClick={() => ctx.pushEvent("action", { id: button.id })}
+            >
               {button.label}
             </Button>
           ))}
@@ -217,38 +226,61 @@ function Details({ items }) {
 
 function LogSection({ ctx, logs, controls }) {
   const [logSelectValue, setLogSelectValue] = useState(selectControlValue(controls?.select));
+  const [searchValue, setSearchValue] = useState("");
 
   useEffect(() => {
     setLogSelectValue(selectControlValue(controls?.select));
   }, [controls?.select?.id, controls?.select?.value, selectControlOptionsKey(controls?.select)]);
 
+  const filteredLogs = filterLogs(logs, searchValue);
+
   return (
     <div className="ke95-grid">
       {controls ? (
-        <>
+        <div className="ke95-runtime-log__toolbar">
           {controls.select ? (
-            <SelectControl
-              control={controls.select}
-              value={logSelectValue}
-              onChange={setLogSelectValue}
-              onApply={(value) => ctx.pushEvent("action", { id: controls.select.id, value })}
-            />
+            <div className="ke95-runtime-log__filter">
+              <ControlField label={controls.select.label} className="ke95-fill">
+                <Dropdown
+                  value={logSelectValue}
+                  className="ke95-fill"
+                  onChange={(event) => setLogSelectValue(event.target.value)}
+                >
+                  {controls.select.options.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </Dropdown>
+              </ControlField>
+              <Button onClick={() => ctx.pushEvent("action", { id: controls.select.id, value: logSelectValue })}>
+                Apply
+              </Button>
+            </div>
           ) : null}
+          <ControlField label="Search" className="ke95-runtime-log__search">
+            <Input className="ke95-fill" value={searchValue} onChange={(event) => setSearchValue(event.target.value)} />
+          </ControlField>
           {controls.buttons?.length > 0 ? (
-            <InlineButtons>
+            <InlineButtons className="ke95-runtime-log__actions">
               {controls.buttons.map((button) => (
-                <Button key={button.id} onClick={() => ctx.pushEvent("action", { id: button.id })}>
+                <Button
+                  key={button.id}
+                  disabled={button.disabled}
+                  title={button.title}
+                  onClick={() => ctx.pushEvent("action", { id: button.id })}
+                >
                   {button.label}
                 </Button>
               ))}
             </InlineButtons>
           ) : null}
-        </>
+        </div>
       ) : null}
 
-      {logs.length ? (
+      {filteredLogs.length ? (
         <Frame boxShadow="in" className="ke95-runtime-log">
-          {logs.map((entry) => (
+          {filteredLogs.map((entry) => (
             <div key={entry.id} className="ke95-runtime-log__row">
               <Mono as="div" className="ke95-runtime-log__time">
                 {entry.time}
@@ -260,10 +292,24 @@ function LogSection({ ctx, logs, controls }) {
             </div>
           ))}
         </Frame>
+      ) : logs.length ? (
+        <EmptyState>No log entries match the current filters.</EmptyState>
       ) : (
         <EmptyState>No logs captured for this resource yet.</EmptyState>
       )}
     </div>
+  );
+}
+
+function filterLogs(logs, query) {
+  const needle = String(query ?? "").trim().toLowerCase();
+
+  if (!needle) {
+    return logs;
+  }
+
+  return logs.filter((entry) =>
+    [entry.time, entry.level, entry.text].some((part) => String(part ?? "").toLowerCase().includes(needle))
   );
 }
 
