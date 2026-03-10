@@ -1,3 +1,14 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+.ke95-value {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+}
+
+.ke95-value__current {
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.ke95-value__meta {
+  color: #444;
+}

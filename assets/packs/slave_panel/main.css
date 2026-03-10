@@ -1,9 +1,7 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-@layer components {
-  .kino-ethercat-panel {
-    @apply rounded-2xl border border-stone-200 bg-gradient-to-br from-stone-50 via-white to-amber-50 shadow-sm;
-  }
+.ke95-slave-panel__domain,
+.ke95-slave-panel__card,
+.ke95-slave-panel__signal {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
 }

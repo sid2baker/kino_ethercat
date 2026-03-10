@@ -3,28 +3,32 @@ import "./main.css";
 import React, { startTransition, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
+import {
+  Button,
+  ControlField,
+  DataTable,
+  Dropdown,
+  EmptyState,
+  Frame,
+  InlineButtons,
+  Input,
+  MessageLine,
+  Mono,
+  Panel,
+  Shell,
+  StatusBadge,
+  SummaryGrid,
+} from "../../ui/react95";
+
 export async function init(ctx, data) {
   await ctx.importCSS("main.css");
   const root = createRoot(ctx.root);
   root.render(<RuntimePanel ctx={ctx} data={data} />);
 }
 
-const BADGE_TONES = {
-  ok: "ke-runtime__badge--ok",
-  warn: "ke-runtime__badge--warn",
-  danger: "ke-runtime__badge--danger",
-  neutral: "ke-runtime__badge--neutral",
-};
-
 const MESSAGE_TONES = {
-  info: "ke-runtime__message--info",
-  error: "ke-runtime__message--error",
-};
-
-const BUTTON_TONES = {
-  primary: "ke-runtime__button--primary",
-  secondary: "ke-runtime__button--secondary",
-  danger: "ke-runtime__button--danger",
+  info: "info",
+  error: "error",
 };
 
 function statusTone(status) {
@@ -41,91 +45,56 @@ function statusTone(status) {
     return "danger";
   }
 
-  if (["recovering", "awaiting_preop", "discovering", "safeop", "preop"].includes(value)) {
+  if (["recovering", "awaiting_preop", "discovering", "safeop", "preop", "inactive"].includes(value)) {
     return "warn";
   }
 
   return "neutral";
 }
 
-function Badge({ label }) {
-  return (
-    <span className={`ke-runtime__badge ${BADGE_TONES[statusTone(label)]}`}>
-      {label}
-    </span>
-  );
-}
+function RuntimePanel({ ctx, data }) {
+  const [snapshot, setSnapshot] = useState(data);
 
-function Message({ message }) {
-  if (!message) return null;
+  useEffect(() => {
+    ctx.handleEvent("snapshot", (next) => {
+      startTransition(() => setSnapshot(next));
+    });
+  }, [ctx]);
 
-  return (
-    <div className={`ke-runtime__message ${MESSAGE_TONES[message.level] ?? MESSAGE_TONES.info}`}>
-      {message.text}
-    </div>
-  );
-}
-
-function Summary({ items }) {
-  if (!items.length) return null;
+  const status = <StatusBadge tone={statusTone(snapshot.status)}>{snapshot.status}</StatusBadge>;
 
   return (
-    <section className="ke-runtime__summary">
-      {items.map((item) => (
-        <div key={item.label} className="ke-runtime__summary-item">
-          <div className="ke-runtime__summary-label">{item.label}</div>
-          <div className="ke-runtime__summary-value">{item.value}</div>
-        </div>
+    <Shell
+      title={snapshot.title}
+      subtitle={snapshot.kind}
+      status={status}
+    >
+      <MessageLine tone={MESSAGE_TONES[snapshot.message?.level] ?? "info"}>
+        {snapshot.message?.text ?? null}
+      </MessageLine>
+
+      <SummaryGrid items={snapshot.summary} />
+
+      <div className="ke95-grid ke95-grid--2">
+        <Panel title="Controls">
+          <Controls ctx={ctx} controls={snapshot.controls} />
+        </Panel>
+
+        {snapshot.details.length > 0 ? (
+          <Panel title="Details">
+            <Details items={snapshot.details} />
+          </Panel>
+        ) : (
+          <EmptyState>No extra detail fields for this resource.</EmptyState>
+        )}
+      </div>
+
+      {snapshot.tables.map((table) => (
+        <Panel key={table.title} title={table.title}>
+          <TableSection table={table} />
+        </Panel>
       ))}
-    </section>
-  );
-}
-
-function TableSection({ table }) {
-  if (!table.rows.length) return null;
-
-  return (
-    <section className="ke-runtime__section">
-      <div className="ke-runtime__section-title">{table.title}</div>
-      <div className="ke-runtime__table-wrap">
-        <table className="ke-runtime__table">
-          <thead>
-            <tr>
-              {table.headers.map((header) => (
-                <th key={header}>{header}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {table.rows.map((row) => (
-              <tr key={row.key}>
-                {row.cells.map((cell, index) => (
-                  <td key={`${row.key}-${index}`}>{cell}</td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
-function Details({ items }) {
-  if (!items.length) return null;
-
-  return (
-    <section className="ke-runtime__section">
-      <div className="ke-runtime__section-title">Details</div>
-      <div className="ke-runtime__details">
-        {items.map((item) => (
-          <div key={item.label} className="ke-runtime__detail">
-            <div className="ke-runtime__detail-label">{item.label}</div>
-            <div className="ke-runtime__detail-value">{item.value}</div>
-          </div>
-        ))}
-      </div>
-    </section>
+    </Shell>
   );
 }
 
@@ -138,114 +107,99 @@ function Controls({ ctx, controls }) {
     setSelectValue(controls?.select?.options?.[0] ?? "");
   }, [controls]);
 
-  if (!controls) return null;
+  if (!controls) {
+    return <EmptyState>No runtime controls available.</EmptyState>;
+  }
 
   return (
-    <section className="ke-runtime__section">
-      <div className="ke-runtime__section-title">Controls</div>
-
-      {controls.buttons?.length > 0 && (
-        <div className="ke-runtime__buttons">
+    <div className="ke95-grid">
+      {controls.buttons?.length > 0 ? (
+        <InlineButtons>
           {controls.buttons.map((button) => (
-            <button
-              key={button.id}
-              onClick={() => ctx.pushEvent("action", { id: button.id })}
-              className={`ke-runtime__button ${BUTTON_TONES[button.tone] ?? BUTTON_TONES.secondary}`}
-            >
+            <Button key={button.id} onClick={() => ctx.pushEvent("action", { id: button.id })}>
               {button.label}
-            </button>
+            </Button>
           ))}
-        </div>
-      )}
+        </InlineButtons>
+      ) : null}
 
-      {controls.select && (
-        <div className="ke-runtime__form-row">
-          <label className="ke-runtime__field">
-            <span className="ke-runtime__field-label">{controls.select.label}</span>
-            <select
+      {controls.select ? (
+        <div className="ke95-toolbar">
+          <ControlField label={controls.select.label} className="ke95-fill">
+            <Dropdown
               value={selectValue}
+              className="ke95-fill"
               onChange={(event) => setSelectValue(event.target.value)}
-              className="ke-runtime__input"
             >
               {controls.select.options.map((option) => (
                 <option key={option} value={option}>
                   {option}
                 </option>
               ))}
-            </select>
-          </label>
-          <button
-            onClick={() => ctx.pushEvent("action", { id: controls.select.id, value: selectValue })}
-            className={`ke-runtime__button ${BUTTON_TONES.primary}`}
-          >
+            </Dropdown>
+          </ControlField>
+          <Button onClick={() => ctx.pushEvent("action", { id: controls.select.id, value: selectValue })}>
             Apply
-          </button>
+          </Button>
         </div>
-      )}
+      ) : null}
 
-      {controls.input && (
-        <div className="ke-runtime__form-row">
-          <label className="ke-runtime__field">
-            <span className="ke-runtime__field-label">{controls.input.label}</span>
-            <input
+      {controls.input ? (
+        <div className="ke95-toolbar">
+          <ControlField label={controls.input.label} className="ke95-fill">
+            <Input
               value={inputValue}
+              className="ke95-fill"
               onChange={(event) => setInputValue(event.target.value)}
-              className="ke-runtime__input"
             />
-          </label>
-          <button
+          </ControlField>
+          <Button
             onClick={() =>
               ctx.pushEvent("action", {
                 id: controls.submit?.id ?? controls.input.id,
                 value: inputValue,
               })
             }
-            className={`ke-runtime__button ${BUTTON_TONES[controls.submit?.tone ?? "primary"]}`}
           >
             {controls.submit?.label ?? "Apply"}
-          </button>
+          </Button>
         </div>
-      )}
-    </section>
+      ) : null}
+    </div>
   );
 }
 
-function RuntimePanel({ ctx, data }) {
-  const [snapshot, setSnapshot] = useState(data);
+function Details({ items }) {
+  return (
+    <div className="ke95-detail-grid">
+      {items.map((item) => (
+        <Frame key={item.label} boxShadow="in" className="ke95-summary__item ke95-detail">
+          <div className="ke95-summary__label">{item.label}</div>
+          <Mono as="div" className="ke95-detail__value">
+            {item.value}
+          </Mono>
+        </Frame>
+      ))}
+    </div>
+  );
+}
 
-  useEffect(() => {
-    ctx.handleEvent("snapshot", (next) => {
-      startTransition(() => setSnapshot(next));
-    });
-  }, [ctx]);
+function TableSection({ table }) {
+  if (!table.rows.length) {
+    return <EmptyState>No rows available.</EmptyState>;
+  }
 
   return (
-    <div className="ke-runtime">
-      <div className="ke-runtime__header">
-        <div className="ke-runtime__header-main">
-          <div className="ke-runtime__kind">{snapshot.kind}</div>
-          <h3 className="ke-runtime__title">{snapshot.title}</h3>
-        </div>
-        <Badge label={snapshot.status} />
-      </div>
-
-      <Message message={snapshot.message} />
-      <Summary items={snapshot.summary} />
-
-      <div className="ke-runtime__content">
-        <div className="ke-runtime__main">
-          <Controls ctx={ctx} controls={snapshot.controls} />
-          {snapshot.tables.map((table) => (
-            <TableSection key={table.title} table={table} />
+    <DataTable headers={table.headers}>
+      {table.rows.map((row) => (
+        <tr key={row.key}>
+          {row.cells.map((cell, index) => (
+            <td key={`${row.key}-${index}`}>
+              <Mono>{cell}</Mono>
+            </td>
           ))}
-        </div>
-
-        {snapshot.details.length > 0 && (
-          <div className="ke-runtime__side">
-            <Details items={snapshot.details} />
-          </div>
-        )}
-      </div>
-    </div>
+        </tr>
+      ))}
+    </DataTable>
   );
 }

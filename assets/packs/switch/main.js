@@ -3,6 +3,8 @@ import "./main.css";
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
+import { Button, Frame, InlineButtons, Mono, Shell, StatusBadge } from "../../ui/react95";
+
 export async function init(ctx, data) {
   await ctx.importCSS("main.css");
 
@@ -16,33 +18,21 @@ function Switch({ ctx, data }) {
 
   useEffect(() => {
     ctx.handleEvent("value_updated", ({ value }) => setValue(value));
-  }, []);
-
-  function handleToggle() {
-    ctx.pushEvent("toggle");
-  }
+  }, [ctx]);
 
   return (
-    <div className="ke-switch">
-      <div className="ke-switch__copy">
-        <div className="ke-switch__label">{data.label}</div>
-        <div className="ke-switch__meta">manual output control</div>
-      </div>
-
-      <div className="ke-switch__controls">
-        <span className={`ke-switch__badge ${isOn ? "ke-switch__badge--on" : "ke-switch__badge--off"}`}>
-          {isOn ? "on" : "off"}
-        </span>
-
-        <button
-          onClick={handleToggle}
-          className={`ke-switch__toggle ${isOn ? "ke-switch__toggle--on" : "ke-switch__toggle--off"}`}
-          role="switch"
-          aria-checked={isOn}
-        >
-          <span className={`ke-switch__thumb ${isOn ? "ke-switch__thumb--on" : "ke-switch__thumb--off"}`} />
-        </button>
-      </div>
-    </div>
+    <Shell
+      title={data.label}
+      subtitle="manual output control"
+      compact
+      status={<StatusBadge tone={isOn ? "ok" : "neutral"}>{isOn ? "on" : "off"}</StatusBadge>}
+    >
+      <Frame boxShadow="in" className="ke95-switch">
+        <Mono>{isOn ? "energized" : "de-energized"}</Mono>
+        <InlineButtons>
+          <Button onClick={() => ctx.pushEvent("toggle")}>{isOn ? "Turn off" : "Turn on"}</Button>
+        </InlineButtons>
+      </Frame>
+    </Shell>
   );
 }

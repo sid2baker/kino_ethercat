@@ -3,6 +3,8 @@ import "./main.css";
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
+import { Frame, Mono, Shell } from "../../ui/react95";
+
 export async function init(ctx, data) {
   await ctx.importCSS("main.css");
   const root = createRoot(ctx.root);
@@ -18,17 +20,18 @@ function Value({ ctx, data }) {
       setValue(value);
       setUpdatedAtUs(updated_at_us);
     });
-  }, []);
+  }, [ctx]);
 
   return (
-    <div className="p-2 min-w-32">
-      <div className="text-xs text-gray-400 font-mono mb-0.5">{data.label}</div>
-      <div className="text-sm text-gray-700 font-mono break-all">
-        {value ?? <span className="text-gray-300">—</span>}
-      </div>
-      <div className="mt-1 text-[11px] text-gray-400 font-mono">
-        {updatedAtUs == null ? "awaiting sample time" : `updated ${updatedAtUs} us`}
-      </div>
-    </div>
+    <Shell title={data.label} subtitle="input sample" compact>
+      <Frame boxShadow="in" className="ke95-value">
+        <Mono as="div" className="ke95-value__current">
+          {value ?? "—"}
+        </Mono>
+        <Mono as="div" className="ke95-value__meta">
+          {updatedAtUs == null ? "awaiting sample time" : `updated ${updatedAtUs} us`}
+        </Mono>
+      </Frame>
+    </Shell>
   );
 }

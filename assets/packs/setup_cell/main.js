@@ -3,6 +3,23 @@ import "./main.css";
 import React, { startTransition, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
+import {
+  Button,
+  Checkbox,
+  ControlField,
+  DataTable,
+  Dropdown,
+  EmptyState,
+  Frame,
+  Input,
+  MessageLine,
+  Mono,
+  Panel,
+  Shell,
+  StatusBadge,
+  SummaryGrid,
+} from "../../ui/react95";
+
 const CUSTOM = "__custom__";
 
 export async function init(ctx, data) {
@@ -99,146 +116,19 @@ function driverSelectValue(slave, availableDrivers) {
   return slave.driver === "" || known.includes(slave.driver) ? slave.driver : CUSTOM;
 }
 
-function StateBadge({ state }) {
-  return <span className={`ke-setup__state ke-setup__state--${state ?? "idle"}`}>{state ?? "idle"}</span>;
+function masterStateTone(state) {
+  const value = String(state ?? "").toLowerCase();
+
+  if (["operational", "preop_ready", "active"].includes(value)) return "ok";
+  if (["discovering", "awaiting_preop", "recovering", "scanning"].includes(value)) return "warn";
+  if (["activation_blocked", "error", "down"].includes(value)) return "danger";
+  return "neutral";
 }
 
-function Section({ title, eyebrow, children, actions = null }) {
-  return (
-    <section className="ke-setup__section">
-      <div className="ke-setup__section-header">
-        <div>
-          <div className="ke-setup__eyebrow">{eyebrow}</div>
-          <h3 className="ke-setup__section-title">{title}</h3>
-        </div>
-        {actions}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function DomainCard({ domain, index, canRemove, onChange, onCommit, onRemove }) {
-  return (
-    <div className="ke-setup__domain-card">
-      <div className="ke-setup__domain-card-header">
-        <div className="ke-setup__domain-name">Domain {index + 1}</div>
-        {canRemove && (
-          <button type="button" className="ke-setup__ghost-button" onClick={onRemove}>
-            Remove
-          </button>
-        )}
-      </div>
-
-      <div className="ke-setup__domain-grid">
-        <label className="ke-setup__field">
-          <span className="ke-setup__label">ID</span>
-          <input
-            className="ke-setup__input"
-            value={domain.id}
-            onChange={(event) => onChange({ id: event.target.value })}
-            onBlur={(event) => onCommit({ id: event.target.value })}
-          />
-        </label>
-
-        <label className="ke-setup__field">
-          <span className="ke-setup__label">Cycle Time (ms)</span>
-          <input
-            className="ke-setup__input"
-            type="number"
-            min="1"
-            step="1"
-            value={domain.cycle_time_ms}
-            onChange={(event) => onChange({ cycle_time_ms: Number(event.target.value) || 10 })}
-            onBlur={(event) => onCommit({ cycle_time_ms: Number(event.target.value) || 10 })}
-          />
-        </label>
-
-        <label className="ke-setup__field">
-          <span className="ke-setup__label">Miss Threshold</span>
-          <input
-            className="ke-setup__input"
-            type="number"
-            min="1"
-            step="1"
-            value={domain.miss_threshold}
-            onChange={(event) => onChange({ miss_threshold: Number(event.target.value) || 1 })}
-            onBlur={(event) => onCommit({ miss_threshold: Number(event.target.value) || 1 })}
-          />
-        </label>
-      </div>
-    </div>
-  );
-}
-
-function SlaveRow({ slave, index, domains, availableDrivers, updateLocal, commit }) {
-  const selectValue = driverSelectValue(slave, availableDrivers);
-
-  return (
-    <tr>
-      <td className="ke-setup__mono">{toHex(slave.station)}</td>
-      <td className="ke-setup__identity">
-        <div>VID {toHex(slave.vendor_id, 8)}</div>
-        <div>PID {toHex(slave.product_code, 8)}</div>
-      </td>
-      <td>
-        <input
-          className="ke-setup__input"
-          value={slave.name}
-          onChange={(event) => updateLocal(index, { name: event.target.value })}
-          onBlur={(event) => commit(index, { name: event.target.value })}
-        />
-      </td>
-      <td className="ke-setup__muted">{slave.discovered_name || "—"}</td>
-      <td>
-        <select
-          className="ke-setup__input"
-          value={selectValue}
-          onChange={(event) => {
-            if (event.target.value === CUSTOM) {
-              updateLocal(index, { driver: "" });
-              return;
-            }
-
-            commit(index, { driver: event.target.value });
-          }}
-        >
-          <option value="">No driver</option>
-          {availableDrivers.map((driver) => (
-            <option key={driver.module} value={driver.module}>
-              {driver.name}
-            </option>
-          ))}
-          <option value={CUSTOM}>Custom…</option>
-        </select>
-
-        {selectValue === CUSTOM && (
-          <input
-            className="ke-setup__input ke-setup__input--stacked"
-            value={slave.driver}
-            placeholder="MyApp.Driver.Module"
-            onChange={(event) => updateLocal(index, { driver: event.target.value })}
-            onBlur={(event) => commit(index, { driver: event.target.value })}
-          />
-        )}
-      </td>
-      <td>
-        <select
-          className="ke-setup__input"
-          disabled={!slave.driver}
-          value={slave.domain_id || ""}
-          onChange={(event) => commit(index, { domain_id: event.target.value })}
-        >
-          <option value="">No PDO domain</option>
-          {domains.map((domain) => (
-            <option key={domain.id} value={domain.id}>
-              {domain.id}
-            </option>
-          ))}
-        </select>
-      </td>
-    </tr>
-  );
+function statusTone(status) {
+  if (status === "scanning") return "warn";
+  if (status === "error") return "danger";
+  return "neutral";
 }
 
 function SetupCell({ ctx, data }) {
@@ -266,11 +156,6 @@ function SetupCell({ ctx, data }) {
     });
   }, [ctx]);
 
-  const pushUpdate = (nextState) => {
-    setState(nextState);
-    ctx.pushEvent("update", serialize(nextState));
-  };
-
   const updateLocal = (recipe) => {
     setState((previous) => recipe(previous));
   };
@@ -293,80 +178,60 @@ function SetupCell({ ctx, data }) {
   const hasDiscovery = state.slaves.length > 0;
 
   return (
-    <div className="ke-setup">
-      <section className="ke-setup__hero">
-        <div className="ke-setup__hero-copy">
-          <div className="ke-setup__eyebrow">EtherCAT Setup</div>
-          <h2 className="ke-setup__title">Master configuration</h2>
-          <p className="ke-setup__description">
-            Scan the bus, map discovered slaves to drivers and PDO domains, then persist the result as
-            a single static <code>EtherCAT.start/1</code> call. The generated cell ends with master and
-            diagnostics tabs for the running session.
-          </p>
-        </div>
-
-        <div className="ke-setup__status-panel">
-          <div className="ke-setup__status-row">
-            <span className="ke-setup__status-label">State</span>
-            <StateBadge state={state.master_state} />
-          </div>
-          <div className="ke-setup__status-row">
-            <span className="ke-setup__status-label">Master PID</span>
-            <span className="ke-setup__mono">{state.master_pid ?? "not running"}</span>
-          </div>
-          <div className="ke-setup__status-row">
-            <span className="ke-setup__status-label">Scan state</span>
-            <span className="ke-setup__mono">{state.status}</span>
-          </div>
-        </div>
-      </section>
-
-      <div className="ke-setup__toolbar">
-        <label className="ke-setup__field ke-setup__field--toolbar">
-          <span className="ke-setup__label">Interface</span>
-          <input
-            className="ke-setup__input"
-            value={state.interface}
-            onChange={(event) => updateLocal((previous) => ({ ...previous, interface: event.target.value }))}
-            onBlur={(event) => commit((previous) => ({ ...previous, interface: event.target.value }))}
-          />
-        </label>
-
-        <div className="ke-setup__toolbar-actions">
-          <button
-            type="button"
-            className="ke-setup__button ke-setup__button--primary"
+    <Shell
+      title="EtherCAT Setup"
+      subtitle="Scan the bus, assign drivers and domains, then persist a single static EtherCAT.start/1 configuration."
+      status={
+        <>
+          <StatusBadge tone={masterStateTone(state.master_state)}>{state.master_state ?? "idle"}</StatusBadge>
+          <StatusBadge tone={statusTone(state.status)}>{state.status}</StatusBadge>
+        </>
+      }
+      toolbar={
+        <>
+          <Button
             disabled={state.status === "scanning"}
             onClick={() => {
               setState((previous) => ({ ...previous, status: "scanning", error: null }));
               ctx.pushEvent("scan", {});
             }}
           >
-            {hasDiscovery ? "Re-scan Bus" : "Scan Bus"}
-          </button>
-          <button
-            type="button"
-            className="ke-setup__button ke-setup__button--secondary"
-            onClick={() => ctx.pushEvent("stop", {})}
-          >
-            Stop Master
-          </button>
+            {hasDiscovery ? "Re-scan bus" : "Scan bus"}
+          </Button>
+          <Button onClick={() => ctx.pushEvent("stop", {})}>Stop master</Button>
+        </>
+      }
+    >
+      <SummaryGrid
+        items={[
+          { label: "Master PID", value: state.master_pid ?? "not running" },
+          { label: "Interface", value: state.interface || "n/a" },
+          { label: "Slaves", value: String(state.slaves.length) },
+          { label: "Domains", value: String(state.domains.length) },
+        ]}
+      />
+
+      <Panel title="Session">
+        <div className="ke95-toolbar">
+          <ControlField label="Interface" className="ke95-fill">
+            <Input
+              className="ke95-fill"
+              value={state.interface}
+              onChange={(event) => updateLocal((previous) => ({ ...previous, interface: event.target.value }))}
+              onBlur={(event) => commit((previous) => ({ ...previous, interface: event.target.value }))}
+            />
+          </ControlField>
         </div>
-      </div>
+      </Panel>
 
-      {state.error && <div className="ke-setup__error">{state.error}</div>}
+      {state.error ? <MessageLine tone="error">{state.error}</MessageLine> : null}
 
-      <div className="ke-setup__grid">
-        <Section
-          eyebrow="PDO"
+      <div className="ke95-grid ke95-grid--2">
+        <Panel
           title="Domains"
-          actions={
-            <button type="button" className="ke-setup__button ke-setup__button--secondary" onClick={addDomain}>
-              Add Domain
-            </button>
-          }
+          actions={<Button onClick={addDomain}>Add domain</Button>}
         >
-          <div className="ke-setup__domains">
+          <div className="ke95-grid">
             {state.domains.map((domain, index) => (
               <DomainCard
                 key={`domain-${index}`}
@@ -379,27 +244,30 @@ function SetupCell({ ctx, data }) {
               />
             ))}
           </div>
-        </Section>
+        </Panel>
 
-        <Section eyebrow="Sync" title="Distributed clocks">
-          <div className="ke-setup__dc-grid">
-            <label className="ke-setup__toggle">
-              <input
-                type="checkbox"
-                checked={state.dc_enabled}
-                onChange={(event) => commit((previous) => ({ ...previous, dc_enabled: event.target.checked }))}
-              />
-              <span>Enable DC runtime</span>
-            </label>
+        <Panel title="Distributed clocks">
+          <div className="ke95-grid ke95-grid--2">
+            <Checkbox
+              checked={state.dc_enabled}
+              label="Enable DC runtime"
+              onChange={(event) => commit((previous) => ({ ...previous, dc_enabled: event.target.checked }))}
+            />
 
-            <label className="ke-setup__field">
-              <span className="ke-setup__label">Cycle (ns)</span>
-              <input
-                className="ke-setup__input"
+            <Checkbox
+              checked={state.await_lock}
+              disabled={!state.dc_enabled}
+              label="Gate startup on lock"
+              onChange={(event) => commit((previous) => ({ ...previous, await_lock: event.target.checked }))}
+            />
+
+            <ControlField label="Cycle (ns)">
+              <Input
                 type="number"
                 min="1000000"
                 step="1000000"
                 disabled={!state.dc_enabled}
+                className="ke95-fill"
                 value={state.dc_cycle_ns}
                 onChange={(event) =>
                   updateLocal((previous) => ({ ...previous, dc_cycle_ns: Number(event.target.value) || 10000000 }))
@@ -408,26 +276,15 @@ function SetupCell({ ctx, data }) {
                   commit((previous) => ({ ...previous, dc_cycle_ns: Number(event.target.value) || 10000000 }))
                 }
               />
-            </label>
+            </ControlField>
 
-            <label className="ke-setup__toggle">
-              <input
-                type="checkbox"
-                checked={state.await_lock}
-                disabled={!state.dc_enabled}
-                onChange={(event) => commit((previous) => ({ ...previous, await_lock: event.target.checked }))}
-              />
-              <span>Gate startup on lock</span>
-            </label>
-
-            <label className="ke-setup__field">
-              <span className="ke-setup__label">Lock Threshold (ns)</span>
-              <input
-                className="ke-setup__input"
+            <ControlField label="Lock threshold (ns)">
+              <Input
                 type="number"
                 min="1"
                 step="1"
                 disabled={!state.dc_enabled}
+                className="ke95-fill"
                 value={state.lock_threshold_ns}
                 onChange={(event) =>
                   updateLocal((previous) => ({
@@ -442,16 +299,15 @@ function SetupCell({ ctx, data }) {
                   }))
                 }
               />
-            </label>
+            </ControlField>
 
-            <label className="ke-setup__field">
-              <span className="ke-setup__label">Lock Timeout (ms)</span>
-              <input
-                className="ke-setup__input"
+            <ControlField label="Lock timeout (ms)">
+              <Input
                 type="number"
                 min="1"
                 step="1"
                 disabled={!state.dc_enabled}
+                className="ke95-fill"
                 value={state.lock_timeout_ms}
                 onChange={(event) =>
                   updateLocal((previous) => ({
@@ -466,16 +322,15 @@ function SetupCell({ ctx, data }) {
                   }))
                 }
               />
-            </label>
+            </ControlField>
 
-            <label className="ke-setup__field">
-              <span className="ke-setup__label">Warmup Cycles</span>
-              <input
-                className="ke-setup__input"
+            <ControlField label="Warmup cycles">
+              <Input
                 type="number"
                 min="0"
                 step="1"
                 disabled={!state.dc_enabled}
+                className="ke95-fill"
                 value={state.warmup_cycles}
                 onChange={(event) =>
                   updateLocal((previous) => ({
@@ -490,48 +345,150 @@ function SetupCell({ ctx, data }) {
                   }))
                 }
               />
-            </label>
+            </ControlField>
           </div>
-        </Section>
+        </Panel>
       </div>
 
-      <Section eyebrow="Bus" title="Slave inventory">
+      <Panel title="Slave inventory">
         {hasDiscovery ? (
-          <div className="ke-setup__table-wrap">
-            <table className="ke-setup__table">
-              <thead>
-                <tr>
-                  <th>Station</th>
-                  <th>Identity</th>
-                  <th>Name</th>
-                  <th>Discovered</th>
-                  <th>Driver</th>
-                  <th>Domain</th>
-                </tr>
-              </thead>
-              <tbody>
-                {state.slaves.map((slave, index) => (
-                  <SlaveRow
-                    key={`${slave.discovered_name}-${index}`}
-                    slave={slave}
-                    index={index}
-                    domains={state.domains}
-                    availableDrivers={state.available_drivers}
-                    updateLocal={(rowIndex, patch) =>
-                      updateLocal((previous) => applySlaveUpdate(previous, rowIndex, patch))
-                    }
-                    commit={(rowIndex, patch) => commit((previous) => applySlaveUpdate(previous, rowIndex, patch))}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable headers={["Station", "Identity", "Name", "Discovered", "Driver", "Domain"]}>
+            {state.slaves.map((slave, index) => (
+              <SlaveRow
+                key={`${slave.discovered_name}-${index}`}
+                slave={slave}
+                index={index}
+                domains={state.domains}
+                availableDrivers={state.available_drivers}
+                updateLocal={(rowIndex, patch) =>
+                  updateLocal((previous) => applySlaveUpdate(previous, rowIndex, patch))
+                }
+                commit={(rowIndex, patch) => commit((previous) => applySlaveUpdate(previous, rowIndex, patch))}
+              />
+            ))}
+          </DataTable>
         ) : (
-          <div className="ke-setup__empty">
-            Scan the bus to discover slaves and assign each driven device to a PDO domain.
-          </div>
+          <EmptyState>Scan the bus to discover slaves and assign each driven device to a PDO domain.</EmptyState>
         )}
-      </Section>
-    </div>
+      </Panel>
+    </Shell>
+  );
+}
+
+function DomainCard({ domain, index, canRemove, onChange, onCommit, onRemove }) {
+  return (
+    <Frame boxShadow="in" className="ke95-setup__domain-card">
+      <div className="ke95-toolbar">
+        <div className="ke95-kicker">Domain {index + 1}</div>
+        {canRemove ? <Button onClick={onRemove}>Remove</Button> : null}
+      </div>
+
+      <div className="ke95-grid ke95-grid--3">
+        <ControlField label="ID">
+          <Input
+            className="ke95-fill"
+            value={domain.id}
+            onChange={(event) => onChange({ id: event.target.value })}
+            onBlur={(event) => onCommit({ id: event.target.value })}
+          />
+        </ControlField>
+
+        <ControlField label="Cycle time (ms)">
+          <Input
+            className="ke95-fill"
+            type="number"
+            min="1"
+            step="1"
+            value={domain.cycle_time_ms}
+            onChange={(event) => onChange({ cycle_time_ms: Number(event.target.value) || 10 })}
+            onBlur={(event) => onCommit({ cycle_time_ms: Number(event.target.value) || 10 })}
+          />
+        </ControlField>
+
+        <ControlField label="Miss threshold">
+          <Input
+            className="ke95-fill"
+            type="number"
+            min="1"
+            step="1"
+            value={domain.miss_threshold}
+            onChange={(event) => onChange({ miss_threshold: Number(event.target.value) || 1 })}
+            onBlur={(event) => onCommit({ miss_threshold: Number(event.target.value) || 1 })}
+          />
+        </ControlField>
+      </div>
+    </Frame>
+  );
+}
+
+function SlaveRow({ slave, index, domains, availableDrivers, updateLocal, commit }) {
+  const selectValue = driverSelectValue(slave, availableDrivers);
+
+  return (
+    <tr>
+      <td><Mono>{toHex(slave.station)}</Mono></td>
+      <td>
+        <Mono as="div">VID {toHex(slave.vendor_id, 8)}</Mono>
+        <Mono as="div">PID {toHex(slave.product_code, 8)}</Mono>
+      </td>
+      <td>
+        <Input
+          className="ke95-fill"
+          value={slave.name}
+          onChange={(event) => updateLocal(index, { name: event.target.value })}
+          onBlur={(event) => commit(index, { name: event.target.value })}
+        />
+      </td>
+      <td><Mono>{slave.discovered_name || "—"}</Mono></td>
+      <td>
+        <div className="ke95-grid">
+          <Dropdown
+            className="ke95-fill"
+            value={selectValue}
+            onChange={(event) => {
+              if (event.target.value === CUSTOM) {
+                updateLocal(index, { driver: "" });
+                return;
+              }
+
+              commit(index, { driver: event.target.value });
+            }}
+          >
+            <option value="">No driver</option>
+            {availableDrivers.map((driver) => (
+              <option key={driver.module} value={driver.module}>
+                {driver.name}
+              </option>
+            ))}
+            <option value={CUSTOM}>Custom…</option>
+          </Dropdown>
+
+          {selectValue === CUSTOM ? (
+            <Input
+              className="ke95-fill"
+              value={slave.driver}
+              placeholder="MyApp.Driver.Module"
+              onChange={(event) => updateLocal(index, { driver: event.target.value })}
+              onBlur={(event) => commit(index, { driver: event.target.value })}
+            />
+          ) : null}
+        </div>
+      </td>
+      <td>
+        <Dropdown
+          className="ke95-fill"
+          disabled={!slave.driver}
+          value={slave.domain_id || ""}
+          onChange={(event) => commit(index, { domain_id: event.target.value })}
+        >
+          <option value="">No PDO domain</option>
+          {domains.map((domain) => (
+            <option key={domain.id} value={domain.id}>
+              {domain.id}
+            </option>
+          ))}
+        </Dropdown>
+      </td>
+    </tr>
   );
 }

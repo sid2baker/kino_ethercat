@@ -3,6 +3,8 @@ import "./main.css";
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
+import { Frame, Mono, Shell, StatusBadge } from "../../ui/react95";
+
 export async function init(ctx, data) {
   await ctx.importCSS("main.css");
 
@@ -11,34 +13,33 @@ export async function init(ctx, data) {
 }
 
 const COLOR_MAP = {
-  green: { on: "ke-indicator__dot--green-on", off: "ke-indicator__dot--green-off" },
-  red: { on: "ke-indicator__dot--red-on", off: "ke-indicator__dot--red-off" },
-  yellow: { on: "ke-indicator__dot--yellow-on", off: "ke-indicator__dot--yellow-off" },
-  blue: { on: "ke-indicator__dot--blue-on", off: "ke-indicator__dot--blue-off" },
+  green: "ke95-led__lamp--green",
+  red: "ke95-led__lamp--red",
+  yellow: "ke95-led__lamp--yellow",
+  blue: "ke95-led__lamp--blue",
 };
 
 function LED({ ctx, data }) {
   const [value, setValue] = useState(data.value);
-  const colors = COLOR_MAP[data.color] ?? COLOR_MAP.green;
+  const colorClass = COLOR_MAP[data.color] ?? COLOR_MAP.green;
   const isOn = isActive(value);
 
   useEffect(() => {
     ctx.handleEvent("value_updated", ({ value }) => setValue(value));
-  }, []);
+  }, [ctx]);
 
   return (
-    <div className="ke-indicator">
-      <div className="ke-indicator__main">
-        <span className={`ke-indicator__dot ${isOn ? colors.on : colors.off}`} />
-        <div className="ke-indicator__copy">
-          <div className="ke-indicator__label">{data.label}</div>
-          <div className="ke-indicator__meta">{isOn ? "active" : "inactive"}</div>
-        </div>
-      </div>
-      <span className={`ke-indicator__badge ${isOn ? "ke-indicator__badge--on" : "ke-indicator__badge--off"}`}>
-        {isOn ? "on" : "off"}
-      </span>
-    </div>
+    <Shell
+      title={data.label}
+      subtitle="input indicator"
+      compact
+      status={<StatusBadge tone={isOn ? "ok" : "neutral"}>{isOn ? "on" : "off"}</StatusBadge>}
+    >
+      <Frame boxShadow="in" className="ke95-led">
+        <span className={`ke95-led__lamp ${colorClass}${isOn ? " ke95-led__lamp--active" : ""}`} />
+        <Mono>{isOn ? "active" : "inactive"}</Mono>
+      </Frame>
+    </Shell>
   );
 }
 

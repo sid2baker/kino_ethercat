@@ -5,61 +5,58 @@ import React, { startTransition, useEffect, useMemo, useRef, useState } from "re
 import { createRoot } from "react-dom/client";
 import uPlot from "uplot";
 
+import {
+  DataTable,
+  EmptyState,
+  Frame,
+  Mono,
+  Panel,
+  Shell,
+  StatusBadge,
+  SummaryGrid,
+} from "../../ui/react95";
+
 export async function init(ctx, data) {
   await ctx.importCSS("main.css");
   const root = createRoot(ctx.root);
   root.render(<Diagnostics ctx={ctx} data={data} />);
 }
 
-const STATE_STYLES = {
-  idle: "bg-stone-200 text-stone-600",
-  discovering: "bg-sky-100 text-sky-800",
-  awaiting_preop: "bg-sky-100 text-sky-800",
-  preop_ready: "bg-amber-100 text-amber-800",
-  operational: "bg-emerald-100 text-emerald-800",
-  activation_blocked: "bg-rose-100 text-rose-800",
-  recovering: "bg-amber-100 text-amber-800",
+const STATE_TONES = {
+  idle: "neutral",
+  discovering: "warn",
+  awaiting_preop: "warn",
+  preop_ready: "warn",
+  operational: "ok",
+  activation_blocked: "danger",
+  recovering: "warn",
 };
 
-const EVENT_STYLES = {
-  info: "border-sky-200 bg-sky-50 text-sky-800",
-  warn: "border-amber-200 bg-amber-50 text-amber-800",
-  danger: "border-rose-200 bg-rose-50 text-rose-800",
+const DOMAIN_TONES = {
+  cycling: "ok",
+  open: "warn",
+  stopped: "danger",
+  unknown: "neutral",
 };
 
-const DOMAIN_STYLES = {
-  cycling: "bg-emerald-100 text-emerald-800",
-  open: "bg-sky-100 text-sky-800",
-  stopped: "bg-rose-100 text-rose-800",
-  unknown: "bg-stone-200 text-stone-500",
+const LOCK_TONES = {
+  locked: "ok",
+  locking: "warn",
+  unavailable: "neutral",
+  inactive: "warn",
+  disabled: "neutral",
 };
 
-const LOCK_STYLES = {
-  locked: "bg-emerald-100 text-emerald-800",
-  locking: "bg-amber-100 text-amber-800",
-  unavailable: "bg-stone-200 text-stone-600",
-  inactive: "bg-stone-200 text-stone-500",
-  disabled: "bg-stone-200 text-stone-400",
+const SLAVE_TONES = {
+  op: "ok",
+  safeop: "warn",
+  preop: "warn",
+  init: "neutral",
+  unknown: "neutral",
 };
 
-const SLAVE_STATE_STYLES = {
-  op: "bg-emerald-100 text-emerald-800",
-  safeop: "bg-amber-100 text-amber-800",
-  preop: "bg-orange-100 text-orange-800",
-  init: "bg-stone-200 text-stone-600",
-  unknown: "bg-stone-200 text-stone-500",
-};
-
-function badgeClass(styles, key) {
-  return styles[key] ?? "bg-stone-200 text-stone-500";
-}
-
-function Badge({ label, tone }) {
-  return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 font-mono text-[11px] font-medium ${tone}`}>
-      {label}
-    </span>
-  );
+function badgeTone(styles, key) {
+  return styles[key] ?? "neutral";
 }
 
 function formatCount(value) {
@@ -184,13 +181,13 @@ function chartOptions(width, height, series, yUnit = "") {
     },
     axes: [
       {
-        stroke: "#78716c",
-        grid: { stroke: "#e7e5e4" },
+        stroke: "#606060",
+        grid: { stroke: "#d0d0d0" },
         values: (_u, splits) => splits.map(axisTime),
       },
       {
-        stroke: "#78716c",
-        grid: { stroke: "#e7e5e4" },
+        stroke: "#606060",
+        grid: { stroke: "#d0d0d0" },
         values: (_u, splits) => splits.map((value) => axisCompact(value, yUnit)),
       },
     ],
@@ -246,339 +243,31 @@ function ChartPanel({ title, subtitle, series, height = 210, yUnit = "", emptyLa
   const data = buildChartData(series);
 
   return (
-    <div className="ke-diagnostics__chart-panel rounded-2xl border border-stone-200 bg-white/70 p-3">
-      <div className="ke-diagnostics__chart-header mb-3 flex items-start justify-between gap-2">
-        <div className="ke-diagnostics__chart-copy">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{title}</div>
-          <div className="mt-1 font-mono text-[11px] text-stone-500">{subtitle}</div>
-        </div>
-        <div className="ke-diagnostics__legend flex flex-wrap gap-2">
-          {series.map((entry) => (
-            <div key={entry.label} className="ke-diagnostics__legend-item inline-flex items-center gap-1 font-mono text-[10px] text-stone-500">
-              <span className="ke-diagnostics__legend-swatch inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: entry.stroke }} />
-              {entry.label}
-            </div>
-          ))}
-        </div>
+    <Frame boxShadow="in" className="ke95-diagnostics__chart-panel">
+      <div className="ke95-diagnostics__chart-copy">
+        <div className="ke95-kicker">{title}</div>
+        <Mono as="div">{subtitle}</Mono>
       </div>
 
-      <div ref={ref} className="ke-diagnostics__chart">
+      <div className="ke95-diagnostics__legend">
+        {series.map((entry) => (
+          <span key={entry.label} className="ke95-diagnostics__legend-item">
+            <span className="ke95-diagnostics__legend-swatch" style={{ backgroundColor: entry.stroke }} />
+            <Mono>{entry.label}</Mono>
+          </span>
+        ))}
+      </div>
+
+      <div ref={ref} className="ke95-chart">
         {data ? (
-          <UPlotChart options={options} data={data} className="ke-diagnostics__plot-root" chartKey={`${seriesKey}:${yUnit}`} />
+          <UPlotChart options={options} data={data} className="ke95-diagnostics__plot-root" chartKey={`${seriesKey}:${yUnit}`} />
         ) : (
-          <div className="flex h-[210px] items-center justify-center rounded-2xl bg-stone-100/80 font-mono text-[11px] text-stone-400">
-            {emptyLabel}
-          </div>
+          <Frame boxShadow="in" className="ke95-chart__empty">
+            <Mono>{emptyLabel}</Mono>
+          </Frame>
         )}
       </div>
-    </div>
-  );
-}
-
-function SummaryHeader({ data }) {
-  return (
-    <div className="ke-diagnostics__header flex flex-wrap items-start justify-between gap-3">
-      <div className="ke-diagnostics__header-main space-y-2">
-        <div className="ke-diagnostics__header-row flex flex-wrap items-center gap-2">
-          <h3 className="text-lg font-semibold tracking-tight text-stone-800">Master diagnostics</h3>
-          <Badge label={data.state} tone={badgeClass(STATE_STYLES, data.state)} />
-          <Badge label={data.dc?.lock_state ?? "disabled"} tone={badgeClass(LOCK_STYLES, data.dc?.lock_state ?? "disabled")} />
-        </div>
-        <div className="font-mono text-xs text-stone-500">
-          {data.last_failure ? `last failure ${data.last_failure}` : "no recorded master failure"}
-        </div>
-      </div>
-      <div className="ke-diagnostics__header-stats grid gap-2 text-right text-xs text-stone-500">
-        <div className="font-mono">{sliceWindowLabel(data.slice_ms)}</div>
-        <div className="font-mono">expired realtime {formatCount(data.bus.expired_realtime)}</div>
-        <div className="font-mono">bus exceptions {formatCount(data.bus.exceptions)}</div>
-      </div>
-    </div>
-  );
-}
-
-function MetricCard({ title, accent, summary, children }) {
-  return (
-    <section className="ke-diagnostics__section rounded-2xl border border-stone-200 bg-white/80 p-3">
-      <div className="ke-diagnostics__section-header mb-3 flex items-center justify-between gap-2">
-        <div className="ke-diagnostics__section-copy">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">{title}</div>
-          <div className="mt-1 font-mono text-xs text-stone-600">{summary}</div>
-        </div>
-        <div className="ke-diagnostics__accent-dot h-3 w-3 rounded-full" style={{ backgroundColor: accent }} />
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function TransactionCard({ title, accent, transaction, queue }) {
-  return (
-    <MetricCard
-      title={title}
-      accent={accent}
-      summary={`latency last ${formatUs(transaction.last_latency_us)} • avg ${formatUs(transaction.avg_latency_us)}`}
-    >
-      <div className="grid gap-3 xl:grid-cols-2">
-        <ChartPanel
-          title="Latency"
-          subtitle={`dispatches ${formatCount(transaction.dispatches)} • wkc ${formatCount(transaction.last_wkc)}`}
-          series={[{ label: "Latency", slices: transaction.latency_slices, stroke: accent, fill: `${accent}26` }]}
-          yUnit="us"
-          emptyLabel="No bus latency samples yet"
-        />
-        <ChartPanel
-          title="Queue Depth"
-          subtitle={`last ${formatCount(queue.last_depth)} • avg ${formatCount(queue.avg_depth)} • peak ${formatCount(queue.peak_depth)}`}
-          series={[{ label: "Queue", slices: queue.slices, stroke: "#475569", fill: "#47556926" }]}
-          emptyLabel="No queue samples yet"
-        />
-      </div>
-      <div className="mt-3 grid grid-cols-2 gap-2 font-mono text-[11px] text-stone-500">
-        <span>transactions {formatCount(transaction.transactions)}</span>
-        <span>datagrams {formatCount(transaction.datagrams)}</span>
-        <span>submissions {formatCount(transaction.count)}</span>
-        <span>queue peak {formatCount(queue.peak_depth)}</span>
-      </div>
-    </MetricCard>
-  );
-}
-
-function TransactionSection({ transactions, queues }) {
-  return (
-    <div className="grid gap-3 xl:grid-cols-2">
-      <TransactionCard title="Realtime Bus" accent="#0f766e" transaction={transactions.realtime} queue={queues.realtime} />
-      <TransactionCard title="Reliable Bus" accent="#1d4ed8" transaction={transactions.reliable} queue={queues.reliable} />
-    </div>
-  );
-}
-
-function FrameSection({ frames, links }) {
-  return (
-    <div className="grid gap-3 xl:grid-cols-[1.5fr_1fr]">
-      <MetricCard
-        title="Bus Frames"
-        accent="#7c3aed"
-        summary={`RTT last ${formatNs(frames.last_rtt_ns)} • peak ${formatNs(frames.peak_rtt_ns)}`}
-      >
-        <div className="grid gap-3">
-          <ChartPanel
-            title="Traffic"
-            subtitle={`sent ${formatCount(frames.sent)} • received ${formatCount(frames.received)} • dropped ${formatCount(frames.dropped)}`}
-            series={[
-              { label: "Sent", slices: frames.sent_slices, stroke: "#0f766e", fill: "#0f766e20" },
-              { label: "Received", slices: frames.received_slices, stroke: "#2563eb", fill: "#2563eb20" },
-              { label: "Dropped", slices: frames.dropped_slices, stroke: "#be123c", fill: "#be123c20" },
-            ]}
-            emptyLabel="No frame traffic yet"
-          />
-          <div className="grid gap-3 xl:grid-cols-2">
-            <ChartPanel
-              title="Round Trip"
-              subtitle={`ignored ${formatCount(frames.ignored)} • exceptions ${formatCount(frames.exception_slices.reduce((sum, slice) => sum + (slice.value ?? 0), 0))}`}
-              series={[{ label: "RTT", slices: frames.rtt_slices, stroke: "#7c3aed", fill: "#7c3aed20" }]}
-              yUnit="ns"
-              emptyLabel="No RTT samples yet"
-            />
-            <ChartPanel
-              title="Fault Timeline"
-              subtitle={`expired realtime ${formatCount(frames.expired_slices.reduce((sum, slice) => sum + (slice.value ?? 0), 0))}`}
-              series={[
-                { label: "Expired", slices: frames.expired_slices, stroke: "#ea580c", fill: "#ea580c20" },
-                { label: "Exceptions", slices: frames.exception_slices, stroke: "#dc2626", fill: "#dc262620" },
-                { label: "Ignored", slices: frames.ignored_slices, stroke: "#78716c", fill: "#78716c20" },
-              ]}
-              emptyLabel="No bus faults recorded"
-            />
-          </div>
-        </div>
-        {frames.dropped_reasons.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {frames.dropped_reasons.map((reason) => (
-              <Badge key={reason.reason} label={`${reason.reason} ${reason.count}`} tone="bg-rose-100 text-rose-700" />
-            ))}
-          </div>
-        )}
-      </MetricCard>
-
-      <section className="ke-diagnostics__section rounded-2xl border border-stone-200 bg-white/80 p-3">
-        <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Links</div>
-        {links.length === 0 ? (
-          <div className="rounded-xl bg-stone-50 px-3 py-4 text-center font-mono text-xs text-stone-400">No link telemetry yet</div>
-        ) : (
-          <div className="space-y-2">
-            {links.map((link) => (
-              <div key={link.name} className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-mono text-xs text-stone-700">{link.name}</span>
-                  <Badge label={link.status} tone={link.status === "down" ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-700"} />
-                </div>
-                <div className="mt-1 font-mono text-[11px] text-stone-500">
-                  {link.reason ? `${link.reason} • ` : ""}
-                  {formatTime(link.at_ms)}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-    </div>
-  );
-}
-
-function DcSection({ dc }) {
-  return (
-    <section className="ke-diagnostics__section rounded-2xl border border-stone-200 bg-white/80 p-3">
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Distributed Clocks</div>
-        <Badge label={dc.lock_state} tone={badgeClass(LOCK_STYLES, dc.lock_state)} />
-      </div>
-
-      <div className="grid gap-3 xl:grid-cols-[1.2fr_1fr]">
-        <div className="space-y-3">
-          <ChartPanel
-            title="Sync Diff"
-            subtitle={`tick wkc ${formatCount(dc.tick_wkc)} • max ${formatNs(dc.max_sync_diff_ns)}`}
-            series={[{ label: "Sync diff", slices: dc.sync_diff_slices, stroke: "#be123c", fill: "#be123c20" }]}
-            yUnit="ns"
-            emptyLabel="No DC sync samples yet"
-          />
-          <div className="grid grid-cols-2 gap-2 font-mono text-[11px] text-stone-500">
-            <span>configured {String(dc.configured)}</span>
-            <span>active {String(dc.active)}</span>
-            <span>cycle {formatNs(dc.cycle_ns)}</span>
-            <span>failures {formatCount(dc.monitor_failures)}</span>
-            <span>reference {dc.reference_clock ?? "n/a"}</span>
-            <span>lock {dc.lock_state}</span>
-          </div>
-        </div>
-        <div className="space-y-2">
-          {dc.lock_events?.length ? (
-            dc.lock_events.slice().reverse().map((event, index) => (
-              <div key={`${event.from}-${event.to}-${index}`} className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2">
-                <div className="font-mono text-xs text-stone-700">{event.from} → {event.to}</div>
-                <div className="mt-1 font-mono text-[11px] text-stone-500">{formatNs(event.max_sync_diff_ns)}</div>
-              </div>
-            ))
-          ) : (
-            <div className="rounded-xl bg-stone-50 px-3 py-4 text-center font-mono text-xs text-stone-400">No DC lock changes yet</div>
-          )}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function DomainsSection({ domains }) {
-  return (
-    <section className="ke-diagnostics__section rounded-2xl border border-stone-200 bg-white/80 p-3">
-      <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Domains</div>
-      {domains.length === 0 ? (
-        <div className="rounded-xl bg-stone-50 px-3 py-4 text-center font-mono text-xs text-stone-400">No domains running</div>
-      ) : (
-        <div className="grid gap-3 xl:grid-cols-2">
-          {domains.map((domain) => (
-            <div key={domain.id} className="rounded-xl border border-stone-200 bg-stone-50/80 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-mono text-xs font-semibold text-stone-700">{domain.id}</span>
-                <Badge label={domain.state} tone={badgeClass(DOMAIN_STYLES, domain.state)} />
-              </div>
-              <div className="mt-3 grid gap-3">
-                <ChartPanel
-                  title="Cycle Duration"
-                  subtitle={`last ${formatUs(domain.last_cycle_us)} • avg ${formatUs(domain.avg_cycle_us)}`}
-                  series={[{ label: "Cycle", slices: domain.cycle_slices, stroke: "#d97706", fill: "#d9770620" }]}
-                  yUnit="us"
-                  emptyLabel="No cycle telemetry yet"
-                />
-                <ChartPanel
-                  title="Misses"
-                  subtitle={`miss events ${formatCount(domain.missed_events)} • total misses ${formatCount(domain.total_miss_count)}`}
-                  series={[{ label: "Misses", slices: domain.miss_slices, stroke: "#dc2626", fill: "#dc262620" }]}
-                  emptyLabel="No misses recorded"
-                />
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-2 font-mono text-[11px] text-stone-500">
-                <span>cycle {formatUs(domain.cycle_time_us)}</span>
-                <span>wkc {formatCount(domain.expected_wkc)}</span>
-                <span>miss count {formatCount(domain.miss_count)}</span>
-                <span>miss reason {domain.last_miss_reason ?? "n/a"}</span>
-              </div>
-              {(domain.last_miss_reason || domain.stop_reason || domain.crash_reason) && (
-                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 font-mono text-[11px] text-amber-800">
-                  {domain.crash_reason ? `crashed ${domain.crash_reason}` : domain.stop_reason ? `stopped ${domain.stop_reason}` : `missed ${domain.last_miss_reason}`}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function SlavesSection({ slaves }) {
-  return (
-    <section className="ke-diagnostics__section rounded-2xl border border-stone-200 bg-white/80 p-3">
-      <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Slaves</div>
-      {slaves.length === 0 ? (
-        <div className="rounded-xl bg-stone-50 px-3 py-4 text-center font-mono text-xs text-stone-400">No slaves running</div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="text-left text-[11px] uppercase tracking-[0.18em] text-stone-400">
-                <th className="pb-2">Name</th>
-                <th className="pb-2">Station</th>
-                <th className="pb-2">State</th>
-                <th className="pb-2">AL</th>
-                <th className="pb-2">Config</th>
-                <th className="pb-2">Event</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-100">
-              {slaves.map((slave) => (
-                <tr key={slave.name}>
-                  <td className="py-2 pr-3 font-mono text-xs text-stone-700">{slave.name}</td>
-                  <td className="py-2 pr-3 font-mono text-xs text-stone-500">{slave.station != null ? formatHex(slave.station) : "n/a"}</td>
-                  <td className="py-2 pr-3">
-                    <Badge label={slave.al_state} tone={badgeClass(SLAVE_STATE_STYLES, slave.al_state)} />
-                  </td>
-                  <td className="py-2 pr-3 font-mono text-xs text-stone-500">{slave.al_error != null ? formatHex(slave.al_error) : "n/a"}</td>
-                  <td className="py-2 pr-3 text-xs text-stone-500">{slave.configuration_error ?? "n/a"}</td>
-                  <td className="py-2 text-xs text-stone-500">
-                    {slave.last_event ? `${slave.last_event.title} • ${formatTime(slave.last_event.at_ms)}` : "n/a"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function TimelineSection({ timeline }) {
-  return (
-    <section className="ke-diagnostics__section rounded-2xl border border-stone-200 bg-white/80 p-3">
-      <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Event Timeline</div>
-      {timeline.length === 0 ? (
-        <div className="rounded-xl bg-stone-50 px-3 py-4 text-center font-mono text-xs text-stone-400">No fault or recovery events yet</div>
-      ) : (
-        <div className="ke-diagnostics__timeline-scroll space-y-2 pr-1">
-          {timeline.map((event) => (
-            <div key={event.id} className={`rounded-xl border px-3 py-2 ${EVENT_STYLES[event.level] ?? EVENT_STYLES.info}`}>
-              <div className="flex items-center justify-between gap-2">
-                <div className="font-medium">{event.title}</div>
-                <div className="font-mono text-[11px]">{formatTime(event.at_ms)}</div>
-              </div>
-              <div className="mt-1 font-mono text-[11px]">{event.detail}</div>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
+    </Frame>
   );
 }
 
@@ -592,14 +281,277 @@ function Diagnostics({ ctx, data }) {
   }, [ctx]);
 
   return (
-    <div className="kino-ethercat-diagnostics">
-      <SummaryHeader data={snapshot} />
-      <TransactionSection transactions={snapshot.bus.transactions} queues={snapshot.bus.queues} />
+    <Shell
+      title="Master diagnostics"
+      subtitle={snapshot.last_failure ? `last failure ${snapshot.last_failure}` : "no recorded master failure"}
+      status={
+        <>
+          <StatusBadge tone={badgeTone(STATE_TONES, snapshot.state)}>{snapshot.state}</StatusBadge>
+          <StatusBadge tone={badgeTone(LOCK_TONES, snapshot.dc?.lock_state ?? "disabled")}>
+            {snapshot.dc?.lock_state ?? "disabled"}
+          </StatusBadge>
+        </>
+      }
+    >
+      <SummaryGrid
+        items={[
+          { label: "Slice window", value: sliceWindowLabel(snapshot.slice_ms) },
+          { label: "Expired RT", value: formatCount(snapshot.bus.expired_realtime) },
+          { label: "Bus exceptions", value: formatCount(snapshot.bus.exceptions) },
+          { label: "Slaves", value: String(snapshot.slaves.length) },
+          { label: "Domains", value: String(snapshot.domains.length) },
+          { label: "DC state", value: snapshot.dc?.lock_state ?? "disabled" },
+        ]}
+      />
+
+      <div className="ke95-grid ke95-grid--2">
+        <TransactionCard title="Realtime bus" accent="#0f766e" transaction={snapshot.bus.transactions.realtime} queue={snapshot.bus.queues.realtime} />
+        <TransactionCard title="Reliable bus" accent="#1d4ed8" transaction={snapshot.bus.transactions.reliable} queue={snapshot.bus.queues.reliable} />
+      </div>
+
       <FrameSection frames={snapshot.bus.frames} links={snapshot.bus.links} />
       <DcSection dc={snapshot.dc} />
       <DomainsSection domains={snapshot.domains} />
       <SlavesSection slaves={snapshot.slaves} />
       <TimelineSection timeline={snapshot.timeline} />
+    </Shell>
+  );
+}
+
+function TransactionCard({ title, accent, transaction, queue }) {
+  return (
+    <Panel title={title}>
+      <Mono as="div">
+        latency last {formatUs(transaction.last_latency_us)} • avg {formatUs(transaction.avg_latency_us)}
+      </Mono>
+      <div className="ke95-grid ke95-grid--2">
+        <ChartPanel
+          title="Latency"
+          subtitle={`dispatches ${formatCount(transaction.dispatches)} • wkc ${formatCount(transaction.last_wkc)}`}
+          series={[{ label: "Latency", slices: transaction.latency_slices, stroke: accent, fill: `${accent}26` }]}
+          yUnit="us"
+          emptyLabel="No bus latency samples yet"
+        />
+        <ChartPanel
+          title="Queue depth"
+          subtitle={`last ${formatCount(queue.last_depth)} • avg ${formatCount(queue.avg_depth)} • peak ${formatCount(queue.peak_depth)}`}
+          series={[{ label: "Queue", slices: queue.slices, stroke: "#475569", fill: "#47556926" }]}
+          emptyLabel="No queue samples yet"
+        />
+      </div>
+      <SummaryGrid
+        items={[
+          { label: "Transactions", value: formatCount(transaction.transactions) },
+          { label: "Datagrams", value: formatCount(transaction.datagrams) },
+          { label: "Submissions", value: formatCount(transaction.count) },
+          { label: "Queue peak", value: formatCount(queue.peak_depth) },
+        ]}
+      />
+    </Panel>
+  );
+}
+
+function FrameSection({ frames, links }) {
+  return (
+    <div className="ke95-grid ke95-grid--2">
+      <Panel title="Bus frames">
+        <Mono as="div">RTT last {formatNs(frames.last_rtt_ns)} • peak {formatNs(frames.peak_rtt_ns)}</Mono>
+        <ChartPanel
+          title="Traffic"
+          subtitle={`sent ${formatCount(frames.sent)} • received ${formatCount(frames.received)} • dropped ${formatCount(frames.dropped)}`}
+          series={[
+            { label: "Sent", slices: frames.sent_slices, stroke: "#0f766e", fill: "#0f766e20" },
+            { label: "Received", slices: frames.received_slices, stroke: "#2563eb", fill: "#2563eb20" },
+            { label: "Dropped", slices: frames.dropped_slices, stroke: "#be123c", fill: "#be123c20" },
+          ]}
+          emptyLabel="No frame traffic yet"
+        />
+        <div className="ke95-grid ke95-grid--2">
+          <ChartPanel
+            title="Round trip"
+            subtitle={`ignored ${formatCount(frames.ignored)} • exceptions ${formatCount(frames.exception_slices.reduce((sum, slice) => sum + (slice.value ?? 0), 0))}`}
+            series={[{ label: "RTT", slices: frames.rtt_slices, stroke: "#7c3aed", fill: "#7c3aed20" }]}
+            yUnit="ns"
+            emptyLabel="No RTT samples yet"
+          />
+          <ChartPanel
+            title="Fault timeline"
+            subtitle={`expired realtime ${formatCount(frames.expired_slices.reduce((sum, slice) => sum + (slice.value ?? 0), 0))}`}
+            series={[
+              { label: "Expired", slices: frames.expired_slices, stroke: "#ea580c", fill: "#ea580c20" },
+              { label: "Exceptions", slices: frames.exception_slices, stroke: "#dc2626", fill: "#dc262620" },
+              { label: "Ignored", slices: frames.ignored_slices, stroke: "#78716c", fill: "#78716c20" },
+            ]}
+            emptyLabel="No bus faults recorded"
+          />
+        </div>
+      </Panel>
+
+      <Panel title="Links">
+        {links.length === 0 ? (
+          <EmptyState>No link telemetry yet</EmptyState>
+        ) : (
+          <div className="ke95-grid">
+            {links.map((link) => (
+              <Frame key={link.name} boxShadow="in" className="ke95-diagnostics__card">
+                <div className="ke95-toolbar">
+                  <Mono>{link.name}</Mono>
+                  <StatusBadge tone={link.status === "down" ? "danger" : "ok"}>{link.status}</StatusBadge>
+                </div>
+                <Mono as="div">
+                  {link.reason ? `${link.reason} • ` : ""}
+                  {formatTime(link.at_ms)}
+                </Mono>
+              </Frame>
+            ))}
+          </div>
+        )}
+      </Panel>
     </div>
+  );
+}
+
+function DcSection({ dc }) {
+  return (
+    <Panel title="Distributed clocks">
+      <div className="ke95-toolbar">
+        <StatusBadge tone={badgeTone(LOCK_TONES, dc.lock_state)}>{dc.lock_state}</StatusBadge>
+      </div>
+
+      <div className="ke95-grid ke95-grid--2">
+        <div className="ke95-grid">
+          <ChartPanel
+            title="Sync diff"
+            subtitle={`tick wkc ${formatCount(dc.tick_wkc)} • max ${formatNs(dc.max_sync_diff_ns)}`}
+            series={[{ label: "Sync diff", slices: dc.sync_diff_slices, stroke: "#be123c", fill: "#be123c20" }]}
+            yUnit="ns"
+            emptyLabel="No DC sync samples yet"
+          />
+          <SummaryGrid
+            items={[
+              { label: "Configured", value: String(dc.configured) },
+              { label: "Active", value: String(dc.active) },
+              { label: "Cycle", value: formatNs(dc.cycle_ns) },
+              { label: "Failures", value: formatCount(dc.monitor_failures) },
+              { label: "Reference", value: dc.reference_clock ?? "n/a" },
+              { label: "Lock", value: dc.lock_state },
+            ]}
+          />
+        </div>
+
+        {dc.lock_events?.length ? (
+          <div className="ke95-grid">
+            {dc.lock_events.slice().reverse().map((event, index) => (
+              <Frame key={`${event.from}-${event.to}-${index}`} boxShadow="in" className="ke95-diagnostics__card">
+                <Mono as="div">{event.from} → {event.to}</Mono>
+                <Mono as="div">{formatNs(event.max_sync_diff_ns)}</Mono>
+              </Frame>
+            ))}
+          </div>
+        ) : (
+          <EmptyState>No DC lock changes yet</EmptyState>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
+function DomainsSection({ domains }) {
+  return (
+    <Panel title="Domains">
+      {domains.length === 0 ? (
+        <EmptyState>No domains running</EmptyState>
+      ) : (
+        <div className="ke95-grid ke95-grid--2">
+          {domains.map((domain) => (
+            <Frame key={domain.id} boxShadow="in" className="ke95-diagnostics__domain">
+              <div className="ke95-toolbar">
+                <Mono>{domain.id}</Mono>
+                <StatusBadge tone={badgeTone(DOMAIN_TONES, domain.state)}>{domain.state}</StatusBadge>
+              </div>
+              <div className="ke95-grid">
+                <ChartPanel
+                  title="Cycle duration"
+                  subtitle={`last ${formatUs(domain.last_cycle_us)} • avg ${formatUs(domain.avg_cycle_us)}`}
+                  series={[{ label: "Cycle", slices: domain.cycle_slices, stroke: "#d97706", fill: "#d9770620" }]}
+                  yUnit="us"
+                  emptyLabel="No cycle telemetry yet"
+                />
+                <ChartPanel
+                  title="Misses"
+                  subtitle={`miss events ${formatCount(domain.missed_events)} • total misses ${formatCount(domain.total_miss_count)}`}
+                  series={[{ label: "Misses", slices: domain.miss_slices, stroke: "#dc2626", fill: "#dc262620" }]}
+                  emptyLabel="No misses recorded"
+                />
+              </div>
+              <SummaryGrid
+                items={[
+                  { label: "Cycle", value: formatUs(domain.cycle_time_us) },
+                  { label: "WKC", value: formatCount(domain.expected_wkc) },
+                  { label: "Miss count", value: formatCount(domain.miss_count) },
+                  { label: "Miss reason", value: domain.last_miss_reason ?? "n/a" },
+                ]}
+              />
+              {domain.last_miss_reason || domain.stop_reason || domain.crash_reason ? (
+                <Frame boxShadow="in" className="ke95-diagnostics__event ke95-diagnostics__event--warn">
+                  <Mono>
+                    {domain.crash_reason
+                      ? `crashed ${domain.crash_reason}`
+                      : domain.stop_reason
+                        ? `stopped ${domain.stop_reason}`
+                        : `missed ${domain.last_miss_reason}`}
+                  </Mono>
+                </Frame>
+              ) : null}
+            </Frame>
+          ))}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+function SlavesSection({ slaves }) {
+  return (
+    <Panel title="Slaves">
+      {slaves.length === 0 ? (
+        <EmptyState>No slaves running</EmptyState>
+      ) : (
+        <DataTable headers={["Name", "Station", "State", "AL", "Config", "Event"]}>
+          {slaves.map((slave) => (
+            <tr key={slave.name}>
+              <td><Mono>{slave.name}</Mono></td>
+              <td><Mono>{slave.station != null ? formatHex(slave.station) : "n/a"}</Mono></td>
+              <td><StatusBadge tone={badgeTone(SLAVE_TONES, slave.al_state)}>{slave.al_state}</StatusBadge></td>
+              <td><Mono>{slave.al_error != null ? formatHex(slave.al_error) : "n/a"}</Mono></td>
+              <td><Mono>{slave.configuration_error ?? "n/a"}</Mono></td>
+              <td><Mono>{slave.last_event ? `${slave.last_event.title} • ${formatTime(slave.last_event.at_ms)}` : "n/a"}</Mono></td>
+            </tr>
+          ))}
+        </DataTable>
+      )}
+    </Panel>
+  );
+}
+
+function TimelineSection({ timeline }) {
+  return (
+    <Panel title="Event timeline">
+      {timeline.length === 0 ? (
+        <EmptyState>No fault or recovery events yet</EmptyState>
+      ) : (
+        <div className="ke95-scroll ke95-grid">
+          {timeline.map((event) => (
+            <Frame key={event.id} boxShadow="in" className={`ke95-diagnostics__event ke95-diagnostics__event--${event.level}`}>
+              <div className="ke95-toolbar">
+                <div>{event.title}</div>
+                <Mono>{formatTime(event.at_ms)}</Mono>
+              </div>
+              <Mono as="div">{event.detail}</Mono>
+            </Frame>
+          ))}
+        </div>
+      )}
+    </Panel>
   );
 }

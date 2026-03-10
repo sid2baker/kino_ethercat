@@ -1,175 +1,145 @@
 import "./main.css";
 
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
+import React, { startTransition, useEffect, useRef, useState } from "react";
+import { createRoot } from "react-dom/client";
 
-function renderOptions(options, currentValue) {
-  return options
-    .map((option) => {
-      const value = escapeHtml(option.value);
-      const label = escapeHtml(option.label);
-      const selected = option.value === currentValue ? " selected" : "";
-      return `<option value="${value}"${selected}>${label}</option>`;
-    })
-    .join("");
-}
-
-function renderDatalistOptions(options) {
-  return options
-    .map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`)
-    .join("");
-}
-
-function renderField(field, value) {
-  const id = `field-${field.name}`;
-  const help = field.help ? `<div class="kino-ethercat-explorer__help">${escapeHtml(field.help)}</div>` : "";
-
-  if (field.type === "select") {
-    return `
-      <label class="kino-ethercat-explorer__field" for="${id}">
-        <span class="kino-ethercat-explorer__label">${escapeHtml(field.label)}</span>
-        <select id="${id}" name="${escapeHtml(field.name)}" class="kino-ethercat-explorer__input">
-          ${renderOptions(field.options ?? [], value)}
-        </select>
-        ${help}
-      </label>
-    `;
-  }
-
-  if (field.type === "textarea") {
-    return `
-      <label class="kino-ethercat-explorer__field" for="${id}">
-        <span class="kino-ethercat-explorer__label">${escapeHtml(field.label)}</span>
-        <textarea
-          id="${id}"
-          name="${escapeHtml(field.name)}"
-          class="kino-ethercat-explorer__input kino-ethercat-explorer__textarea"
-          placeholder="${escapeHtml(field.placeholder ?? "")}"
-        >${escapeHtml(value)}</textarea>
-        ${help}
-      </label>
-    `;
-  }
-
-  if (field.type === "datalist") {
-    const listId = `${id}-list`;
-
-    return `
-      <label class="kino-ethercat-explorer__field" for="${id}">
-        <span class="kino-ethercat-explorer__label">${escapeHtml(field.label)}</span>
-        <input
-          id="${id}"
-          name="${escapeHtml(field.name)}"
-          list="${listId}"
-          class="kino-ethercat-explorer__input"
-          value="${escapeHtml(value)}"
-          placeholder="${escapeHtml(field.placeholder ?? "")}"
-        />
-        <datalist id="${listId}">
-          ${renderDatalistOptions(field.options ?? [])}
-        </datalist>
-        ${help}
-      </label>
-    `;
-  }
-
-  return `
-    <label class="kino-ethercat-explorer__field" for="${id}">
-      <span class="kino-ethercat-explorer__label">${escapeHtml(field.label)}</span>
-      <input
-        id="${id}"
-        name="${escapeHtml(field.name)}"
-        class="kino-ethercat-explorer__input"
-        value="${escapeHtml(value)}"
-        placeholder="${escapeHtml(field.placeholder ?? "")}"
-      />
-      ${help}
-    </label>
-  `;
-}
+import {
+  Button,
+  ControlField,
+  Dropdown,
+  Input,
+  Panel,
+  Shell,
+  TextArea,
+} from "../../ui/react95";
 
 export async function init(ctx, payload) {
   await ctx.importCSS("main.css");
 
-  let state = payload;
+  const root = createRoot(ctx.root);
+  root.render(<ExplorerCell ctx={ctx} payload={payload} />);
+}
 
-  const collectValues = () => {
-    const values = {};
+function ExplorerCell({ ctx, payload }) {
+  const [state, setState] = useState(payload);
+  const [values, setValues] = useState(payload.values ?? {});
+  const valuesRef = useRef(values);
 
-    for (const field of state.fields) {
-      const input = ctx.root.querySelector(`[name="${field.name}"]`);
-      values[field.name] = input ? input.value : state.values[field.name] ?? "";
-    }
+  useEffect(() => {
+    valuesRef.current = values;
+  }, [values]);
 
-    return values;
-  };
-
-  const sync = () => ctx.pushEvent("update", collectValues());
-
-  const bind = () => {
-    ctx.root.querySelectorAll("[name]").forEach((element) => {
-      element.addEventListener("change", () => {
-        sync();
+  useEffect(() => {
+    ctx.handleEvent("snapshot", (nextPayload) => {
+      startTransition(() => {
+        setState(nextPayload);
+        setValues(nextPayload.values ?? {});
       });
     });
 
-    ctx.root.querySelectorAll("[data-action-id]").forEach((element) => {
-      element.addEventListener("click", () => {
-        ctx.pushEvent(element.dataset.actionId, {});
-      });
+    ctx.handleSync(() => {
+      const active = document.activeElement;
+
+      if (active && ctx.root.contains(active) && typeof active.blur === "function") {
+        active.blur();
+      } else {
+        ctx.pushEvent("update", valuesRef.current);
+      }
     });
+  }, [ctx]);
+
+  const updateField = (name, value) => {
+    const nextValues = { ...values, [name]: value };
+    setValues(nextValues);
+    ctx.pushEvent("update", nextValues);
   };
 
-  const render = (nextPayload = state) => {
-    state = nextPayload;
-
-    const fields = state.fields
-      .map((field) => renderField(field, state.values[field.name] ?? ""))
-      .join("");
-
-    const actions = (state.actions ?? [])
-      .map(
-        (action) =>
-          `<button type="button" class="kino-ethercat-explorer__action" data-action-id="${escapeHtml(action.id)}">${escapeHtml(action.label)}</button>`,
-      )
-      .join("");
-
-    const description = state.description
-      ? `<div class="kino-ethercat-explorer__description">${escapeHtml(state.description)}</div>`
-      : "";
-
-    ctx.root.innerHTML = `
-      <div class="kino-ethercat-explorer">
-        <div class="kino-ethercat-explorer__header">
-          <div class="kino-ethercat-explorer__header-main">
-            <h3 class="kino-ethercat-explorer__title">${escapeHtml(state.title)}</h3>
-            ${description}
-          </div>
-          <div class="kino-ethercat-explorer__actions">${actions}</div>
+  return (
+    <Shell title={state.title} subtitle={state.description}>
+      <Panel
+        title="Parameters"
+        actions={(state.actions ?? []).map((action) => (
+          <Button key={action.id} onClick={() => ctx.pushEvent(action.id, {})}>
+            {action.label}
+          </Button>
+        ))}
+      >
+        <div className="ke95-grid ke95-grid--2">
+          {state.fields.map((field) => (
+            <Field
+              key={field.name}
+              field={field}
+              value={values[field.name] ?? ""}
+              onChange={(value) => updateField(field.name, value)}
+            />
+          ))}
         </div>
-        <div class="kino-ethercat-explorer__grid">${fields}</div>
-      </div>
-    `;
+      </Panel>
+    </Shell>
+  );
+}
 
-    bind();
-  };
+function Field({ field, value, onChange }) {
+  if (field.type === "select") {
+    return (
+      <ControlField label={field.label} help={field.help}>
+        <Dropdown value={value} className="ke95-fill" onChange={(event) => onChange(event.target.value)}>
+          {(field.options ?? []).map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Dropdown>
+      </ControlField>
+    );
+  }
 
-  ctx.handleEvent("snapshot", render);
-  ctx.handleSync(() => {
-    const active = document.activeElement;
+  if (field.type === "textarea") {
+    return (
+      <ControlField label={field.label} help={field.help}>
+        <TextArea
+          className="ke95-fill ke95-explorer__textarea"
+          placeholder={field.placeholder ?? ""}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      </ControlField>
+    );
+  }
 
-    if (active && ctx.root.contains(active)) {
-      active.dispatchEvent(new Event("change", { bubbles: true }));
-    } else {
-      sync();
-    }
-  });
+  if (field.type === "datalist") {
+    const listId = `ke95-explorer-${field.name}-list`;
 
-  render(payload);
+    return (
+      <ControlField label={field.label} help={field.help}>
+        <>
+          <Input
+            className="ke95-fill"
+            list={listId}
+            placeholder={field.placeholder ?? ""}
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+          />
+          <datalist id={listId}>
+            {(field.options ?? []).map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </datalist>
+        </>
+      </ControlField>
+    );
+  }
+
+  return (
+    <ControlField label={field.label} help={field.help}>
+      <Input
+        className="ke95-fill"
+        placeholder={field.placeholder ?? ""}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </ControlField>
+  );
 }

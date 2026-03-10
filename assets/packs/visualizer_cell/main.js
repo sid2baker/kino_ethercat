@@ -18,39 +18,27 @@ import {
 import { restrictToVerticalAxis, restrictToParentElement } from "@dnd-kit/modifiers";
 import { CSS } from "@dnd-kit/utilities";
 
+import {
+  Button,
+  ControlField,
+  EmptyState,
+  Frame,
+  Input,
+  Mono,
+  Panel,
+  Shell,
+  StatusBadge,
+} from "../../ui/react95";
+
 export async function init(ctx, data) {
   await ctx.importCSS("main.css");
   const root = createRoot(ctx.root);
   root.render(<VisualizerCell ctx={ctx} data={data} />);
 }
 
-// ── Drag handle icon ──────────────────────────────────────────────────────────
-
-function GripIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-      <circle cx="4" cy="3" r="1.2" />
-      <circle cx="10" cy="3" r="1.2" />
-      <circle cx="4" cy="7" r="1.2" />
-      <circle cx="10" cy="7" r="1.2" />
-      <circle cx="4" cy="11" r="1.2" />
-      <circle cx="10" cy="11" r="1.2" />
-    </svg>
-  );
+function statusTone(status) {
+  return status === "ok" ? "ok" : status === "not_running" ? "warn" : "neutral";
 }
-
-function TrashIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="3 6 5 6 21 6" />
-      <path d="M19 6l-1 14H6L5 6" />
-      <path d="M10 11v6M14 11v6" />
-      <path d="M9 6V4h6v2" />
-    </svg>
-  );
-}
-
-// ── Sortable slave row ────────────────────────────────────────────────────────
 
 function SlaveRow({ entry, position, onRemove }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
@@ -59,7 +47,7 @@ function SlaveRow({ entry, position, onRemove }) {
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.4 : 1,
+    opacity: isDragging ? 0.6 : 1,
     zIndex: isDragging ? 10 : undefined,
   };
 
@@ -67,33 +55,17 @@ function SlaveRow({ entry, position, onRemove }) {
     <li
       ref={setNodeRef}
       style={style}
-      className={`ke-visualizer__row${isDragging ? " ke-visualizer__row--dragging" : ""}`}
+      className={`ke95-visualizer__row${isDragging ? " ke95-visualizer__row--dragging" : ""}`}
     >
-      <button
-        className="ke-visualizer__handle"
-        title="Reorder"
-        {...attributes}
-        {...listeners}
-      >
-        <GripIcon />
+      <button className="ke95-visualizer__handle" title="Reorder" {...attributes} {...listeners}>
+        ::
       </button>
-
-      <span className="ke-visualizer__position">{String(position + 1).padStart(2, "0")}</span>
-
-      <span className="ke-visualizer__name">{entry.name}</span>
-
-      <button
-        onClick={() => onRemove(entry.name)}
-        className="ke-visualizer__remove"
-        title="Remove"
-      >
-        <TrashIcon />
-      </button>
+      <Mono>{String(position + 1).padStart(2, "0")}</Mono>
+      <Mono>{entry.name}</Mono>
+      <Button onClick={() => onRemove(entry.name)}>Remove</Button>
     </li>
   );
 }
-
-// ── Main component ────────────────────────────────────────────────────────────
 
 function VisualizerCell({ ctx, data }) {
   const [selected, setSelected] = useState(data.selected ?? []);
@@ -112,7 +84,7 @@ function VisualizerCell({ ctx, data }) {
         active.blur();
       }
     });
-  }, []);
+  }, [ctx]);
 
   const sensors = useSensors(useSensor(PointerSensor));
 
@@ -139,56 +111,38 @@ function VisualizerCell({ ctx, data }) {
   };
 
   return (
-    <div className="ke-visualizer">
-      <div className="ke-visualizer__toolbar">
-        <div className="ke-visualizer__heading">
-          <div className="ke-visualizer__title">Dashboard slaves</div>
-          <div className="ke-visualizer__meta">
-            {selected.length} selected
-            <span className={`ke-visualizer__status ke-visualizer__status--${status}`}>
-              {status === "not_running" ? "master offline" : status}
-            </span>
-          </div>
-        </div>
-
-        <div className="ke-visualizer__controls">
-          <label className="ke-visualizer__control">
-            <span>Columns</span>
-            <input
+    <Shell
+      title="Dashboard slaves"
+      subtitle={`${selected.length} selected`}
+      status={<StatusBadge tone={statusTone(status)}>{status === "not_running" ? "offline" : status}</StatusBadge>}
+      toolbar={<Button onClick={() => ctx.pushEvent("refresh")}>Refresh</Button>}
+    >
+      <Panel title="Layout">
+        <div className="ke95-toolbar">
+          <ControlField label="Columns" help="Leave empty for automatic layout.">
+            <Input
               type="number"
               min="1"
               max="4"
               placeholder="auto"
-              className="ke-visualizer__input"
+              className="ke95-fill"
               value={columnsInput}
-              onChange={(e) => setColumnsInput(e.target.value)}
+              onChange={(event) => setColumnsInput(event.target.value)}
               onBlur={commitColumns}
-              onKeyDown={(e) => e.key === "Enter" && commitColumns()}
+              onKeyDown={(event) => event.key === "Enter" && commitColumns()}
             />
-          </label>
-
-          <button
-            onClick={() => ctx.pushEvent("refresh")}
-            className="ke-visualizer__button"
-          >
-            Refresh
-          </button>
+          </ControlField>
         </div>
-      </div>
+      </Panel>
 
-      {selected.length === 0 ? (
-        <div className="ke-visualizer__empty">
-          {status === "not_running"
-            ? "Start EtherCAT, then refresh to load available slaves."
-            : "No slaves selected. Refresh to load the current bus inventory."}
-        </div>
-      ) : (
-        <div className="ke-visualizer__body">
-          <div className="ke-visualizer__list-header">
-            <span className="ke-visualizer__list-header-index">#</span>
-            <span className="ke-visualizer__list-header-name">Slave</span>
-          </div>
-
+      <Panel title="Selected slaves">
+        {selected.length === 0 ? (
+          <EmptyState>
+            {status === "not_running"
+              ? "Start EtherCAT, then refresh to load available slaves."
+              : "No slaves selected. Refresh to load the current bus inventory."}
+          </EmptyState>
+        ) : (
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
@@ -199,7 +153,7 @@ function VisualizerCell({ ctx, data }) {
               items={selected.map((s) => s.name)}
               strategy={verticalListSortingStrategy}
             >
-              <ul className="ke-visualizer__list">
+              <ul className="ke95-list">
                 {selected.map((entry, index) => (
                   <SlaveRow
                     key={entry.name}
@@ -211,8 +165,8 @@ function VisualizerCell({ ctx, data }) {
               </ul>
             </SortableContext>
           </DndContext>
-        </div>
-      )}
-    </div>
+        )}
+      </Panel>
+    </Shell>
   );
 }
