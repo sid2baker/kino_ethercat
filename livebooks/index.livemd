@@ -15,9 +15,9 @@ states. `EtherCAT.await_running/1` waits for a usable session, while
 ### Start Here
 
 * [Bring-up & Runtime Console](./testing/session_bringup.livemd)  
-  Use this first for repeated manual testing. It combines the setup smart cell,
-  `await_running/1`, optional `activate/0`, and the runtime widgets in one
-  place.
+  Use this first for repeated manual testing on the loopback bench. It boots a
+  fixed `:coupler`/`:inputs`/`:outputs` configuration and opens
+  `KinoEtherCAT.diagnostics()` immediately.
 
 ### Scenario Notebooks
 
