@@ -23,33 +23,33 @@ defmodule KinoEtherCAT.WidgetLogsTest do
            end)
   end
 
-  test "silences routed events only while a widget scope is subscribed" do
+  test "silences routed EtherCAT events before widgets subscribe" do
     event = %{
       level: :info,
       msg: {:string, "[Master] routed"},
       meta: %{application: :ethercat, pid: self()}
     }
 
-    refute WidgetLogs.silence?(event)
+    assert WidgetLogs.silence?(event)
+  end
 
-    subscriber =
-      spawn(fn ->
-        receive do
-        after
-          :infinity -> :ok
-        end
-      end)
+  test "widgets can mount later and read buffered logs for their scope" do
+    slave_token = unique_token("buffered-slave")
 
-    WidgetLogs.subscribe(subscriber, :master)
+    Logger.log(:warning, "[Slave rack_1] #{slave_token}", application: :ethercat)
 
     assert_eventually(fn ->
-      assert WidgetLogs.silence?(event)
+      assert Enum.any?(
+               WidgetLogs.entries(%Slave{name: :rack_1}),
+               &String.contains?(&1.text, slave_token)
+             )
     end)
 
-    Process.exit(subscriber, :kill)
+    WidgetLogs.subscribe(self(), %Slave{name: :rack_1})
 
     assert_eventually(fn ->
-      refute WidgetLogs.silence?(event)
+      slave_logs = Runtime.payload(%Slave{name: :rack_1}).logs
+      assert Enum.any?(slave_logs, &String.contains?(&1.text, slave_token))
     end)
   end
 
@@ -59,12 +59,6 @@ defmodule KinoEtherCAT.WidgetLogsTest do
     domain_token = unique_token("domain")
     bus_token = unique_token("bus")
     dc_token = unique_token("dc")
-
-    WidgetLogs.subscribe(self(), %Master{})
-    WidgetLogs.subscribe(self(), %Slave{name: :rack_1})
-    WidgetLogs.subscribe(self(), %Domain{id: :main})
-    WidgetLogs.subscribe(self(), struct(Bus))
-    WidgetLogs.subscribe(self(), default_dc_resource())
 
     Logger.log(:info, "[Master] #{master_token}", application: :ethercat)
     Logger.log(:warning, "[Slave rack_1] #{slave_token}", application: :ethercat)
@@ -88,6 +82,32 @@ defmodule KinoEtherCAT.WidgetLogsTest do
       assert Enum.any?(domain_logs, &String.contains?(&1.text, domain_token))
       assert Enum.any?(bus_logs, &String.contains?(&1.text, bus_token))
       assert Enum.any?(dc_logs, &String.contains?(&1.text, dc_token))
+    end)
+  end
+
+  test "log levels are scoped per resource" do
+    on_exit(fn ->
+      WidgetLogs.set_level(:master, :info)
+      WidgetLogs.set_level({:slave, :rack_1}, :info)
+    end)
+
+    assert :ok = WidgetLogs.set_level(:master, :warning)
+    assert :ok = WidgetLogs.set_level({:slave, :rack_1}, :debug)
+
+    master_token = unique_token("master-level")
+    slave_token = unique_token("slave-level")
+
+    Logger.log(:info, "[Master] #{master_token}", application: :ethercat)
+    Logger.log(:info, "[Slave rack_1] #{slave_token}", application: :ethercat)
+
+    assert_eventually(fn ->
+      master_logs = Runtime.payload(%Master{}).logs
+      slave_logs = Runtime.payload(%Slave{name: :rack_1}).logs
+
+      refute Enum.any?(master_logs, &String.contains?(&1.text, master_token))
+      assert Enum.any?(slave_logs, &String.contains?(&1.text, slave_token))
+      assert WidgetLogs.level(:master) == :warning
+      assert WidgetLogs.level({:slave, :rack_1}) == :debug
     end)
   end
 

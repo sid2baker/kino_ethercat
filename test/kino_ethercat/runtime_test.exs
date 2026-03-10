@@ -30,25 +30,36 @@ defmodule KinoEtherCAT.RuntimeTest do
   end
 
   test "runtime payloads expose top-level controls and degrade gracefully when not started" do
-    assert %{kind: "master", controls: %{buttons: buttons, select: select}} =
+    assert %{kind: "master", controls: %{buttons: buttons, log_select: log_select}} =
              Runtime.payload(%Master{})
 
     assert Enum.any?(buttons, &(&1.id == "activate"))
-    assert select.id == "set_log_level"
-    assert select.label == "Elixir log level"
-    assert select.value in select.options
+    assert log_select.id == "set_log_level"
+    assert log_select.label == "Widget log level"
+    assert log_select.value in log_select.options
 
-    assert %{kind: "slave", status: "unavailable"} =
+    assert %{kind: "slave", status: "unavailable", controls: %{log_select: slave_log_select}} =
              Runtime.payload(%Slave{name: :rack_1})
 
-    assert %{kind: "domain", status: "unavailable"} =
+    assert slave_log_select.value in slave_log_select.options
+
+    assert %{kind: "domain", status: "unavailable", controls: %{log_select: domain_log_select}} =
              Runtime.payload(%Domain{id: :main})
 
-    assert %{kind: "bus", controls: %{submit: %{id: "set_frame_timeout"}}} =
+    assert domain_log_select.value in domain_log_select.options
+
+    assert %{
+             kind: "bus",
+             controls: %{submit: %{id: "set_frame_timeout"}, log_select: bus_log_select}
+           } =
              Runtime.payload(struct(Bus))
 
-    assert %{kind: "dc", controls: %{submit: %{id: "await_dc_locked"}}} =
+    assert bus_log_select.value in bus_log_select.options
+
+    assert %{kind: "dc", controls: %{submit: %{id: "await_dc_locked"}, log_select: dc_log_select}} =
              Runtime.payload(default_dc_resource())
+
+    assert dc_log_select.value in dc_log_select.options
   end
 
   test "runtime actions validate numeric inputs before touching EtherCAT" do

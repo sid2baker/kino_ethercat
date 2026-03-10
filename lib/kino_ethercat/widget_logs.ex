@@ -2,15 +2,39 @@ defmodule KinoEtherCAT.WidgetLogs do
   @moduledoc false
 
   use GenServer
+  require Logger
 
   alias EtherCAT.{Bus, Domain, Master, Slave}
 
   @handler_id :kino_ethercat_widget_logs
   @default_filter_id :kino_ethercat_widget_logs
-  @active_scopes_table :kino_ethercat_widget_log_active_scopes
   @max_entries 200
+  @default_level :info
+  @log_levels [
+    :debug,
+    :info,
+    :notice,
+    :warning,
+    :error,
+    :critical,
+    :alert,
+    :emergency,
+    :none,
+    :all
+  ]
 
   @type scope :: :master | :bus | :dc | {:slave, atom()} | {:domain, atom()}
+  @type log_level ::
+          :debug
+          | :info
+          | :notice
+          | :warning
+          | :error
+          | :critical
+          | :alert
+          | :emergency
+          | :none
+          | :all
   @type entry :: %{
           id: integer(),
           at_ms: integer(),
@@ -58,6 +82,34 @@ defmodule KinoEtherCAT.WidgetLogs do
     :exit, _ -> :ok
   end
 
+  @spec level(struct() | scope()) :: log_level()
+  def level(resource_or_scope) do
+    with {:ok, scope} <- scope(resource_or_scope),
+         router when is_pid(router) <- Process.whereis(__MODULE__) do
+      GenServer.call(router, {:level, scope})
+    else
+      _ -> @default_level
+    end
+  catch
+    :exit, _ -> @default_level
+  end
+
+  @spec set_level(struct() | scope(), log_level()) ::
+          :ok | {:error, :invalid_log_level | :invalid_scope}
+  def set_level(resource_or_scope, level) when is_atom(level) do
+    with {:ok, scope} <- scope(resource_or_scope),
+         true <- valid_level?(level),
+         router when is_pid(router) <- Process.whereis(__MODULE__) do
+      GenServer.call(router, {:set_level, scope, level})
+    else
+      false -> {:error, :invalid_log_level}
+      :error -> {:error, :invalid_scope}
+      _ -> :ok
+    end
+  catch
+    :exit, _ -> :ok
+  end
+
   @spec entries(struct() | scope()) :: [entry()]
   def entries(resource_or_scope) do
     with {:ok, scope} <- scope(resource_or_scope),
@@ -74,17 +126,13 @@ defmodule KinoEtherCAT.WidgetLogs do
   def record(event) when is_map(event) do
     case log_entry(event) do
       {scope, entry} ->
-        if active_scope?(scope) do
-          case Process.whereis(__MODULE__) do
-            pid when is_pid(pid) ->
-              send(pid, {:append_entry, scope, entry})
-              :ok
+        case Process.whereis(__MODULE__) do
+          pid when is_pid(pid) ->
+            send(pid, {:append_entry, scope, entry})
+            :ok
 
-            _ ->
-              :ok
-          end
-        else
-          :ok
+          _ ->
+            :ok
         end
 
       nil ->
@@ -95,7 +143,7 @@ defmodule KinoEtherCAT.WidgetLogs do
   @spec silence?(map()) :: boolean()
   def silence?(event) when is_map(event) do
     case log_entry(event) do
-      {scope, _entry} -> active_scope?(scope)
+      {_scope, _entry} -> true
       nil -> false
     end
   end
@@ -116,12 +164,12 @@ defmodule KinoEtherCAT.WidgetLogs do
 
   @impl true
   def init(_opts) do
-    ensure_active_scopes_table()
     install_logger_integration()
 
     {:ok,
      %{
        entries: %{},
+       levels: %{},
        subscribers: %{},
        monitors: %{}
      }}
@@ -140,13 +188,21 @@ defmodule KinoEtherCAT.WidgetLogs do
     subscribers =
       Map.update(state.subscribers, scope, MapSet.new([pid]), &MapSet.put(&1, pid))
 
-    activate_scope(scope)
-
     {:reply, :ok, %{state | subscribers: subscribers, monitors: monitors}}
   end
 
   def handle_call({:entries, scope}, _from, state) do
-    {:reply, Map.get(state.entries, scope, []), state}
+    {:reply, filtered_entries(state, scope), state}
+  end
+
+  def handle_call({:level, scope}, _from, state) do
+    {:reply, current_level(state, scope), state}
+  end
+
+  def handle_call({:set_level, scope, level}, _from, state) do
+    levels = Map.put(state.levels, scope, level)
+    notify_subscribers(state.subscribers, scope)
+    {:reply, :ok, %{state | levels: levels}}
   end
 
   @impl true
@@ -168,25 +224,18 @@ defmodule KinoEtherCAT.WidgetLogs do
         monitors -> monitors
       end
 
-    {subscribers, inactive_scopes} =
-      Enum.reduce(state.subscribers, {%{}, []}, fn {scope, pids}, {acc, inactive} ->
+    subscribers =
+      Enum.reduce(state.subscribers, %{}, fn {scope, pids}, acc ->
         remaining = MapSet.delete(pids, pid)
 
         if MapSet.size(remaining) == 0 do
-          {acc, [scope | inactive]}
+          acc
         else
-          {Map.put(acc, scope, remaining), inactive}
+          Map.put(acc, scope, remaining)
         end
       end)
 
-    Enum.each(inactive_scopes, &deactivate_scope/1)
-
-    entries =
-      Enum.reduce(inactive_scopes, state.entries, fn scope, acc ->
-        Map.delete(acc, scope)
-      end)
-
-    {:noreply, %{state | subscribers: subscribers, monitors: monitors, entries: entries}}
+    {:noreply, %{state | subscribers: subscribers, monitors: monitors}}
   end
 
   @impl true
@@ -199,19 +248,6 @@ defmodule KinoEtherCAT.WidgetLogs do
   defp install_logger_integration do
     install_handler()
     install_output_filters()
-  end
-
-  defp ensure_active_scopes_table do
-    case :ets.whereis(@active_scopes_table) do
-      :undefined ->
-        :ets.new(@active_scopes_table, [:named_table, :public, :set, read_concurrency: true])
-        :ok
-
-      _table ->
-        :ok
-    end
-  rescue
-    ArgumentError -> :ok
   end
 
   defp install_handler do
@@ -273,42 +309,45 @@ defmodule KinoEtherCAT.WidgetLogs do
     end
   end
 
-  defp activate_scope(scope) do
-    case :ets.whereis(@active_scopes_table) do
-      :undefined -> :ok
-      table -> :ets.insert(table, {scope, true})
-    end
-
-    :ok
-  rescue
-    ArgumentError -> :ok
-  end
-
-  defp deactivate_scope(scope) do
-    case :ets.whereis(@active_scopes_table) do
-      :undefined -> :ok
-      table -> :ets.delete(table, scope)
-    end
-
-    :ok
-  rescue
-    ArgumentError -> :ok
-  end
-
-  defp active_scope?(scope) do
-    case :ets.whereis(@active_scopes_table) do
-      :undefined -> false
-      table -> :ets.member(table, scope)
-    end
-  rescue
-    ArgumentError -> false
-  end
-
   defp notify_subscribers(subscribers, scope) do
     Enum.each(Map.get(subscribers, scope, MapSet.new()), fn pid ->
       send(pid, {:kino_ethercat, :logs_updated, scope})
     end)
   end
+
+  defp filtered_entries(state, scope) do
+    threshold = current_level(state, scope)
+
+    state.entries
+    |> Map.get(scope, [])
+    |> Enum.filter(&visible_at_level?(&1, threshold))
+  end
+
+  defp current_level(state, scope) do
+    Map.get(state.levels, scope, @default_level)
+  end
+
+  defp visible_at_level?(_entry, :all), do: true
+  defp visible_at_level?(_entry, :none), do: false
+
+  defp visible_at_level?(%{level: level}, threshold) when is_binary(level) do
+    case parse_entry_level(level) do
+      {:ok, entry_level} -> Logger.compare_levels(entry_level, threshold) != :lt
+      :error -> true
+    end
+  end
+
+  defp visible_at_level?(_entry, _threshold), do: true
+
+  defp parse_entry_level(level) when is_binary(level) do
+    level
+    |> String.to_existing_atom()
+    |> then(&{:ok, &1})
+  rescue
+    ArgumentError -> :error
+  end
+
+  defp valid_level?(level), do: level in @log_levels
 
   defp trim_entries(entries) when length(entries) > @max_entries do
     Enum.take(entries, -@max_entries)

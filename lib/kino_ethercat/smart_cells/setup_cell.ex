@@ -17,6 +17,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
        error: nil,
        master_state: runtime_state(),
        master_pid: Process.whereis(EtherCAT.Master),
+       available_interfaces: available_interfaces(),
        interface: config.interface,
        slaves: config.slaves,
        domains: config.domains,
@@ -67,6 +68,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
 
     ctx =
       assign(ctx,
+        available_interfaces: available_interfaces(),
         interface: config.interface,
         slaves: config.slaves,
         domains: config.domains,
@@ -90,7 +92,8 @@ defmodule KinoEtherCAT.SmartCells.Setup do
         slaves: slaves,
         error: nil,
         master_state: runtime_state(),
-        master_pid: Process.whereis(EtherCAT.Master)
+        master_pid: Process.whereis(EtherCAT.Master),
+        available_interfaces: available_interfaces()
       )
 
     broadcast_event(ctx, "snapshot", payload(ctx.assigns))
@@ -108,9 +111,12 @@ defmodule KinoEtherCAT.SmartCells.Setup do
 
     state = runtime_state()
     pid = Process.whereis(EtherCAT.Master)
+    interfaces = available_interfaces()
 
-    if state != ctx.assigns.master_state or pid != ctx.assigns.master_pid do
-      ctx = assign(ctx, master_state: state, master_pid: pid)
+    if state != ctx.assigns.master_state or
+         pid != ctx.assigns.master_pid or
+         interfaces != ctx.assigns.available_interfaces do
+      ctx = assign(ctx, master_state: state, master_pid: pid, available_interfaces: interfaces)
       broadcast_event(ctx, "snapshot", payload(ctx.assigns))
       {:noreply, ctx}
     else
@@ -204,6 +210,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
   defp payload(assigns) do
     %{
       interface: assigns.interface,
+      available_interfaces: assigns.available_interfaces,
       status: to_string(assigns.status),
       error: assigns.error,
       slaves: assigns.slaves,
@@ -385,6 +392,20 @@ defmodule KinoEtherCAT.SmartCells.Setup do
   end
 
   defp normalize_interface(_value), do: "eth0"
+
+  defp available_interfaces do
+    "/sys/class/net"
+    |> File.ls()
+    |> case do
+      {:ok, interfaces} ->
+        interfaces
+        |> Enum.reject(&(&1 == "lo"))
+        |> Enum.sort()
+
+      {:error, _reason} ->
+        []
+    end
+  end
 
   defp normalize_string(value) when is_binary(value), do: String.trim(value)
   defp normalize_string(_value), do: ""

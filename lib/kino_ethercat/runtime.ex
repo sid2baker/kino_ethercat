@@ -6,8 +6,6 @@ defmodule KinoEtherCAT.Runtime do
   for `Kino.Render` protocol implementations to build rich Livebook views.
   """
 
-  require Logger
-
   alias EtherCAT.Domain.API, as: DomainAPI
   alias EtherCAT.Slave.API, as: SlaveAPI
   alias EtherCAT.{Bus, Domain, Master, Slave}
@@ -135,7 +133,7 @@ defmodule KinoEtherCAT.Runtime do
         %{label: "Slaves", value: Integer.to_string(length(slaves))},
         %{label: "Domains", value: Integer.to_string(length(domains))},
         %{label: "DC lock", value: to_string(dc_status.lock_state || :disabled)},
-        %{label: "Log level", value: Atom.to_string(current_log_level())},
+        %{label: "Log level", value: Atom.to_string(current_log_level(master))},
         %{
           label: "Pending PREOP",
           value: Integer.to_string(MapSet.size(master.pending_preop || MapSet.new()))
@@ -157,12 +155,7 @@ defmodule KinoEtherCAT.Runtime do
           %{id: "activate", label: "Activate", tone: "primary"},
           %{id: "stop", label: "Stop", tone: "danger"}
         ],
-        select: %{
-          id: "set_log_level",
-          label: "Elixir log level",
-          options: Enum.map(log_level_options(), &Atom.to_string/1),
-          value: Atom.to_string(current_log_level())
-        }
+        log_select: log_level_control(master)
       }
     }
   end
@@ -198,7 +191,8 @@ defmodule KinoEtherCAT.Runtime do
             %{label: "Driver", value: format_term(info.driver)},
             %{label: "AL error", value: format_term(slave.error_code || "none")},
             %{label: "CoE", value: to_string(info.coe)},
-            %{label: "Signals", value: Integer.to_string(length(info.signals))}
+            %{label: "Signals", value: Integer.to_string(length(info.signals))},
+            %{label: "Log level", value: Atom.to_string(current_log_level(slave))}
           ],
           tables: [
             %{
@@ -217,7 +211,8 @@ defmodule KinoEtherCAT.Runtime do
           ],
           controls: %{
             buttons: [%{id: "refresh", label: "Refresh", tone: "secondary"}],
-            select: %{id: "transition", label: "Transition", options: ~w(init preop safeop op)}
+            select: %{id: "transition", label: "Transition", options: ~w(init preop safeop op)},
+            log_select: log_level_control(slave)
           }
         }
 
@@ -244,7 +239,8 @@ defmodule KinoEtherCAT.Runtime do
             %{label: "Cycles", value: Integer.to_string(info.cycle_count)},
             %{label: "Misses", value: Integer.to_string(info.miss_count)},
             %{label: "Total misses", value: Integer.to_string(info.total_miss_count)},
-            %{label: "WKC", value: Integer.to_string(info.expected_wkc)}
+            %{label: "WKC", value: Integer.to_string(info.expected_wkc)},
+            %{label: "Log level", value: Atom.to_string(current_log_level(%Domain{id: id}))}
           ],
           tables: [],
           details: [
@@ -258,6 +254,7 @@ defmodule KinoEtherCAT.Runtime do
               %{id: "start_cycling", label: "Start", tone: "primary"},
               %{id: "stop_cycling", label: "Stop", tone: "danger"}
             ],
+            log_select: log_level_control(%Domain{id: id}),
             input: %{
               id: "cycle_time_us",
               label: "Update cycle (us)",
@@ -286,7 +283,8 @@ defmodule KinoEtherCAT.Runtime do
         %{label: "Timeouts", value: Integer.to_string(bus.timeout_count || 0)},
         %{label: "Realtime queue", value: Integer.to_string(queue_depths.realtime)},
         %{label: "Reliable queue", value: Integer.to_string(queue_depths.reliable)},
-        %{label: "Index", value: Integer.to_string(bus.idx || 0)}
+        %{label: "Index", value: Integer.to_string(bus.idx || 0)},
+        %{label: "Log level", value: Atom.to_string(current_log_level(bus))}
       ],
       tables: [],
       details: [
@@ -296,6 +294,7 @@ defmodule KinoEtherCAT.Runtime do
       ],
       controls: %{
         buttons: [%{id: "refresh", label: "Refresh", tone: "secondary"}],
+        log_select: log_level_control(bus),
         input: %{id: "frame_timeout_ms", label: "Frame timeout (ms)", value: "25"},
         submit: %{id: "set_frame_timeout", label: "Apply timeout", tone: "primary"}
       }
@@ -341,10 +340,12 @@ defmodule KinoEtherCAT.Runtime do
           label: "Diagnostic cadence",
           value: format_term(status.diagnostic_interval_cycles || "n/a")
         },
-        %{label: "Bus", value: format_term(status.bus || "none")}
+        %{label: "Bus", value: format_term(status.bus || "none")},
+        %{label: "Log level", value: Atom.to_string(current_log_level(resource))}
       ],
       controls: %{
         buttons: [%{id: "refresh", label: "Refresh", tone: "secondary"}],
+        log_select: log_level_control(resource),
         input: %{id: "timeout_ms", label: "Await lock (ms)", value: "5000"},
         submit: %{id: "await_dc_locked", label: "Await lock", tone: "primary"}
       }
@@ -367,12 +368,12 @@ defmodule KinoEtherCAT.Runtime do
     run_action(resource, fn -> EtherCAT.stop() end, "Master stopped")
   end
 
-  def perform(%Master{} = resource, "set_log_level", %{"value" => value}) do
+  def perform(resource, "set_log_level", %{"value" => value}) do
     with {:ok, level} <- parse_log_level(value) do
       run_action(
         resource,
-        fn -> Logger.configure(level: level) end,
-        "Logger level set to #{level}"
+        fn -> WidgetLogs.set_level(resource, level) end,
+        "Widget log level set to #{level}"
       )
     else
       {:error, reason} -> {:error, resource, error_message(reason)}
@@ -674,7 +675,10 @@ defmodule KinoEtherCAT.Runtime do
       summary: [],
       tables: [],
       details: [%{label: "Reason", value: format_term(reason)}],
-      controls: %{buttons: [%{id: "refresh", label: "Refresh", tone: "secondary"}]}
+      controls: %{
+        buttons: [%{id: "refresh", label: "Refresh", tone: "secondary"}],
+        log_select: log_level_control(resource)
+      }
     }
   end
 
@@ -694,18 +698,19 @@ defmodule KinoEtherCAT.Runtime do
     end)
   end
 
-  defp current_log_level do
-    level = safe(fn -> Logger.level() end, :info)
-
-    if level in log_level_options() do
-      level
-    else
-      :info
-    end
-  end
+  defp current_log_level(resource), do: WidgetLogs.level(resource)
 
   defp log_level_options do
     [:debug, :info, :notice, :warning, :error, :critical, :alert, :emergency, :none, :all]
+  end
+
+  defp log_level_control(resource) do
+    %{
+      id: "set_log_level",
+      label: "Widget log level",
+      options: Enum.map(log_level_options(), &Atom.to_string/1),
+      value: Atom.to_string(current_log_level(resource))
+    }
   end
 
   defp format_term(value) when is_binary(value), do: value

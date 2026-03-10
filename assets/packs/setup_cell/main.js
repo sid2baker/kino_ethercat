@@ -116,6 +116,16 @@ function driverSelectValue(slave, availableDrivers) {
   return slave.driver === "" || known.includes(slave.driver) ? slave.driver : CUSTOM;
 }
 
+function interfaceOptions(state) {
+  const options = Array.isArray(state.available_interfaces) ? [...state.available_interfaces] : [];
+
+  if (state.interface && !options.includes(state.interface)) {
+    options.unshift(state.interface);
+  }
+
+  return options;
+}
+
 function masterStateTone(state) {
   const value = String(state ?? "").toLowerCase();
 
@@ -134,6 +144,7 @@ function statusTone(status) {
 function SetupCell({ ctx, data }) {
   const [state, setState] = useState(data);
   const stateRef = useRef(state);
+  const interfaces = interfaceOptions(state);
 
   useEffect(() => {
     stateRef.current = state;
@@ -214,12 +225,17 @@ function SetupCell({ ctx, data }) {
       <Panel title="Session">
         <div className="ke95-toolbar">
           <ControlField label="Interface" className="ke95-fill">
-            <Input
+            <Dropdown
               className="ke95-fill"
               value={state.interface}
-              onChange={(event) => updateLocal((previous) => ({ ...previous, interface: event.target.value }))}
-              onBlur={(event) => commit((previous) => ({ ...previous, interface: event.target.value }))}
-            />
+              onChange={(event) => commit((previous) => ({ ...previous, interface: event.target.value }))}
+            >
+              {interfaces.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </Dropdown>
           </ControlField>
         </div>
       </Panel>

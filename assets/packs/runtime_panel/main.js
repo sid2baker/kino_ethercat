@@ -115,12 +115,20 @@ function RuntimePanel({ ctx, data }) {
 
 function Controls({ ctx, controls }) {
   const [inputValue, setInputValue] = useState(controls?.input?.value ?? "");
-  const [selectValue, setSelectValue] = useState(controls?.select?.value ?? controls?.select?.options?.[0] ?? "");
+  const [selectValue, setSelectValue] = useState(selectControlValue(controls?.select));
+  const [logSelectValue, setLogSelectValue] = useState(selectControlValue(controls?.log_select));
 
   useEffect(() => {
     setInputValue(controls?.input?.value ?? "");
-    setSelectValue(controls?.select?.value ?? controls?.select?.options?.[0] ?? "");
-  }, [controls]);
+  }, [controls?.input?.id, controls?.input?.value]);
+
+  useEffect(() => {
+    setSelectValue(selectControlValue(controls?.select));
+  }, [controls?.select?.id, controls?.select?.value, selectControlOptionsKey(controls?.select)]);
+
+  useEffect(() => {
+    setLogSelectValue(selectControlValue(controls?.log_select));
+  }, [controls?.log_select?.id, controls?.log_select?.value, selectControlOptionsKey(controls?.log_select)]);
 
   if (!controls) {
     return <EmptyState>No runtime controls available.</EmptyState>;
@@ -139,24 +147,12 @@ function Controls({ ctx, controls }) {
       ) : null}
 
       {controls.select ? (
-        <div className="ke95-toolbar">
-          <ControlField label={controls.select.label} className="ke95-fill">
-            <Dropdown
-              value={selectValue}
-              className="ke95-fill"
-              onChange={(event) => setSelectValue(event.target.value)}
-            >
-              {controls.select.options.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </Dropdown>
-          </ControlField>
-          <Button onClick={() => ctx.pushEvent("action", { id: controls.select.id, value: selectValue })}>
-            Apply
-          </Button>
-        </div>
+        <SelectControl
+          control={controls.select}
+          value={selectValue}
+          onChange={setSelectValue}
+          onApply={(value) => ctx.pushEvent("action", { id: controls.select.id, value })}
+        />
       ) : null}
 
       {controls.input ? (
@@ -180,8 +176,42 @@ function Controls({ ctx, controls }) {
           </Button>
         </div>
       ) : null}
+
+      {controls.log_select ? (
+        <SelectControl
+          control={controls.log_select}
+          value={logSelectValue}
+          onChange={setLogSelectValue}
+          onApply={(value) => ctx.pushEvent("action", { id: controls.log_select.id, value })}
+        />
+      ) : null}
     </div>
   );
+}
+
+function SelectControl({ control, value, onChange, onApply }) {
+  return (
+    <div className="ke95-toolbar">
+      <ControlField label={control.label} className="ke95-fill">
+        <Dropdown value={value} className="ke95-fill" onChange={(event) => onChange(event.target.value)}>
+          {control.options.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </Dropdown>
+      </ControlField>
+      <Button onClick={() => onApply(value)}>Apply</Button>
+    </div>
+  );
+}
+
+function selectControlValue(control) {
+  return control?.value ?? control?.options?.[0] ?? "";
+}
+
+function selectControlOptionsKey(control) {
+  return (control?.options ?? []).join("|");
 }
 
 function Details({ items }) {
