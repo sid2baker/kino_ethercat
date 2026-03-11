@@ -104,7 +104,6 @@ defmodule KinoEtherCAT.SmartCellsTest do
     source =
       Setup.to_source(%{
         "transport" => "udp",
-        "host" => "127.0.0.2",
         "port" => 34_980,
         "dc_enabled" => false,
         "domains" => [
@@ -121,9 +120,11 @@ defmodule KinoEtherCAT.SmartCellsTest do
       })
 
     assert source =~ "udp_host = {127, 0, 0, 2}"
+    assert source =~ "udp_bind_ip = {127, 0, 0, 1}"
     assert source =~ "transport: :udp"
     assert source =~ "host: udp_host"
     assert source =~ "port: 34980"
+    assert source =~ "bind_ip: udp_bind_ip"
     assert source =~ "driver: KinoEtherCAT.Driver.EL1809"
     assert source =~ ~s(process_data: {:all, :main})
     refute source =~ "EtherCAT.Simulator"

@@ -2,6 +2,7 @@ defmodule KinoEtherCAT.SmartCells.SetupTransport do
   @moduledoc false
 
   @default_interface "eth0"
+  @default_udp_host "127.0.0.2"
   @default_port 0x88A4
 
   @type t :: %{
@@ -16,7 +17,7 @@ defmodule KinoEtherCAT.SmartCells.SetupTransport do
     %{
       transport: normalize_transport(attrs),
       interface: attrs |> Map.get("interface", @default_interface) |> normalize_interface(),
-      host: attrs |> Map.get("host", "") |> normalize_string(),
+      host: attrs |> Map.get("host", @default_udp_host) |> normalize_host(),
       port: attrs |> Map.get("port", @default_port) |> positive_integer(@default_port)
     }
   end
@@ -29,7 +30,9 @@ defmodule KinoEtherCAT.SmartCells.SetupTransport do
 
   def runtime_start_opts(%{transport: :udp, host: host, port: port}) do
     with {:ok, host_ip} <- parse_required_ip(host, "UDP host") do
-      {:ok, [transport: :udp, host: host_ip, port: port]}
+      {:ok,
+       [transport: :udp, host: host_ip, port: port]
+       |> maybe_put_bind_ip(default_bind_ip(host_ip))}
     end
   end
 
@@ -41,16 +44,24 @@ defmodule KinoEtherCAT.SmartCells.SetupTransport do
              transport: :raw | :udp,
              interface: String.t(),
              host: :inet.ip_address() | nil,
-             port: pos_integer()
+             port: pos_integer(),
+             bind_ip: :inet.ip_address() | nil
            }}
           | {:error, :invalid_transport}
   def source_config(%{transport: :raw, interface: interface}) when byte_size(interface) > 0 do
-    {:ok, %{transport: :raw, interface: interface, host: nil, port: @default_port}}
+    {:ok, %{transport: :raw, interface: interface, host: nil, port: @default_port, bind_ip: nil}}
   end
 
   def source_config(%{transport: :udp, host: host, port: port}) do
     with {:ok, host_ip} <- parse_ip(host) do
-      {:ok, %{transport: :udp, interface: "", host: host_ip, port: port}}
+      {:ok,
+       %{
+         transport: :udp,
+         interface: "",
+         host: host_ip,
+         port: port,
+         bind_ip: default_bind_ip(host_ip)
+       }}
     else
       _ -> {:error, :invalid_transport}
     end
@@ -93,6 +104,13 @@ defmodule KinoEtherCAT.SmartCells.SetupTransport do
   defp normalize_string(value) when is_binary(value), do: String.trim(value)
   defp normalize_string(_value), do: ""
 
+  defp normalize_host(value) do
+    case normalize_string(value) do
+      "" -> @default_udp_host
+      host -> host
+    end
+  end
+
   defp positive_integer(value, _default) when is_integer(value) and value > 0, do: value
 
   defp positive_integer(value, default) when is_binary(value) do
@@ -125,4 +143,11 @@ defmodule KinoEtherCAT.SmartCells.SetupTransport do
   end
 
   defp parse_ip(_value), do: :error
+
+  defp default_bind_ip({127, 0, 0, 1}), do: {127, 0, 0, 2}
+  defp default_bind_ip({127, _b, _c, _d}), do: {127, 0, 0, 1}
+  defp default_bind_ip(_host_ip), do: nil
+
+  defp maybe_put_bind_ip(opts, nil), do: opts
+  defp maybe_put_bind_ip(opts, bind_ip), do: Keyword.put(opts, :bind_ip, bind_ip)
 end
