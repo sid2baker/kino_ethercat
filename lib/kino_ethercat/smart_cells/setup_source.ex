@@ -54,11 +54,12 @@ defmodule KinoEtherCAT.SmartCells.SetupSource do
 
   defp transport_prelude(%{transport: :raw}), do: ""
 
-  defp transport_prelude(%{transport: :udp, host: host}) do
+  defp transport_prelude(%{transport: :udp, host: host, bind_ip: bind_ip}) do
     Source.multiline([
       "udp_host = ",
       ip_literal(host),
       "\n",
+      if(bind_ip, do: ["udp_bind_ip = ", ip_literal(bind_ip), "\n"], else: ""),
       "\n"
     ])
   end
@@ -83,8 +84,9 @@ defmodule KinoEtherCAT.SmartCells.SetupSource do
     [interface: inspect(interface)]
   end
 
-  defp transport_entries(%{transport: :udp, port: port}) do
-    [transport: ":udp", host: "udp_host", port: Source.integer_literal(port)]
+  defp transport_entries(%{transport: :udp, port: port, bind_ip: bind_ip}) do
+    [transport: ":udp", host: "udp_host", port: Source.integer_literal(port)] ++
+      if(bind_ip, do: [bind_ip: "udp_bind_ip"], else: [])
   end
 
   defp domain_literals(domains) do
