@@ -73,6 +73,10 @@ function RuntimePanel({ ctx, data }) {
   }, [ctx]);
 
   const status = <StatusBadge tone={statusTone(snapshot.status)}>{snapshot.status}</StatusBadge>;
+  const metaLayoutClass =
+    snapshot.meta_layout === "stacked"
+      ? "ke95-runtime-panel__meta ke95-runtime-panel__meta--stacked"
+      : "ke95-runtime-panel__meta ke95-runtime-panel__meta--split";
 
   return (
     <Shell
@@ -88,13 +92,13 @@ function RuntimePanel({ ctx, data }) {
 
           <SummaryGrid items={snapshot.summary} />
 
-          <div className="ke95-grid ke95-grid--2">
-            <Panel title="Controls" className="ke95-runtime-panel__controls">
+          <div className={metaLayoutClass}>
+            <Panel title={snapshot.controls?.title ?? "Controls"} className="ke95-runtime-panel__controls">
               <Controls ctx={ctx} controls={snapshot.controls} />
             </Panel>
 
             {snapshot.details.length > 0 ? (
-              <Panel title="Details" className="ke95-runtime-panel__details">
+              <Panel title={snapshot.details_title ?? "Details"} className="ke95-runtime-panel__details">
                 <Details items={snapshot.details} />
               </Panel>
             ) : (
@@ -180,6 +184,9 @@ function Controls({ ctx, controls }) {
           </Button>
         </div>
       ) : null}
+
+      {controls.summary?.length > 0 ? <SummaryGrid items={controls.summary} /> : null}
+      {controls.help ? <MessageLine tone="info">{controls.help}</MessageLine> : null}
     </div>
   );
 }
@@ -244,7 +251,11 @@ function LogSection({ ctx, logs, controls }) {
                 <Dropdown
                   value={logSelectValue}
                   className="ke95-fill"
-                  onChange={(event) => setLogSelectValue(event.target.value)}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setLogSelectValue(value);
+                    ctx.pushEvent("action", { id: controls.select.id, value });
+                  }}
                 >
                   {controls.select.options.map((option) => (
                     <option key={option} value={option}>
@@ -253,9 +264,6 @@ function LogSection({ ctx, logs, controls }) {
                   ))}
                 </Dropdown>
               </ControlField>
-              <Button onClick={() => ctx.pushEvent("action", { id: controls.select.id, value: logSelectValue })}>
-                Apply
-              </Button>
             </div>
           ) : null}
           <ControlField label="Search" className="ke95-runtime-log__search">

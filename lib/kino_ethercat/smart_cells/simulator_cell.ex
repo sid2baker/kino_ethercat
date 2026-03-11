@@ -9,12 +9,13 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
 
   @impl true
   def init(attrs, ctx) do
-    %{selected: selected} = SimulatorConfig.normalize(attrs)
+    %{selected: selected, connections: connections} = SimulatorConfig.normalize(attrs)
     schedule_refresh()
 
     {:ok,
      assign(ctx,
        selected: selected,
+       connections: connections,
        next_id: next_id(selected),
        runtime_message: nil
      )}
@@ -35,6 +36,11 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
       ctx =
         assign(ctx,
           selected: selected,
+          connections:
+            SimulatorConfig.normalize(%{
+              "selected" => selected,
+              "connections" => ctx.assigns.connections
+            }).connections,
           next_id: ctx.assigns.next_id + 1
         )
 
@@ -47,7 +53,14 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
 
   def handle_event("reorder", %{"ids" => ids}, ctx) do
     selected = reorder_selected(ctx.assigns.selected, ids)
-    ctx = assign(ctx, selected: selected)
+
+    connections =
+      SimulatorConfig.normalize(%{
+        "selected" => selected,
+        "connections" => ctx.assigns.connections
+      }).connections
+
+    ctx = assign(ctx, selected: selected, connections: connections)
     broadcast_event(ctx, "snapshot", payload(ctx.assigns))
     {:noreply, ctx}
   end
@@ -60,14 +73,64 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
 
   def handle_event("remove", %{"id" => id}, ctx) do
     selected = Enum.reject(ctx.assigns.selected, &(Map.get(&1, "id") == id))
-    ctx = assign(ctx, selected: selected)
+
+    connections =
+      ctx.assigns.connections
+      |> Enum.reject(fn connection ->
+        Map.get(connection, "source_id") == id or Map.get(connection, "target_id") == id
+      end)
+      |> then(fn connections ->
+        SimulatorConfig.normalize(%{
+          "selected" => selected,
+          "connections" => connections
+        }).connections
+      end)
+
+    ctx = assign(ctx, selected: selected, connections: connections)
     broadcast_event(ctx, "snapshot", payload(ctx.assigns))
     {:noreply, ctx}
   end
 
   def handle_event("reset_defaults", _params, ctx) do
     selected = SimulatorConfig.default_selected()
-    ctx = assign(ctx, selected: selected, next_id: next_id(selected))
+
+    ctx =
+      assign(ctx,
+        selected: selected,
+        connections: [],
+        next_id: next_id(selected),
+        runtime_message: info_message("Loopback ring reset.")
+      )
+
+    broadcast_event(ctx, "snapshot", payload(ctx.assigns))
+    {:noreply, ctx}
+  end
+
+  def handle_event("auto_wire_matching", _params, ctx) do
+    {connections, stats} = SimulatorConfig.auto_wire_matching(ctx.assigns.selected)
+
+    ctx =
+      assign(ctx,
+        connections: connections,
+        runtime_message: auto_wire_message(stats)
+      )
+
+    broadcast_event(ctx, "snapshot", payload(ctx.assigns))
+    {:noreply, ctx}
+  end
+
+  def handle_event("remove_connection", %{"key" => key}, ctx) do
+    connections =
+      Enum.reject(ctx.assigns.connections, fn connection ->
+        connection_key(connection) == key
+      end)
+
+    ctx =
+      assign(ctx,
+        connections: connections,
+        runtime_message: info_message("Connection removed.")
+      )
+
     broadcast_event(ctx, "snapshot", payload(ctx.assigns))
     {:noreply, ctx}
   end
@@ -81,7 +144,10 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
 
   @impl true
   def to_attrs(ctx) do
-    %{"selected" => ctx.assigns.selected}
+    %{
+      "selected" => ctx.assigns.selected,
+      "connections" => ctx.assigns.connections
+    }
   end
 
   @impl true
@@ -91,6 +157,7 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
 
   defp payload(assigns) do
     selected = SimulatorConfig.selected_entries(assigns.selected)
+    connections = SimulatorConfig.connection_entries(assigns.selected, assigns.connections)
 
     %{
       title: "EtherCAT Simulator",
@@ -100,7 +167,8 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
       simulator_port: SimulatorConfig.default_port(),
       available_drivers: SimulatorConfig.available_drivers(),
       selected: selected,
-      runtime: SimulatorRuntime.payload(selected, assigns.runtime_message)
+      connections: connections,
+      runtime: SimulatorRuntime.payload(selected, connections, assigns.runtime_message)
     }
   end
 
@@ -124,5 +192,19 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
 
   defp schedule_refresh do
     Process.send_after(self(), :refresh_runtime, @refresh_interval_ms)
+  end
+
+  defp auto_wire_message(%{matched: 0}) do
+    %{level: "info", text: "No unambiguous output/input matches found."}
+  end
+
+  defp auto_wire_message(%{matched: matched}) do
+    %{level: "info", text: "Auto-wired #{matched} matching signals."}
+  end
+
+  defp info_message(text), do: %{level: "info", text: text}
+
+  defp connection_key(connection) do
+    "#{Map.get(connection, "source_id")}.#{Map.get(connection, "source_signal")}->#{Map.get(connection, "target_id")}.#{Map.get(connection, "target_signal")}"
   end
 end

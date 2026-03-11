@@ -26,13 +26,19 @@ defmodule KinoEtherCAT.SmartCells.SimulatorSource do
       devices_literal(config.selected),
       "\n\n",
       "{:ok, _supervisor} = Simulator.start(devices: devices, udp: [ip: simulator_ip, port: #{SimulatorConfig.default_port()}])\n\n",
+      connection_literals(config.connections),
+      if(config.connections == [], do: "", else: "\n"),
       "KinoEtherCAT.simulator()\n"
     ])
   end
 
   defp normalize(attrs) do
-    %{selected: selected} = SimulatorConfig.normalize(attrs)
-    %{selected: SimulatorConfig.selected_entries(selected)}
+    %{selected: selected, connections: connections} = SimulatorConfig.normalize(attrs)
+
+    %{
+      selected: SimulatorConfig.selected_entries(selected),
+      connections: SimulatorConfig.connection_entries(selected, connections)
+    }
   end
 
   defp devices_literal([]), do: "[]"
@@ -45,6 +51,16 @@ defmodule KinoEtherCAT.SmartCells.SimulatorSource do
       end)
 
     "[\n#{lines}\n]"
+  end
+
+  defp connection_literals([]), do: ""
+
+  defp connection_literals(connections) do
+    connections
+    |> Enum.map_join("\n", fn connection ->
+      ":ok = Slave.connect({#{Source.atom_literal(connection.source_name)}, #{Source.atom_literal(connection.source_signal)}}, {#{Source.atom_literal(connection.target_name)}, #{Source.atom_literal(connection.target_signal)}})"
+    end)
+    |> Kernel.<>("\n")
   end
 
   defp ip_literal({a, b, c, d}), do: "{#{a}, #{b}, #{c}, #{d}}"

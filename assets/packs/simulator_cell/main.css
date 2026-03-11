@@ -13,6 +13,18 @@
   gap: 0.15rem;
 }
 
+.ke95-simulator-cell__connection {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+}
+
+.ke95-simulator-cell__connection-label {
+  overflow-wrap: anywhere;
+}
+
 .ke95-simulator-cell__row {
   display: grid;
   grid-template-columns: auto auto minmax(8rem, 1fr) minmax(10rem, 1.4fr) auto;
@@ -44,5 +56,14 @@
 
   .ke95-simulator-cell__driver {
     grid-column: 3 / 5;
+  }
+
+  .ke95-simulator-cell__connection {
+    grid-template-columns: 1fr auto;
+  }
+
+  .ke95-simulator-cell__connection-arrow,
+  .ke95-simulator-cell__connection-label:last-of-type {
+    grid-column: 1 / 3;
   }
 }

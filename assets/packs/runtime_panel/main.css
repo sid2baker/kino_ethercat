@@ -6,6 +6,16 @@
   min-width: 0;
 }
 
+.ke95-runtime-panel__meta {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.ke95-runtime-panel__meta--split {
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+}
+
 .ke95-runtime-panel__details .ke95-detail-grid {
   max-height: 16rem;
   overflow: auto;

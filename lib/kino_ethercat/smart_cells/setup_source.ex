@@ -24,22 +24,36 @@ defmodule KinoEtherCAT.SmartCells.SetupSource do
       "# Persisted from live bus discovery.\n",
       "# The notebook now boots the master from a single static EtherCAT.start/1 call.\n",
       "_ = EtherCAT.stop()\n\n",
-      ":ok =\n",
-      "  EtherCAT.start(\n",
+      "setup_result =\n",
+      "  with :ok <-\n",
+      "         EtherCAT.start(\n",
       indent_lines(
         keyword_entries(
           start_entries(config, transport) ++ [slaves: slave_literals(config.slaves)]
         ),
-        4
+        10
       ),
       "\n",
-      "  )\n\n",
-      ":ok = EtherCAT.await_running()\n",
-      ":ok = EtherCAT.await_operational()\n\n",
-      "Kino.Layout.tabs(\n",
-      "  Master: KinoEtherCAT.master(),\n",
-      "  \"Task Manager\": KinoEtherCAT.diagnostics()\n",
-      ")\n"
+      "         ),\n",
+      "       :ok <- EtherCAT.await_running(),\n",
+      "       :ok <- EtherCAT.await_operational() do\n",
+      "    :ok\n",
+      "  end\n\n",
+      "case setup_result do\n",
+      "  :ok ->\n",
+      "    Kino.Layout.tabs(\n",
+      "      Master: KinoEtherCAT.master(),\n",
+      "      \"Task Manager\": KinoEtherCAT.diagnostics()\n",
+      "    )\n\n",
+      "  {:error, reason} ->\n",
+      "    _ = EtherCAT.stop()\n\n",
+      "    Kino.Markdown.new(\"\"\"\n",
+      "    ## EtherCAT setup failed\n\n",
+      "    `\#{inspect(reason)}`\n\n",
+      "    The generated setup cell kept the notebook running instead of crashing.\n",
+      "    Re-run the cell once the bus is stable. Configuration timeouts usually mean one or more slaves did not reach the requested state in time.\n",
+      "    \"\"\")\n",
+      "end\n"
     ])
   end
 

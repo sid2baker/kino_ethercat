@@ -29,7 +29,7 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntimeTest do
       SimulatorConfig.default_selected()
       |> SimulatorConfig.selected_entries()
 
-    payload = SimulatorRuntime.payload(configured)
+    payload = SimulatorRuntime.payload(configured, [])
 
     assert payload.status == "running"
     assert payload.matches_selection
@@ -47,7 +47,7 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntimeTest do
       ]
       |> SimulatorConfig.selected_entries()
 
-    payload = SimulatorRuntime.payload(configured)
+    payload = SimulatorRuntime.payload(configured, [])
 
     refute payload.matches_selection
     assert payload.sync_tone == "warn"
@@ -57,9 +57,9 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntimeTest do
     :ok = Simulator.inject_fault(:drop_responses)
 
     assert %{level: "info"} = SimulatorRuntime.perform("clear_faults")
-    assert SimulatorRuntime.payload([]).faults.active_count == 0
+    assert SimulatorRuntime.payload([], []).faults.active_count == 0
 
     assert %{level: "info"} = SimulatorRuntime.perform("stop_runtime")
-    assert SimulatorRuntime.payload([]).status == "offline"
+    assert SimulatorRuntime.payload([], []).status == "offline"
   end
 end

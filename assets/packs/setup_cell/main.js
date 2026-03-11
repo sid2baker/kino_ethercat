@@ -319,7 +319,7 @@ function SetupCell({ ctx, data }) {
 
       {state.error ? <MessageLine tone="error">{state.error}</MessageLine> : null}
 
-      <div className="ke95-grid ke95-grid--2">
+      <div className="ke95-grid">
         <Panel
           title="Domains"
           actions={<Button onClick={addDomain}>Add domain</Button>}

@@ -86,6 +86,7 @@ defmodule KinoEtherCAT.Runtime do
     slaves = runtime_slaves()
     domains = runtime_domains()
     dc_status = dc_snapshot(dc())
+    start_config_available? = StartConfig.available?()
     start_available? = master_start_available?(public_state)
     activation_available? = master_activation_available?(public_state)
     stop_available? = master_stop_available?(public_state)
@@ -133,14 +134,13 @@ defmodule KinoEtherCAT.Runtime do
       title: "EtherCAT Master",
       status: to_string(public_state),
       message: message,
+      meta_layout: "stacked",
       logs: payload_logs(master),
       log_controls: log_controls(master),
       summary: [
-        %{label: "State", value: to_string(public_state)},
         %{label: "Slaves", value: Integer.to_string(length(slaves))},
         %{label: "Domains", value: Integer.to_string(length(domains))},
         %{label: "DC lock", value: to_string(dc_status.lock_state || :disabled)},
-        %{label: "Log filter", value: Atom.to_string(current_log_level(master))},
         %{
           label: "Pending PREOP",
           value: Integer.to_string(MapSet.size(master.pending_preop || MapSet.new()))
@@ -151,12 +151,14 @@ defmodule KinoEtherCAT.Runtime do
         %{title: "Slaves", headers: ["Name", "Station", "State"], rows: slave_rows},
         %{title: "Domains", headers: ["Domain", "Cycle", "State"], rows: domain_rows}
       ],
+      details_title: "Runtime",
       details: [
         %{label: "Bus monitor", value: format_term(master.bus_ref || "none")},
         %{label: "DC reference station", value: format_term(master.dc_ref_station || "none")},
         %{label: "Last failure", value: format_term(master.last_failure || "none")}
       ],
       controls: %{
+        title: "Actions",
         buttons: [
           %{
             id: "start",
@@ -172,7 +174,18 @@ defmodule KinoEtherCAT.Runtime do
             disabled: not activation_available?
           },
           %{id: "stop", label: "Stop", tone: "danger", disabled: not stop_available?}
-        ]
+        ],
+        summary: [
+          %{
+            label: "Remembered start",
+            value: boolean_label(start_config_available?, "ready", "missing")
+          },
+          %{
+            label: "Next step",
+            value: master_next_step(public_state, start_available?, activation_available?)
+          }
+        ],
+        help: master_control_help(public_state, start_available?, activation_available?)
       }
     }
   end
@@ -813,6 +826,33 @@ defmodule KinoEtherCAT.Runtime do
 
   defp master_start_title(false),
     do: "Start becomes available after EtherCAT has been started with notebook config"
+
+  defp master_next_step(:idle, true, _activation_available?), do: "Start remembered session"
+
+  defp master_next_step(:idle, false, _activation_available?),
+    do: "Start EtherCAT once from notebook config"
+
+  defp master_next_step(_state, _start_available?, true), do: "Activate OP"
+  defp master_next_step(_state, _start_available?, false), do: "Inspect runtime or stop master"
+
+  defp master_control_help(:idle, true, _activation_available?) do
+    "Start replays the remembered notebook configuration for this EtherCAT session."
+  end
+
+  defp master_control_help(:idle, false, _activation_available?) do
+    "Start becomes available after EtherCAT has been started once from notebook configuration."
+  end
+
+  defp master_control_help(_state, _start_available?, true) do
+    "Activate is available because the master is ready to request OP."
+  end
+
+  defp master_control_help(_state, _start_available?, false) do
+    "Use Stop to tear down the current runtime, or inspect slaves and domains below."
+  end
+
+  defp boolean_label(true, true_label, _false_label), do: true_label
+  defp boolean_label(false, _true_label, false_label), do: false_label
 
   defp format_term(value) when is_binary(value), do: value
   defp format_term(value), do: inspect(value, pretty: false, limit: 20)

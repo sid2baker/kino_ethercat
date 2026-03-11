@@ -5,24 +5,40 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntime do
 
   @type message :: %{level: String.t(), text: String.t()} | nil
 
-  @spec payload([map()], message()) :: map()
-  def payload(configured_entries, message \\ nil) when is_list(configured_entries) do
-    configured_entries
-    |> Enum.map(& &1.default_name)
-    |> payload_for_names(message)
+  @spec payload([map()], [map()], message()) :: map()
+  def payload(configured_entries, configured_connections, message \\ nil)
+      when is_list(configured_entries) and is_list(configured_connections) do
+    payload_for_config(
+      Enum.map(configured_entries, & &1.default_name),
+      Enum.map(
+        configured_connections,
+        &connection_key(&1.source_name, &1.source_signal, &1.target_name, &1.target_signal)
+      ),
+      message
+    )
   end
 
-  defp payload_for_names(configured_names, message) do
+  defp payload_for_config(configured_names, configured_connection_keys, message) do
     case Simulator.info() do
       {:ok, info} ->
-        running_payload(info, configured_names, message)
+        running_payload(info, configured_names, configured_connection_keys, message)
 
       {:error, reason} ->
-        offline_payload(reason, configured_names, offline_message(message))
+        offline_payload(
+          reason,
+          configured_names,
+          configured_connection_keys,
+          offline_message(message)
+        )
     end
   rescue
     _error ->
-      offline_payload(:not_found, configured_names, offline_message(message))
+      offline_payload(
+        :not_found,
+        configured_names,
+        configured_connection_keys,
+        offline_message(message)
+      )
   end
 
   @spec perform(String.t()) :: message()
@@ -36,7 +52,7 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntime do
 
   def perform(_action), do: error_message("Unknown simulator action.")
 
-  defp running_payload(info, configured_names, message) do
+  defp running_payload(info, configured_names, configured_connection_keys, message) do
     slaves = Map.get(info, :slaves, [])
     connections = Map.get(info, :connections, [])
     subscriptions = Map.get(info, :subscriptions, [])
@@ -44,7 +60,12 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntime do
     drop_responses? = Map.get(info, :drop_responses?, false)
     wkc_offset = Map.get(info, :wkc_offset, 0)
     running_names = Enum.map(slaves, &Atom.to_string(&1.name))
+    running_connection_keys = Enum.map(connections, &connection_key(&1.source, &1.target))
     fault_count = fault_count(drop_responses?, wkc_offset, disconnected)
+
+    config_matches? =
+      configured_names == running_names and
+        sort_keys(configured_connection_keys) == sort_keys(running_connection_keys)
 
     %{
       status: "running",
@@ -57,9 +78,23 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntime do
       ],
       configured_names: configured_names,
       running_names: running_names,
-      matches_selection: configured_names == running_names,
-      sync_message: sync_message(configured_names, running_names),
-      sync_tone: sync_tone(configured_names, running_names),
+      configured_connection_count: length(configured_connection_keys),
+      running_connection_count: length(running_connection_keys),
+      matches_selection: config_matches?,
+      sync_message:
+        sync_message(
+          configured_names,
+          running_names,
+          configured_connection_keys,
+          running_connection_keys
+        ),
+      sync_tone:
+        sync_tone(
+          configured_names,
+          running_names,
+          configured_connection_keys,
+          running_connection_keys
+        ),
       message: message,
       faults: %{
         active_count: fault_count,
@@ -71,7 +106,7 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntime do
     }
   end
 
-  defp offline_payload(reason, configured_names, message) do
+  defp offline_payload(reason, configured_names, configured_connection_keys, message) do
     %{
       status: "offline",
       reason: to_string(reason),
@@ -84,9 +119,11 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntime do
       ],
       configured_names: configured_names,
       running_names: [],
-      matches_selection: configured_names == [],
-      sync_message: sync_message(configured_names, []),
-      sync_tone: sync_tone(configured_names, []),
+      configured_connection_count: length(configured_connection_keys),
+      running_connection_count: 0,
+      matches_selection: configured_names == [] and configured_connection_keys == [],
+      sync_message: sync_message(configured_names, [], configured_connection_keys, []),
+      sync_tone: sync_tone(configured_names, [], configured_connection_keys, []),
       message: message,
       faults: %{
         active_count: 0,
@@ -118,27 +155,46 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntime do
     |> Enum.join(" | ")
   end
 
-  defp sync_message([], []), do: "Add devices and evaluate the cell to start a simulator ring."
+  defp sync_message([], [], [], []),
+    do: "Add devices and evaluate the cell to start a simulator ring."
 
-  defp sync_message(configured_names, []) when configured_names != [] do
+  defp sync_message(configured_names, [], _configured_connection_keys, [])
+       when configured_names != [] do
     "Run the smart cell to start the configured simulator ring."
   end
 
-  defp sync_message(configured_names, running_names) when configured_names == running_names do
-    "Running simulator matches the configured device order."
+  defp sync_message(
+         configured_names,
+         running_names,
+         configured_connection_keys,
+         running_connection_keys
+       ) do
+    if configured_names == running_names and
+         sort_keys(configured_connection_keys) == sort_keys(running_connection_keys) do
+      "Running simulator matches the configured ring and connections."
+    else
+      "Running simulator differs from the configured ring or connections. Re-evaluate the cell to apply changes."
+    end
   end
 
-  defp sync_message(_configured_names, _running_names) do
-    "Running simulator differs from the configured device order. Re-evaluate the cell to apply changes."
+  defp sync_tone([], [], [], []), do: "info"
+
+  defp sync_tone(configured_names, [], _configured_connection_keys, [])
+       when configured_names != [], do: "warn"
+
+  defp sync_tone(
+         configured_names,
+         running_names,
+         configured_connection_keys,
+         running_connection_keys
+       ) do
+    if configured_names == running_names and
+         sort_keys(configured_connection_keys) == sort_keys(running_connection_keys) do
+      "info"
+    else
+      "warn"
+    end
   end
-
-  defp sync_tone([], []), do: "info"
-  defp sync_tone(configured_names, []) when configured_names != [], do: "warn"
-
-  defp sync_tone(configured_names, running_names) when configured_names == running_names,
-    do: "info"
-
-  defp sync_tone(_configured_names, _running_names), do: "warn"
 
   defp udp_label(%{ip: ip, port: port}), do: "#{format_ip(ip)}:#{port}"
   defp udp_label(_udp), do: "disabled"
@@ -173,4 +229,19 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntime do
 
   defp maybe_prepend(list, true, value), do: [value | list]
   defp maybe_prepend(list, false, _value), do: list
+
+  defp connection_key({source_slave, source_signal}, {target_slave, target_signal}) do
+    connection_key(
+      Atom.to_string(source_slave),
+      Atom.to_string(source_signal),
+      Atom.to_string(target_slave),
+      Atom.to_string(target_signal)
+    )
+  end
+
+  defp connection_key(source_name, source_signal, target_name, target_signal) do
+    "#{source_name}.#{source_signal}->#{target_name}.#{target_signal}"
+  end
+
+  defp sort_keys(keys), do: Enum.sort(keys)
 end

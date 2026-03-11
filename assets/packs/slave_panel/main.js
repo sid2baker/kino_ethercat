@@ -58,12 +58,9 @@ function SlavePanel({ ctx, initialData }) {
       title={data.summary.name}
       subtitle={data.runtime_error || data.summary.driver || "slave panel"}
       status={headerStatus}
-      toolbar={<Button onClick={() => ctx.pushEvent("refresh")}>Refresh</Button>}
     >
       {data.status === "unavailable" ? (
-        <EmptyState action={<Button onClick={() => ctx.pushEvent("refresh")}>Refresh</Button>}>
-          Start the master or refresh after the bus has been discovered.
-        </EmptyState>
+        <EmptyState>Start the master and this panel will attach automatically.</EmptyState>
       ) : (
         <>
           {data.write_error ? (

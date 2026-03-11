@@ -13,6 +13,7 @@ defmodule KinoEtherCAT.Widgets.SlavePanel do
   alias KinoEtherCAT.Widgets.SlaveSnapshot
 
   @default_batch_ms 100
+  @refresh_interval_ms 1_000
 
   @doc false
   def new(slave_name, opts \\ []) do
@@ -22,6 +23,7 @@ defmodule KinoEtherCAT.Widgets.SlavePanel do
   @impl true
   def init({slave_name, opts}, ctx) do
     opts = normalize_opts(opts)
+    schedule_refresh()
 
     state =
       %{
@@ -49,16 +51,6 @@ defmodule KinoEtherCAT.Widgets.SlavePanel do
   end
 
   @impl true
-  def handle_event("refresh", _params, ctx) do
-    state =
-      ctx.assigns
-      |> merge_pending()
-      |> refresh_runtime(subscribe?: true)
-
-    broadcast_event(ctx, "snapshot", state.snapshot)
-    {:noreply, assign(ctx, state)}
-  end
-
   def handle_event("set_output", %{"signal" => signal_name, "value" => raw_value}, ctx) do
     case write_output(ctx.assigns, signal_name, raw_value) do
       {:ok, state} ->
@@ -93,6 +85,21 @@ defmodule KinoEtherCAT.Widgets.SlavePanel do
       |> rebuild_snapshot()
 
     broadcast_event(ctx, "snapshot", state.snapshot)
+    {:noreply, assign(ctx, state)}
+  end
+
+  def handle_info(:refresh_runtime, ctx) do
+    schedule_refresh()
+
+    state =
+      ctx.assigns
+      |> merge_pending()
+      |> refresh_runtime(subscribe?: true)
+
+    if state.snapshot != ctx.assigns.snapshot do
+      broadcast_event(ctx, "snapshot", state.snapshot)
+    end
+
     {:noreply, assign(ctx, state)}
   end
 
@@ -135,6 +142,10 @@ defmodule KinoEtherCAT.Widgets.SlavePanel do
   end
 
   defp maybe_refresh_again(state, _opts), do: state
+
+  defp schedule_refresh do
+    Process.send_after(self(), :refresh_runtime, @refresh_interval_ms)
+  end
 
   defp ensure_subscriptions(slave_name, signals, subscribed) do
     Enum.reduce(signals, {subscribed, nil}, fn signal, {acc, error} ->

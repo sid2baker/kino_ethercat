@@ -43,12 +43,26 @@ defmodule KinoEtherCAT.RuntimeTest do
   end
 
   test "runtime payloads expose top-level controls and degrade gracefully when not started" do
-    assert %{kind: "master", controls: %{buttons: buttons}, log_controls: log_controls} =
+    assert %{
+             kind: "master",
+             meta_layout: "stacked",
+             details_title: "Runtime",
+             controls: %{
+               title: "Actions",
+               buttons: buttons,
+               summary: control_summary,
+               help: control_help
+             },
+             log_controls: log_controls
+           } =
              Runtime.payload(%Master{})
 
     assert Enum.any?(buttons, &(&1.id == "start" and &1.disabled))
     assert Enum.any?(buttons, &(&1.id == "activate" and &1.disabled))
     assert Enum.any?(buttons, &(&1.id == "stop" and &1.disabled))
+    assert Enum.any?(control_summary, &(&1.label == "Remembered start" and &1.value == "missing"))
+    assert Enum.any?(control_summary, &(&1.label == "Next step"))
+    assert is_binary(control_help)
     assert log_controls.select.id == "set_log_level"
     assert log_controls.select.label == "Log filter"
     assert log_controls.select.value == "all"

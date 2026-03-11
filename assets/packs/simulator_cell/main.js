@@ -65,6 +65,17 @@ function DeviceRow({ entry, position, onRemove }) {
   );
 }
 
+function ConnectionRow({ entry, onRemove }) {
+  return (
+    <li className="ke95-simulator-cell__connection">
+      <Mono className="ke95-simulator-cell__connection-label">{entry.source_label}</Mono>
+      <Mono className="ke95-simulator-cell__connection-arrow">-&gt;</Mono>
+      <Mono className="ke95-simulator-cell__connection-label">{entry.target_label}</Mono>
+      <Button onClick={() => onRemove(entry.key)}>Remove</Button>
+    </li>
+  );
+}
+
 function runtimeTone(status) {
   return status === "running" ? "ok" : "neutral";
 }
@@ -174,6 +185,12 @@ function SimulatorCell({ ctx, data }) {
             <div className="ke95-kicker">Faults</div>
             <Mono>{runtime.faults?.summary ?? "No active faults."}</Mono>
           </div>
+          <div className="ke95-simulator-cell__runtime-row">
+            <div className="ke95-kicker">Connections</div>
+            <Mono>
+              configured {runtime.configured_connection_count ?? 0} / running {runtime.running_connection_count ?? 0}
+            </Mono>
+          </div>
         </div>
 
         <MessageLine tone={runtime.sync_tone ?? "info"}>{runtime.sync_message}</MessageLine>
@@ -234,6 +251,34 @@ function SimulatorCell({ ctx, data }) {
               </ul>
             </SortableContext>
           </DndContext>
+        )}
+      </Panel>
+
+      <Panel
+        title="Connections"
+        actions={
+          <Button
+            disabled={selected.length === 0}
+            onClick={() => ctx.pushEvent("auto_wire_matching", {})}
+          >
+            Auto-wire matching signals
+          </Button>
+        }
+      >
+        {snapshot.connections?.length ? (
+          <ul className="ke95-list">
+            {snapshot.connections.map((entry) => (
+              <ConnectionRow
+                key={entry.key}
+                entry={entry}
+                onRemove={(key) => ctx.pushEvent("remove_connection", { key })}
+              />
+            ))}
+          </ul>
+        ) : (
+          <EmptyState>
+            No configured connections. Auto-wire matching output and input signal names to create loopback links.
+          </EmptyState>
         )}
       </Panel>
     </Shell>

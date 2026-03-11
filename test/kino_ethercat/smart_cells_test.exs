@@ -57,8 +57,12 @@ defmodule KinoEtherCAT.SmartCellsTest do
     assert source =~ ~s(process_data: {:all, :fast})
     assert source =~ ~s(process_data: {:all, :slow})
     assert source =~ ~s(warmup_cycles: 8)
+    assert source =~ "setup_result ="
+    assert source =~ "Kino.Markdown.new"
+    assert source =~ "## EtherCAT setup failed"
     refute source =~ "transport: :udp"
-    assert source =~ ":ok = EtherCAT.await_operational()"
+    refute source =~ ":ok = EtherCAT.await_running()"
+    refute source =~ ":ok = EtherCAT.await_operational()"
     assert source =~ "Kino.Layout.tabs("
     assert source =~ "Master: KinoEtherCAT.master()"
     assert source =~ ~s|"Task Manager": KinoEtherCAT.diagnostics()|
@@ -156,6 +160,14 @@ defmodule KinoEtherCAT.SmartCellsTest do
           %{"id" => "2", "driver" => "KinoEtherCAT.Driver.EL2809"},
           %{"id" => "3", "driver" => "KinoEtherCAT.Driver.EL1809"},
           %{"id" => "4", "driver" => "KinoEtherCAT.Driver.EL2809"}
+        ],
+        "connections" => [
+          %{
+            "source_id" => "2",
+            "source_signal" => "ch1",
+            "target_id" => "3",
+            "target_signal" => "ch1"
+          }
         ]
       })
 
@@ -166,6 +178,7 @@ defmodule KinoEtherCAT.SmartCellsTest do
     assert source =~ "Slave.from_driver(KinoEtherCAT.Driver.EL2809, name: :outputs_2)"
     assert source =~ "simulator_ip = {127, 0, 0, 2}"
     assert source =~ "Simulator.start(devices: devices, udp: [ip: simulator_ip, port: 34980])"
+    assert source =~ ":ok = Slave.connect({:outputs, :ch1}, {:inputs, :ch1})"
     assert source =~ "KinoEtherCAT.simulator()"
     refute source =~ "EtherCAT.start("
     refute source =~ "KinoEtherCAT.diagnostics()"
