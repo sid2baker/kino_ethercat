@@ -15,10 +15,11 @@ defmodule KinoEtherCAT do
 
   For live dashboards and signal-oriented widgets, use `KinoEtherCAT.Widgets`.
   For the telemetry dashboard, use `KinoEtherCAT.diagnostics/0` or
-  `KinoEtherCAT.Diagnostics.panel/0`.
+  `KinoEtherCAT.Diagnostics.panel/0`. For virtual hardware, use
+  `KinoEtherCAT.simulator/0`.
   """
 
-  alias KinoEtherCAT.Runtime
+  alias KinoEtherCAT.{Runtime, Simulator}
 
   @spec master() :: %EtherCAT.Master{}
   def master, do: Runtime.master()
@@ -40,4 +41,10 @@ defmodule KinoEtherCAT do
   """
   @spec diagnostics() :: Kino.JS.Live.t()
   def diagnostics, do: KinoEtherCAT.Diagnostics.panel()
+
+  @doc """
+  Render the EtherCAT simulator control panel with topology and fault injection.
+  """
+  @spec simulator() :: Kino.JS.Live.t()
+  def simulator, do: Simulator.panel()
 end

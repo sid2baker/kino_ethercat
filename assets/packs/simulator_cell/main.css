@@ -1,0 +1,33 @@
+.ke95-simulator-cell__row {
+  display: grid;
+  grid-template-columns: auto auto minmax(8rem, 1fr) minmax(10rem, 1.4fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+}
+
+.ke95-simulator-cell__row--dragging {
+  pointer-events: none;
+}
+
+.ke95-simulator-cell__handle {
+  border: none;
+  background: transparent;
+  cursor: grab;
+  font-family: "ms_sans_serif", "Microsoft Sans Serif", sans-serif;
+  font-weight: 700;
+}
+
+.ke95-simulator-cell__name {
+  font-weight: 700;
+}
+
+@media (max-width: 640px) {
+  .ke95-simulator-cell__row {
+    grid-template-columns: auto auto 1fr auto;
+  }
+
+  .ke95-simulator-cell__driver {
+    grid-column: 3 / 5;
+  }
+}

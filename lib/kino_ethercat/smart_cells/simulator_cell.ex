@@ -1,17 +1,20 @@
 defmodule KinoEtherCAT.SmartCells.Simulator do
-  use Kino.JS, assets_path: "lib/assets/explorer_cell/build"
+  use Kino.JS, assets_path: "lib/assets/simulator_cell/build"
   use Kino.JS.Live
-  use Kino.SmartCell, name: "EtherCAT Simulator Loopback"
+  use Kino.SmartCell, name: "EtherCAT Simulator"
 
-  alias KinoEtherCAT.SmartCells.SimulatorSource
-
-  @default_master_ip "127.0.0.1"
-  @default_simulator_ip "127.0.0.2"
-  @default_cycle_time_ms "10"
+  alias KinoEtherCAT.SmartCells.{SimulatorConfig, SimulatorSource}
 
   @impl true
   def init(attrs, ctx) do
-    {:ok, assign(ctx, Keyword.new(normalized_assigns(attrs)))}
+    %{simulator_ip: simulator_ip, selected: selected} = SimulatorConfig.normalize(attrs)
+
+    {:ok,
+     assign(ctx,
+       simulator_ip: simulator_ip,
+       selected: selected,
+       next_id: next_id(selected)
+     )}
   end
 
   @impl true
@@ -21,9 +24,45 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
 
   @impl true
   def handle_event("update", params, ctx) do
-    attrs = Map.merge(to_attrs(ctx), params)
-    assigns = normalized_assigns(attrs)
-    ctx = assign(ctx, Keyword.new(assigns))
+    simulator_ip =
+      params
+      |> Map.get("simulator_ip", ctx.assigns.simulator_ip)
+      |> SimulatorConfig.normalize_simulator_ip()
+
+    ctx = assign(ctx, simulator_ip: simulator_ip)
+    broadcast_event(ctx, "snapshot", payload(ctx.assigns))
+    {:noreply, ctx}
+  end
+
+  def handle_event("add_device", %{"driver" => driver}, ctx) do
+    if SimulatorConfig.valid_driver?(driver) do
+      selected =
+        ctx.assigns.selected ++
+          [%{"id" => Integer.to_string(ctx.assigns.next_id), "driver" => driver}]
+
+      ctx =
+        assign(ctx,
+          selected: selected,
+          next_id: ctx.assigns.next_id + 1
+        )
+
+      broadcast_event(ctx, "snapshot", payload(ctx.assigns))
+      {:noreply, ctx}
+    else
+      {:noreply, ctx}
+    end
+  end
+
+  def handle_event("reorder", %{"ids" => ids}, ctx) do
+    selected = reorder_selected(ctx.assigns.selected, ids)
+    ctx = assign(ctx, selected: selected)
+    broadcast_event(ctx, "snapshot", payload(ctx.assigns))
+    {:noreply, ctx}
+  end
+
+  def handle_event("remove", %{"id" => id}, ctx) do
+    selected = Enum.reject(ctx.assigns.selected, &(Map.get(&1, "id") == id))
+    ctx = assign(ctx, selected: selected)
     broadcast_event(ctx, "snapshot", payload(ctx.assigns))
     {:noreply, ctx}
   end
@@ -31,9 +70,8 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
   @impl true
   def to_attrs(ctx) do
     %{
-      "master_ip" => ctx.assigns.master_ip,
       "simulator_ip" => ctx.assigns.simulator_ip,
-      "cycle_time_ms" => ctx.assigns.cycle_time_ms
+      "selected" => ctx.assigns.selected
     }
   end
 
@@ -44,61 +82,30 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
 
   defp payload(assigns) do
     %{
-      title: "Simulator Loopback",
+      title: "EtherCAT Simulator",
       description:
-        "Boot a UDP-backed EK1100 -> EL1809 -> EL2809 simulator ring and wire matching channels for loopback experiments.",
-      values: %{
-        "master_ip" => assigns.master_ip,
-        "simulator_ip" => assigns.simulator_ip,
-        "cycle_time_ms" => assigns.cycle_time_ms
-      },
-      fields: [
-        %{
-          name: "master_ip",
-          label: "Master Bind IP",
-          type: "text",
-          placeholder: @default_master_ip,
-          help: "Local UDP bind IP for the real EtherCAT master runtime."
-        },
-        %{
-          name: "simulator_ip",
-          label: "Simulator IP",
-          type: "text",
-          placeholder: @default_simulator_ip,
-          help: "UDP endpoint IP for EtherCAT.Simulator."
-        },
-        %{
-          name: "cycle_time_ms",
-          label: "Cycle Time (ms)",
-          type: "text",
-          placeholder: @default_cycle_time_ms,
-          help: "Domain cycle time in whole milliseconds."
-        }
-      ]
+        "Build an ordered simulator ring, start EtherCAT.Simulator over UDP, and render the simulator control panel.",
+      simulator_ip: assigns.simulator_ip,
+      available_drivers: SimulatorConfig.available_drivers(),
+      selected: SimulatorConfig.selected_entries(assigns.selected)
     }
   end
 
-  defp normalized_assigns(attrs) do
-    [
-      master_ip: string_attr(attrs, "master_ip", @default_master_ip),
-      simulator_ip: string_attr(attrs, "simulator_ip", @default_simulator_ip),
-      cycle_time_ms: string_attr(attrs, "cycle_time_ms", @default_cycle_time_ms)
-    ]
+  defp reorder_selected(selected, ids) do
+    by_id = Map.new(selected, &{Map.get(&1, "id"), &1})
+    ordered = Enum.flat_map(ids, fn id -> Map.get(by_id, id, []) |> List.wrap() end)
+    id_set = MapSet.new(ids)
+    remaining = Enum.reject(selected, &MapSet.member?(id_set, Map.get(&1, "id")))
+    ordered ++ remaining
   end
 
-  defp string_attr(attrs, key, default) do
-    case Map.get(attrs, key, default) do
-      value when is_binary(value) ->
-        case String.trim(value) do
-          "" -> default
-          trimmed -> trimmed
-        end
-
-      value when is_integer(value) ->
-        Integer.to_string(value)
-
-      _ ->
-        default
-    end
+  defp next_id(selected) do
+    selected
+    |> Enum.map(&Map.get(&1, "id"))
+    |> Enum.map(&Integer.parse(to_string(&1)))
+    |> Enum.reduce(1, fn
+      {value, ""}, acc -> max(acc, value + 1)
+      _, acc -> acc
+    end)
   end
 end

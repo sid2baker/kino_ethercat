@@ -115,25 +115,28 @@ defmodule KinoEtherCAT.SmartCellsTest do
     refute source =~ "String.to_atom"
   end
 
-  test "simulator cell renders a udp-backed loopback source" do
+  test "simulator cell renders a simulator-only source with ordered devices" do
     source =
       Simulator.to_source(%{
-        "master_ip" => "127.0.0.1",
         "simulator_ip" => "127.0.0.2",
-        "cycle_time_ms" => "10"
+        "selected" => [
+          %{"id" => "1", "driver" => "KinoEtherCAT.Driver.EK1100"},
+          %{"id" => "2", "driver" => "KinoEtherCAT.Driver.EL2809"},
+          %{"id" => "3", "driver" => "KinoEtherCAT.Driver.EL1809"},
+          %{"id" => "4", "driver" => "KinoEtherCAT.Driver.EL2809"}
+        ]
       })
 
     assert source =~ "alias EtherCAT.Simulator"
     assert source =~ "Slave.from_driver(KinoEtherCAT.Driver.EK1100, name: :coupler)"
-    assert source =~ "Slave.from_driver(KinoEtherCAT.Driver.EL1809, name: :inputs)"
     assert source =~ "Slave.from_driver(KinoEtherCAT.Driver.EL2809, name: :outputs)"
-    assert source =~ "master_ip = {127, 0, 0, 1}"
+    assert source =~ "Slave.from_driver(KinoEtherCAT.Driver.EL1809, name: :inputs)"
+    assert source =~ "Slave.from_driver(KinoEtherCAT.Driver.EL2809, name: :outputs_2)"
     assert source =~ "simulator_ip = {127, 0, 0, 2}"
-    assert source =~ "transport: :udp"
-    assert source =~ "bind_ip: master_ip"
-    assert source =~ "host: simulator_ip"
-    assert source =~ "%DomainConfig{id: :main, cycle_time_us: cycle_time_ms * 1_000}"
-    assert source =~ ~s|"Task Manager": KinoEtherCAT.diagnostics()|
+    assert source =~ "Simulator.start(devices: devices, udp: [ip: simulator_ip, port: 0])"
+    assert source =~ "KinoEtherCAT.simulator()"
+    refute source =~ "EtherCAT.start("
+    refute source =~ "KinoEtherCAT.diagnostics()"
     refute source =~ "String.to_atom"
   end
 end
