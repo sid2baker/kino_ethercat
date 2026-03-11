@@ -71,6 +71,27 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
     {:noreply, ctx}
   end
 
+  def handle_event("rename", %{"id" => id, "name" => name}, ctx) do
+    selected =
+      Enum.map(ctx.assigns.selected, fn entry ->
+        if Map.get(entry, "id") == id do
+          Map.put(entry, "name", name)
+        else
+          entry
+        end
+      end)
+
+    %{selected: selected, connections: connections} =
+      SimulatorConfig.normalize(%{
+        "selected" => selected,
+        "connections" => ctx.assigns.connections
+      })
+
+    ctx = assign(ctx, selected: selected, connections: connections)
+    broadcast_event(ctx, "snapshot", payload(ctx.assigns))
+    {:noreply, ctx}
+  end
+
   def handle_event("remove", %{"id" => id}, ctx) do
     selected = Enum.reject(ctx.assigns.selected, &(Map.get(&1, "id") == id))
 

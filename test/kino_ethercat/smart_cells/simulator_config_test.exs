@@ -37,13 +37,26 @@ defmodule KinoEtherCAT.SmartCells.SimulatorConfigTest do
     assert config.connections == []
   end
 
+  test "normalize preserves custom names and keeps them unique" do
+    config =
+      SimulatorConfig.normalize(%{
+        "selected" => [
+          %{"id" => "1", "driver" => "KinoEtherCAT.Driver.EK1100", "name" => "rack"},
+          %{"id" => "2", "driver" => "KinoEtherCAT.Driver.EL2809", "name" => "rack"},
+          %{"id" => "3", "driver" => "KinoEtherCAT.Driver.EL1809", "name" => "  "}
+        ]
+      })
+
+    assert Enum.map(config.selected, & &1["name"]) == ["rack", "rack_2", "inputs"]
+  end
+
   test "connection entries use stable id-based keys for removal" do
     entries =
       SimulatorConfig.connection_entries(
         [
           %{"id" => "1", "driver" => "KinoEtherCAT.Driver.EK1100"},
-          %{"id" => "2", "driver" => "KinoEtherCAT.Driver.EL2809"},
-          %{"id" => "3", "driver" => "KinoEtherCAT.Driver.EL1809"}
+          %{"id" => "2", "driver" => "KinoEtherCAT.Driver.EL2809", "name" => "left_outputs"},
+          %{"id" => "3", "driver" => "KinoEtherCAT.Driver.EL1809", "name" => "left_inputs"}
         ],
         [
           %{
@@ -55,7 +68,13 @@ defmodule KinoEtherCAT.SmartCells.SimulatorConfigTest do
         ]
       )
 
-    assert [%{key: "2.ch1->3.ch1", source_label: "outputs.ch1", target_label: "inputs.ch1"}] =
+    assert [
+             %{
+               key: "2.ch1->3.ch1",
+               source_label: "left_outputs.ch1",
+               target_label: "left_inputs.ch1"
+             }
+           ] =
              entries
   end
 end

@@ -156,9 +156,9 @@ defmodule KinoEtherCAT.SmartCellsTest do
     source =
       Simulator.to_source(%{
         "selected" => [
-          %{"id" => "1", "driver" => "KinoEtherCAT.Driver.EK1100"},
-          %{"id" => "2", "driver" => "KinoEtherCAT.Driver.EL2809"},
-          %{"id" => "3", "driver" => "KinoEtherCAT.Driver.EL1809"},
+          %{"id" => "1", "driver" => "KinoEtherCAT.Driver.EK1100", "name" => "coupler"},
+          %{"id" => "2", "driver" => "KinoEtherCAT.Driver.EL2809", "name" => "rack_outputs"},
+          %{"id" => "3", "driver" => "KinoEtherCAT.Driver.EL1809", "name" => "rack_inputs"},
           %{"id" => "4", "driver" => "KinoEtherCAT.Driver.EL2809"}
         ],
         "connections" => [
@@ -173,12 +173,12 @@ defmodule KinoEtherCAT.SmartCellsTest do
 
     assert source =~ "alias EtherCAT.Simulator"
     assert source =~ "Slave.from_driver(KinoEtherCAT.Driver.EK1100, name: :coupler)"
+    assert source =~ "Slave.from_driver(KinoEtherCAT.Driver.EL2809, name: :rack_outputs)"
+    assert source =~ "Slave.from_driver(KinoEtherCAT.Driver.EL1809, name: :rack_inputs)"
     assert source =~ "Slave.from_driver(KinoEtherCAT.Driver.EL2809, name: :outputs)"
-    assert source =~ "Slave.from_driver(KinoEtherCAT.Driver.EL1809, name: :inputs)"
-    assert source =~ "Slave.from_driver(KinoEtherCAT.Driver.EL2809, name: :outputs_2)"
     assert source =~ "simulator_ip = {127, 0, 0, 2}"
     assert source =~ "Simulator.start(devices: devices, udp: [ip: simulator_ip, port: 34980])"
-    assert source =~ ":ok = Slave.connect({:outputs, :ch1}, {:inputs, :ch1})"
+    assert source =~ ":ok = Slave.connect({:rack_outputs, :ch1}, {:rack_inputs, :ch1})"
     assert source =~ "Kino.Layout.tabs("
     assert source =~ "Simulator: KinoEtherCAT.simulator()"
     assert source =~ "Faults: KinoEtherCAT.simulator_faults()"

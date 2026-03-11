@@ -84,9 +84,19 @@ defmodule KinoEtherCAT.SmartCells.SimulatorConfig do
             default_name: default_name(driver)
           })
 
-        {device_name, counts} = next_device_name(driver_info.default_name, counts)
+        requested_name = Map.get(entry, "name") || driver_info.default_name
+        {device_name, counts} = next_device_name(requested_name, counts)
 
-        {%{id: id, driver: driver, label: driver_info.label, default_name: device_name}, counts}
+        {
+          %{
+            id: id,
+            driver: driver,
+            label: driver_info.label,
+            name: device_name,
+            default_name: driver_info.default_name
+          },
+          counts
+        }
       end)
 
     entries
@@ -115,10 +125,10 @@ defmodule KinoEtherCAT.SmartCells.SimulatorConfig do
         source_signal: connection["source_signal"],
         target_id: connection["target_id"],
         target_signal: connection["target_signal"],
-        source_name: source.default_name,
-        target_name: target.default_name,
-        source_label: "#{source.default_name}.#{connection["source_signal"]}",
-        target_label: "#{target.default_name}.#{connection["target_signal"]}"
+        source_name: source.name,
+        target_name: target.name,
+        source_label: "#{source.name}.#{connection["source_signal"]}",
+        target_label: "#{target.name}.#{connection["target_signal"]}"
       }
     end)
   end
@@ -167,17 +177,23 @@ defmodule KinoEtherCAT.SmartCells.SimulatorConfig do
     |> Enum.filter(&MapSet.member?(available_modules, &1["driver"]))
     |> Enum.with_index(1)
     |> Enum.map(fn {entry, index} ->
-      %{"id" => Integer.to_string(index), "driver" => Map.fetch!(entry, "driver")}
+      %{
+        "id" => Integer.to_string(index),
+        "driver" => Map.fetch!(entry, "driver"),
+        "name" => Map.get(entry, "name")
+      }
     end)
+    |> normalize_selected_names()
   end
 
   defp normalize_selected(_selected, _available_modules), do: []
 
-  defp normalize_selected_entry(%{"driver" => driver}) when is_binary(driver),
-    do: %{"driver" => driver}
+  defp normalize_selected_entry(%{"driver" => driver} = entry) when is_binary(driver) do
+    %{"driver" => driver, "name" => normalize_name(Map.get(entry, "name"))}
+  end
 
   defp normalize_selected_entry(driver) when is_binary(driver),
-    do: %{"driver" => driver}
+    do: %{"driver" => driver, "name" => nil}
 
   defp normalize_selected_entry(_entry), do: nil
 
@@ -187,11 +203,23 @@ defmodule KinoEtherCAT.SmartCells.SimulatorConfig do
     |> Enum.filter(&MapSet.member?(available_modules, &1))
     |> Enum.with_index(1)
     |> Enum.map(fn {driver, index} ->
-      %{"id" => Integer.to_string(index), "driver" => driver}
+      %{"id" => Integer.to_string(index), "driver" => driver, "name" => default_name(driver)}
     end)
   end
 
   defp ensure_default_selected(selected, _available_modules), do: selected
+
+  defp normalize_selected_names(selected) when is_list(selected) do
+    {entries, _counts} =
+      Enum.map_reduce(selected, %{}, fn entry, counts ->
+        driver = Map.get(entry, "driver")
+        requested_name = Map.get(entry, "name") || default_name(driver)
+        {name, counts} = next_device_name(requested_name, counts)
+        {Map.put(entry, "name", name), counts}
+      end)
+
+    entries
+  end
 
   defp normalize_connections(connections, selected) when is_list(connections) do
     devices = Map.new(device_entries(selected), &{&1.id, &1})
@@ -253,7 +281,7 @@ defmodule KinoEtherCAT.SmartCells.SimulatorConfig do
     |> Enum.map(fn signal ->
       %{
         id: device.id,
-        name: device.default_name,
+        name: device.name,
         signal: signal.name,
         bit_size: signal.bit_size
       }
@@ -302,6 +330,15 @@ defmodule KinoEtherCAT.SmartCells.SimulatorConfig do
   defp connection_key(source_id, source_signal, target_id, target_signal) do
     "#{source_id}.#{source_signal}->#{target_id}.#{target_signal}"
   end
+
+  defp normalize_name(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp normalize_name(_value), do: nil
 
   defp direction_rank(:output), do: 0
   defp direction_rank(:input), do: 1

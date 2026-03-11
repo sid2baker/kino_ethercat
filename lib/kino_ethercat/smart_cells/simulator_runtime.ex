@@ -10,7 +10,7 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntime do
   def payload(configured_entries, configured_connections, message \\ nil)
       when is_list(configured_entries) and is_list(configured_connections) do
     payload_for_config(
-      Enum.map(configured_entries, & &1.default_name),
+      Enum.map(configured_entries, & &1.name),
       Enum.map(
         configured_connections,
         &connection_key(&1.source_name, &1.source_signal, &1.target_name, &1.target_signal)

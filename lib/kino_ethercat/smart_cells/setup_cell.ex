@@ -207,7 +207,6 @@ defmodule KinoEtherCAT.SmartCells.Setup do
     else
       {:error, reason} = error ->
         if retryable_scan_reason?(reason) do
-          _ = EtherCAT.stop()
           Process.sleep(@scan_retry_delay_ms)
 
           transport
@@ -221,7 +220,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
 
   defp scan_discovered_slaves_once(transport, existing_slaves, domains) do
     with {:ok, start_opts} <- SetupTransport.runtime_start_opts(transport),
-         :ok <- ensure_master_running(scan_start_opts(start_opts)),
+         :ok <- restart_master_for_scan(scan_start_opts(start_opts)),
          :ok <- EtherCAT.await_running(@scan_await_timeout_ms) do
       {:ok, discovered_slaves(existing_slaves, domains, start_opts)}
     end
@@ -262,6 +261,13 @@ defmodule KinoEtherCAT.SmartCells.Setup do
     end
   end
 
+  defp restart_master_for_scan(start_opts) when is_list(start_opts) do
+    # Rescan should always reflect the current bus/simulator ring, so discovery
+    # restarts the temporary master instead of reusing an already running session.
+    _ = EtherCAT.stop()
+    ensure_master_running(start_opts)
+  end
+
   defp discovered_slaves(existing_slaves, domains, start_opts) do
     existing_by_key =
       Map.new(existing_slaves, fn slave ->
@@ -269,10 +275,11 @@ defmodule KinoEtherCAT.SmartCells.Setup do
       end)
 
     default_domain_id = first_domain_id(domains)
-    simulator_names_by_station = simulator_names_by_station(start_opts)
+    simulator_name_index = simulator_name_index(start_opts)
 
     EtherCAT.slaves()
-    |> Enum.map(fn %{name: name, station: station} ->
+    |> Enum.with_index()
+    |> Enum.map(fn {%{name: name, station: station}, index} ->
       identity =
         case EtherCAT.slave_info(name) do
           {:ok, %{identity: id}} when not is_nil(id) -> id
@@ -286,7 +293,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
         end
 
       generated_name = to_string(name)
-      discovered_name = discovered_name(name, station, simulator_names_by_station)
+      discovered_name = discovered_name(name, station, index, simulator_name_index)
       existing = matching_existing_slave(existing_by_key, discovered_name, generated_name)
 
       discovered_slave_entry(
@@ -303,9 +310,13 @@ defmodule KinoEtherCAT.SmartCells.Setup do
   end
 
   @doc false
-  def discovered_name(name, station, simulator_names_by_station)
-      when is_atom(name) and is_integer(station) and is_map(simulator_names_by_station) do
-    Map.get(simulator_names_by_station, station, to_string(name))
+  def discovered_name(name, station, index, simulator_name_index)
+      when is_atom(name) and is_integer(station) and is_integer(index) and
+             is_map(simulator_name_index) do
+    station_names = Map.get(simulator_name_index, :by_station, %{})
+    ordered_names = Map.get(simulator_name_index, :ordered, [])
+
+    Map.get(station_names, station) || Enum.at(ordered_names, index) || to_string(name)
   end
 
   @doc false
@@ -338,20 +349,24 @@ defmodule KinoEtherCAT.SmartCells.Setup do
     Map.get(existing_by_key, discovered_name) || Map.get(existing_by_key, generated_name, %{})
   end
 
-  defp simulator_names_by_station(start_opts) when is_list(start_opts) do
+  defp simulator_name_index(start_opts) when is_list(start_opts) do
     host = Keyword.get(start_opts, :host)
     port = Keyword.get(start_opts, :port)
 
     with :udp <- Keyword.get(start_opts, :transport, :raw),
          {:ok, %{udp: %{ip: ^host, port: ^port}, slaves: slaves}} <- EtherCAT.Simulator.info() do
-      Map.new(slaves, fn %{station: station, name: name} ->
-        {station, to_string(name)}
-      end)
+      %{
+        by_station:
+          Map.new(slaves, fn %{station: station, name: name} ->
+            {station, to_string(name)}
+          end),
+        ordered: Enum.map(slaves, &to_string(&1.name))
+      }
     else
-      _ -> %{}
+      _ -> %{by_station: %{}, ordered: []}
     end
   rescue
-    _ -> %{}
+    _ -> %{by_station: %{}, ordered: []}
   end
 
   defp payload(assigns) do

@@ -50,7 +50,7 @@ defmodule KinoEtherCAT.SmartCells.SimulatorSource do
     lines =
       selected
       |> Enum.map_join(",\n", fn entry ->
-        "  Slave.from_driver(#{entry.driver}, name: #{Source.atom_literal(entry.default_name)})"
+        "  Slave.from_driver(#{entry.driver}, name: #{Source.atom_literal(entry.name)})"
       end)
 
     "[\n#{lines}\n]"

@@ -24,6 +24,7 @@ import {
   ControlField,
   Dropdown,
   EmptyState,
+  Input,
   InlineButtons,
   MessageLine,
   Mono,
@@ -41,15 +42,25 @@ export async function init(ctx, data) {
   root.render(<SimulatorCell ctx={ctx} data={data} />);
 }
 
-function DeviceRow({ entry, position, onRemove }) {
+function DeviceRow({ entry, position, onRename, onRemove }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: entry.id });
+  const [nameValue, setNameValue] = useState(entry.name ?? "");
+
+  useEffect(() => {
+    setNameValue(entry.name ?? "");
+  }, [entry.name]);
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.6 : 1,
     zIndex: isDragging ? 10 : undefined,
+  };
+
+  const commitName = () => {
+    if (nameValue === (entry.name ?? "")) return;
+    onRename(entry.id, nameValue);
   };
 
   return (
@@ -62,7 +73,18 @@ function DeviceRow({ entry, position, onRemove }) {
         ::
       </button>
       <Mono>{String(position + 1).padStart(2, "0")}</Mono>
-      <Mono className="ke95-simulator-cell__name">{entry.default_name}</Mono>
+      <Input
+        value={nameValue}
+        className="ke95-fill"
+        aria-label={`Device name ${position + 1}`}
+        onChange={(event) => setNameValue(event.target.value)}
+        onBlur={commitName}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.currentTarget.blur();
+          }
+        }}
+      />
       <Mono className="ke95-simulator-cell__driver">{entry.label}</Mono>
       <Button onClick={() => onRemove(entry.id)}>Remove</Button>
     </li>
@@ -143,6 +165,13 @@ function SimulatorCell({ ctx, data }) {
     const next = selected.filter((entry) => entry.id !== id);
     setSelected(next);
     ctx.pushEvent("remove", { id });
+  };
+
+  const handleRename = (id, name) => {
+    setSelected((current) =>
+      current.map((entry) => (entry.id === id ? { ...entry, name } : entry))
+    );
+    ctx.pushEvent("rename", { id, name });
   };
 
   return (
@@ -248,6 +277,7 @@ function SimulatorCell({ ctx, data }) {
                       key={entry.id}
                       entry={entry}
                       position={index}
+                      onRename={handleRename}
                       onRemove={handleRemove}
                     />
                   ))}

@@ -55,8 +55,18 @@ defmodule KinoEtherCAT.SmartCells.SetupCellTest do
   end
 
   test "discovered_name prefers simulator names by station when available" do
-    assert Setup.discovered_name(:slave_1, 0x1001, %{0x1001 => "inputs"}) == "inputs"
-    assert Setup.discovered_name(:slave_2, 0x1002, %{0x1001 => "inputs"}) == "slave_2"
+    simulator_name_index = %{by_station: %{0x1001 => "inputs"}, ordered: ["coupler", "inputs"]}
+
+    assert Setup.discovered_name(:slave_1, 0x1001, 1, simulator_name_index) == "inputs"
+    assert Setup.discovered_name(:slave_2, 0x1002, 1, simulator_name_index) == "inputs"
+  end
+
+  test "discovered_name falls back to simulator order before generated names" do
+    simulator_name_index = %{by_station: %{}, ordered: ["coupler", "inputs", "outputs"]}
+
+    assert Setup.discovered_name(:slave_1, 0x1001, 1, simulator_name_index) == "inputs"
+    assert Setup.discovered_name(:slave_2, 0x1002, 2, simulator_name_index) == "outputs"
+    assert Setup.discovered_name(:slave_3, 0x1003, 4, simulator_name_index) == "slave_3"
   end
 
   test "discovered_slave_entry preserves user-edited names on rescan" do
