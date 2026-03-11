@@ -64,6 +64,17 @@ defmodule KinoEtherCAT.Runtime do
   def refresh(resource) when is_struct(resource, EtherCAT.DC), do: dc()
   def refresh(resource) when is_struct(resource, EtherCAT.DC.Status), do: dc()
 
+  @doc false
+  @spec domain_wkc_display(map()) :: String.t()
+  def domain_wkc_display(info) when is_map(info) do
+    expected = Map.get(info, :expected_wkc, 0)
+
+    case domain_actual_wkc(info) do
+      actual when is_integer(actual) and actual != expected -> "#{actual} / #{expected}"
+      _ -> Integer.to_string(expected)
+    end
+  end
+
   @spec subscribe_logs(pid(), struct()) :: :ok
   def subscribe_logs(pid, resource) when is_pid(pid) do
     WidgetLogs.subscribe(pid, resource)
@@ -255,13 +266,18 @@ defmodule KinoEtherCAT.Runtime do
             %{label: "Cycles", value: Integer.to_string(info.cycle_count)},
             %{label: "Misses", value: Integer.to_string(info.miss_count)},
             %{label: "Total misses", value: Integer.to_string(info.total_miss_count)},
-            %{label: "WKC", value: Integer.to_string(info.expected_wkc)},
+            %{label: "WKC", value: domain_wkc_display(info)},
             %{label: "Log filter", value: Atom.to_string(current_log_level(%Domain{id: id}))}
           ],
           tables: [],
           details: [
             %{label: "Health", value: format_term(Map.get(info, :cycle_health, :unknown))},
             %{label: "Image size", value: format_term(Map.get(info, :image_size, "n/a"))},
+            %{label: "Expected WKC", value: Integer.to_string(Map.get(info, :expected_wkc, 0))},
+            %{
+              label: "Last invalid reason",
+              value: format_term(Map.get(info, :last_invalid_reason, "none"))
+            },
             %{label: "Logical base", value: format_term(runtime_domain(id).logical_base || "n/a")}
           ],
           controls: %{
@@ -740,6 +756,12 @@ defmodule KinoEtherCAT.Runtime do
   end
 
   defp current_log_level(resource), do: WidgetLogs.level(resource)
+
+  defp domain_actual_wkc(%{cycle_health: {:invalid, {:wkc_mismatch, %{actual: actual}}}})
+       when is_integer(actual),
+       do: actual
+
+  defp domain_actual_wkc(_info), do: nil
 
   defp log_level_options do
     [:all, :debug, :info, :notice, :warning, :error, :critical, :alert, :emergency, :none]

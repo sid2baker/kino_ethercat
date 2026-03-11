@@ -151,6 +151,20 @@ defmodule KinoEtherCAT.RuntimeTest do
              Runtime.perform(%Master{}, "set_log_level", %{"value" => "verbose"})
   end
 
+  test "domain WKC display reflects the current mismatch window" do
+    assert Runtime.domain_wkc_display(%{expected_wkc: 3, cycle_health: :healthy}) == "3"
+
+    assert Runtime.domain_wkc_display(%{
+             expected_wkc: 3,
+             cycle_health: {:invalid, {:wkc_mismatch, %{expected: 3, actual: 1}}}
+           }) == "1 / 3"
+
+    assert Runtime.domain_wkc_display(%{
+             expected_wkc: 3,
+             cycle_health: {:invalid, :down}
+           }) == "3"
+  end
+
   defp default_dc_resource do
     cond do
       Code.ensure_loaded?(EtherCAT.DC.Status) and
