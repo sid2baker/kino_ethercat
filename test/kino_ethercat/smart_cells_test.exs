@@ -1,7 +1,7 @@
 defmodule KinoEtherCAT.SmartCellsTest do
   use ExUnit.Case, async: true
 
-  alias KinoEtherCAT.SmartCells.{Setup, Visualizer}
+  alias KinoEtherCAT.SmartCells.{Setup, Simulator, Visualizer}
 
   test "setup cell persists static startup code from discovered slaves" do
     source =
@@ -112,6 +112,28 @@ defmodule KinoEtherCAT.SmartCellsTest do
              ~s/KinoEtherCAT.Widgets.dashboard([:sensor_a, :"output rack"], columns: 2) |> Kino.render()/
 
     assert source =~ "Kino.nothing()"
+    refute source =~ "String.to_atom"
+  end
+
+  test "simulator cell renders a udp-backed loopback source" do
+    source =
+      Simulator.to_source(%{
+        "master_ip" => "127.0.0.1",
+        "simulator_ip" => "127.0.0.2",
+        "cycle_time_ms" => "10"
+      })
+
+    assert source =~ "alias EtherCAT.Simulator"
+    assert source =~ "Slave.from_driver(KinoEtherCAT.Driver.EK1100, name: :coupler)"
+    assert source =~ "Slave.from_driver(KinoEtherCAT.Driver.EL1809, name: :inputs)"
+    assert source =~ "Slave.from_driver(KinoEtherCAT.Driver.EL2809, name: :outputs)"
+    assert source =~ "master_ip = {127, 0, 0, 1}"
+    assert source =~ "simulator_ip = {127, 0, 0, 2}"
+    assert source =~ "transport: :udp"
+    assert source =~ "bind_ip: master_ip"
+    assert source =~ "host: simulator_ip"
+    assert source =~ "%DomainConfig{id: :main, cycle_time_us: cycle_time_ms * 1_000}"
+    assert source =~ ~s|"Task Manager": KinoEtherCAT.diagnostics()|
     refute source =~ "String.to_atom"
   end
 end

@@ -1,13 +1,21 @@
 defmodule KinoEtherCAT.Driver.EL3202 do
   @moduledoc "Beckhoff EL3202 — 2-channel PT100 RTD temperature input."
 
+  @behaviour EtherCAT.Slave.Driver
+
   @vendor_id 0x00000002
   @product_code 0x0C823052
 
   def vendor_id, do: @vendor_id
   def product_code, do: @product_code
 
-  @behaviour EtherCAT.Slave.Driver
+  @impl true
+  def identity do
+    %{vendor_id: @vendor_id, product_code: @product_code}
+  end
+
+  @impl true
+  def simulator_definition(_config), do: nil
 
   @impl true
   def process_data_model(_config) do

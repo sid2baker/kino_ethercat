@@ -1,13 +1,32 @@
 defmodule KinoEtherCAT.Driver.EL2809 do
   @moduledoc "Beckhoff EL2809 — 16-channel digital output, 24 V DC."
 
+  @behaviour EtherCAT.Slave.Driver
+
+  alias EtherCAT.Simulator.Slave.Definition
+
   @vendor_id 0x00000002
   @product_code 0x0AF93052
 
   def vendor_id, do: @vendor_id
   def product_code, do: @product_code
 
-  @behaviour EtherCAT.Slave.Driver
+  @impl true
+  def identity do
+    %{vendor_id: @vendor_id, product_code: @product_code}
+  end
+
+  @impl true
+  def simulator_definition(_config) do
+    Definition.build(:digital_io,
+      mode: :channels,
+      direction: :output,
+      channels: 16,
+      vendor_id: @vendor_id,
+      product_code: @product_code,
+      serial_number: 0
+    )
+  end
 
   @impl true
   def process_data_model(_config) do

@@ -4,6 +4,7 @@ defmodule KinoEtherCAT.Application do
   @impl true
   def start(_type, _args) do
     Kino.SmartCell.register(KinoEtherCAT.SmartCells.Setup)
+    Kino.SmartCell.register(KinoEtherCAT.SmartCells.Simulator)
     Kino.SmartCell.register(KinoEtherCAT.SmartCells.Visualizer)
     Kino.SmartCell.register(KinoEtherCAT.SmartCells.SlaveExplorer)
 
