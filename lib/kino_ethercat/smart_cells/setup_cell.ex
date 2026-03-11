@@ -18,6 +18,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
        master_state: runtime_state(),
        master_pid: Process.whereis(EtherCAT.Master),
        available_interfaces: available_interfaces(),
+       transport_mode: config.transport_mode,
        transport: config.transport,
        interface: config.interface,
        host: config.host,
@@ -41,7 +42,8 @@ defmodule KinoEtherCAT.SmartCells.Setup do
   @impl true
   def handle_event("scan", _params, ctx) do
     server = self()
-    transport = transport_assigns(ctx.assigns)
+    transport = ctx.assigns |> transport_assigns() |> SetupTransport.refresh_auto()
+    ctx = assign_transport(ctx, transport)
 
     Task.start(fn ->
       run_scan(server, transport, ctx.assigns.slaves, ctx.assigns.domains)
@@ -73,6 +75,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
     ctx =
       assign(ctx,
         available_interfaces: available_interfaces(),
+        transport_mode: config.transport_mode,
         transport: config.transport,
         interface: config.interface,
         host: config.host,
@@ -119,11 +122,17 @@ defmodule KinoEtherCAT.SmartCells.Setup do
     state = runtime_state()
     pid = Process.whereis(EtherCAT.Master)
     interfaces = available_interfaces()
+    transport = ctx.assigns |> transport_assigns() |> SetupTransport.refresh_auto()
 
     if state != ctx.assigns.master_state or
          pid != ctx.assigns.master_pid or
-         interfaces != ctx.assigns.available_interfaces do
-      ctx = assign(ctx, master_state: state, master_pid: pid, available_interfaces: interfaces)
+         interfaces != ctx.assigns.available_interfaces or
+         transport_changed?(ctx.assigns, transport) do
+      ctx =
+        ctx
+        |> assign(master_state: state, master_pid: pid, available_interfaces: interfaces)
+        |> assign_transport(transport)
+
       broadcast_event(ctx, "snapshot", payload(ctx.assigns))
       {:noreply, ctx}
     else
@@ -134,6 +143,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
   @impl true
   def to_attrs(ctx) do
     %{
+      "transport_mode" => Atom.to_string(ctx.assigns.transport_mode),
       "transport" => Atom.to_string(ctx.assigns.transport),
       "interface" => ctx.assigns.interface,
       "host" => ctx.assigns.host,
@@ -223,6 +233,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
     transport = transport_assigns(assigns)
 
     %{
+      transport_mode: Atom.to_string(assigns.transport_mode),
       transport: Atom.to_string(assigns.transport),
       interface: assigns.interface,
       host: assigns.host,
@@ -257,6 +268,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
       |> normalize_domains()
 
     %{
+      transport_mode: transport.transport_mode,
       transport: transport.transport,
       interface: transport.interface,
       host: transport.host,
@@ -426,11 +438,30 @@ defmodule KinoEtherCAT.SmartCells.Setup do
 
   defp transport_assigns(assigns) do
     %{
+      transport_mode: assigns.transport_mode,
       transport: assigns.transport,
       interface: assigns.interface,
       host: assigns.host,
       port: assigns.port
     }
+  end
+
+  defp assign_transport(ctx, transport) do
+    assign(ctx,
+      transport_mode: transport.transport_mode,
+      transport: transport.transport,
+      interface: transport.interface,
+      host: transport.host,
+      port: transport.port
+    )
+  end
+
+  defp transport_changed?(assigns, transport) do
+    assigns.transport_mode != transport.transport_mode or
+      assigns.transport != transport.transport or
+      assigns.interface != transport.interface or
+      assigns.host != transport.host or
+      assigns.port != transport.port
   end
 
   defp positive_integer(value, _default) when is_integer(value) and value > 0, do: value

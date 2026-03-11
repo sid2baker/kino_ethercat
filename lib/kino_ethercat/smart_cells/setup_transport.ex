@@ -6,6 +6,7 @@ defmodule KinoEtherCAT.SmartCells.SetupTransport do
   @default_port 0x88A4
 
   @type t :: %{
+          transport_mode: :auto | :manual,
           transport: :raw | :udp,
           interface: String.t(),
           host: String.t(),
@@ -15,12 +16,24 @@ defmodule KinoEtherCAT.SmartCells.SetupTransport do
   @spec normalize(map()) :: t()
   def normalize(attrs) when is_map(attrs) do
     %{
+      transport_mode: normalize_transport_mode(attrs),
       transport: normalize_transport(attrs),
       interface: attrs |> Map.get("interface", @default_interface) |> normalize_interface(),
       host: attrs |> Map.get("host", @default_udp_host) |> normalize_host(),
       port: attrs |> Map.get("port", @default_port) |> positive_integer(@default_port)
     }
+    |> refresh_auto()
   end
+
+  @spec refresh_auto(t()) :: t()
+  def refresh_auto(%{transport_mode: :auto} = config) do
+    case simulator_transport() do
+      {:ok, simulator} -> Map.merge(config, simulator)
+      :error -> config
+    end
+  end
+
+  def refresh_auto(config), do: config
 
   @spec runtime_start_opts(t()) :: {:ok, keyword()} | {:error, String.t()}
   def runtime_start_opts(%{transport: :raw, interface: interface})
@@ -92,6 +105,37 @@ defmodule KinoEtherCAT.SmartCells.SetupTransport do
     end
   end
 
+  defp normalize_transport_mode(attrs) do
+    case Map.get(attrs, "transport_mode") do
+      value when value in [:manual, "manual"] ->
+        :manual
+
+      value when value in [:auto, "auto"] ->
+        :auto
+
+      _ ->
+        infer_transport_mode(attrs)
+    end
+  end
+
+  defp infer_transport_mode(attrs) do
+    transport = normalize_transport(attrs)
+    interface = attrs |> Map.get("interface", @default_interface) |> normalize_interface()
+    host = attrs |> Map.get("host", @default_udp_host) |> normalize_host()
+    port = attrs |> Map.get("port", @default_port) |> positive_integer(@default_port)
+
+    cond do
+      transport == :raw and interface != @default_interface ->
+        :manual
+
+      transport == :udp and (host != @default_udp_host or port != @default_port) ->
+        :manual
+
+      true ->
+        :auto
+    end
+  end
+
   defp normalize_interface(value) when is_binary(value) do
     case String.trim(value) do
       "" -> @default_interface
@@ -147,6 +191,24 @@ defmodule KinoEtherCAT.SmartCells.SetupTransport do
   defp default_bind_ip({127, 0, 0, 1}), do: {127, 0, 0, 2}
   defp default_bind_ip({127, _b, _c, _d}), do: {127, 0, 0, 1}
   defp default_bind_ip(_host_ip), do: nil
+
+  defp simulator_transport do
+    case EtherCAT.Simulator.info() do
+      {:ok, %{udp: %{ip: ip, port: port}}} ->
+        {:ok, %{transport: :udp, host: format_ip(ip), port: port}}
+
+      _ ->
+        :error
+    end
+  rescue
+    _ -> :error
+  end
+
+  defp format_ip(ip) do
+    ip
+    |> :inet.ntoa()
+    |> to_string()
+  end
 
   defp maybe_put_bind_ip(opts, nil), do: opts
   defp maybe_put_bind_ip(opts, bind_ip), do: Keyword.put(opts, :bind_ip, bind_ip)

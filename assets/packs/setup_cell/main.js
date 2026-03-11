@@ -34,6 +34,7 @@ function toHex(value, pad = 4) {
 
 function serialize(state) {
   return {
+    transport_mode: state.transport_mode,
     transport: state.transport,
     interface: state.interface,
     host: state.host,
@@ -200,6 +201,12 @@ function SetupCell({ ctx, data }) {
     }));
   };
 
+  const markTransportManual = (previous, patch) => ({
+    ...previous,
+    transport_mode: "manual",
+    ...patch,
+  });
+
   const hasDiscovery = state.slaves.length > 0;
 
   const commitUdpPort = (rawValue) => {
@@ -208,7 +215,7 @@ function SetupCell({ ctx, data }) {
     const port = Number.isInteger(parsed) && parsed > 0 ? parsed : 34980;
 
     setUdpPortInput(String(port));
-    commit((previous) => ({ ...previous, port }));
+    commit((previous) => markTransportManual(previous, { port }));
   };
 
   return (
@@ -252,7 +259,9 @@ function SetupCell({ ctx, data }) {
             <Dropdown
               className="ke95-fill"
               value={state.transport}
-              onChange={(event) => commit((previous) => ({ ...previous, transport: event.target.value }))}
+              onChange={(event) =>
+                commit((previous) => markTransportManual(previous, { transport: event.target.value }))
+              }
             >
               <option value="raw">Raw socket</option>
               <option value="udp">UDP</option>
@@ -266,8 +275,12 @@ function SetupCell({ ctx, data }) {
                   className="ke95-fill"
                   placeholder="127.0.0.2"
                   value={state.host}
-                  onChange={(event) => updateLocal((previous) => ({ ...previous, host: event.target.value }))}
-                  onBlur={(event) => commit((previous) => ({ ...previous, host: event.target.value }))}
+                  onChange={(event) =>
+                    updateLocal((previous) => markTransportManual(previous, { host: event.target.value }))
+                  }
+                  onBlur={(event) =>
+                    commit((previous) => markTransportManual(previous, { host: event.target.value }))
+                  }
                 />
               </ControlField>
 
@@ -289,7 +302,9 @@ function SetupCell({ ctx, data }) {
               <Dropdown
                 className="ke95-fill"
                 value={state.interface}
-                onChange={(event) => commit((previous) => ({ ...previous, interface: event.target.value }))}
+                onChange={(event) =>
+                  commit((previous) => markTransportManual(previous, { interface: event.target.value }))
+                }
               >
                 {interfaces.map((name) => (
                   <option key={name} value={name}>
