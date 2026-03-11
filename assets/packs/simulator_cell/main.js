@@ -23,9 +23,12 @@ import {
   ControlField,
   Dropdown,
   EmptyState,
+  MessageLine,
   Mono,
   Panel,
   Shell,
+  StatusBadge,
+  SummaryGrid,
 } from "../../ui/react95";
 
 export async function init(ctx, data) {
@@ -62,6 +65,18 @@ function DeviceRow({ entry, position, onRemove }) {
   );
 }
 
+function runtimeTone(status) {
+  return status === "running" ? "ok" : "neutral";
+}
+
+function messageTone(level) {
+  return level === "error" ? "error" : "info";
+}
+
+function ringLabel(names, empty = "none") {
+  return names?.length ? names.join(" -> ") : empty;
+}
+
 function SimulatorCell({ ctx, data }) {
   const [snapshot, setSnapshot] = useState(data);
   const [selected, setSelected] = useState(data.selected ?? []);
@@ -93,6 +108,7 @@ function SimulatorCell({ ctx, data }) {
 
   const sensors = useSensors(useSensor(PointerSensor));
   const availableDrivers = snapshot.available_drivers ?? [];
+  const runtime = snapshot.runtime ?? {};
 
   const selectedCountLabel = useMemo(
     () => `${selected.length} device${selected.length === 1 ? "" : "s"}`,
@@ -118,13 +134,60 @@ function SimulatorCell({ ctx, data }) {
     <Shell
       title="EtherCAT Simulator"
       subtitle="Start a simulator-only ring and render the simulator panel."
-      status={<Mono>{selectedCountLabel}</Mono>}
+      status={
+        <>
+          <Mono>{selectedCountLabel}</Mono>
+          <StatusBadge tone={runtimeTone(runtime.status)}>{runtime.status ?? "offline"}</StatusBadge>
+        </>
+      }
     >
-      <Panel title="UDP endpoint">
-        <Mono>{`${snapshot.simulator_host}:${snapshot.simulator_port}`}</Mono>
+      <Panel
+        title="Runtime"
+        actions={
+          <div className="ke95-toolbar ke95-simulator-cell__actions">
+            <Button
+              disabled={runtime.status !== "running" || !runtime.faults?.active_count}
+              onClick={() => ctx.pushEvent("runtime_action", { id: "clear_faults" })}
+            >
+              Clear faults
+            </Button>
+            <Button
+              disabled={runtime.status !== "running"}
+              onClick={() => ctx.pushEvent("runtime_action", { id: "stop_runtime" })}
+            >
+              Stop simulator
+            </Button>
+          </div>
+        }
+      >
+        <SummaryGrid items={runtime.summary ?? []} />
+        <div className="ke95-simulator-cell__runtime-meta">
+          <div className="ke95-simulator-cell__runtime-row">
+            <div className="ke95-kicker">Configured ring</div>
+            <Mono>{ringLabel(runtime.configured_names, "Add devices to define the virtual ring.")}</Mono>
+          </div>
+          <div className="ke95-simulator-cell__runtime-row">
+            <div className="ke95-kicker">Running ring</div>
+            <Mono>{ringLabel(runtime.running_names, "Simulator offline.")}</Mono>
+          </div>
+          <div className="ke95-simulator-cell__runtime-row">
+            <div className="ke95-kicker">Faults</div>
+            <Mono>{runtime.faults?.summary ?? "No active faults."}</Mono>
+          </div>
+        </div>
+
+        <MessageLine tone={runtime.sync_tone ?? "info"}>{runtime.sync_message}</MessageLine>
+        <MessageLine tone={messageTone(runtime.message?.level)}>{runtime.message?.text}</MessageLine>
       </Panel>
 
-      <Panel title="Add device">
+      <Panel
+        title="Add device"
+        actions={
+          <Button onClick={() => ctx.pushEvent("reset_defaults", {})}>
+            Reset loopback
+          </Button>
+        }
+      >
         <div className="ke95-toolbar">
           <ControlField label="Driver" className="ke95-fill">
             <Dropdown

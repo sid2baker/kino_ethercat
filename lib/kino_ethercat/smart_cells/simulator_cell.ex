@@ -3,16 +3,20 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
   use Kino.JS.Live
   use Kino.SmartCell, name: "EtherCAT Simulator"
 
-  alias KinoEtherCAT.SmartCells.{SimulatorConfig, SimulatorSource}
+  alias KinoEtherCAT.SmartCells.{SimulatorConfig, SimulatorRuntime, SimulatorSource}
+
+  @refresh_interval_ms 1_000
 
   @impl true
   def init(attrs, ctx) do
     %{selected: selected} = SimulatorConfig.normalize(attrs)
+    schedule_refresh()
 
     {:ok,
      assign(ctx,
        selected: selected,
-       next_id: next_id(selected)
+       next_id: next_id(selected),
+       runtime_message: nil
      )}
   end
 
@@ -48,9 +52,29 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
     {:noreply, ctx}
   end
 
+  def handle_event("runtime_action", %{"id" => id}, ctx) do
+    ctx = assign(ctx, runtime_message: SimulatorRuntime.perform(id))
+    broadcast_event(ctx, "snapshot", payload(ctx.assigns))
+    {:noreply, ctx}
+  end
+
   def handle_event("remove", %{"id" => id}, ctx) do
     selected = Enum.reject(ctx.assigns.selected, &(Map.get(&1, "id") == id))
     ctx = assign(ctx, selected: selected)
+    broadcast_event(ctx, "snapshot", payload(ctx.assigns))
+    {:noreply, ctx}
+  end
+
+  def handle_event("reset_defaults", _params, ctx) do
+    selected = SimulatorConfig.default_selected()
+    ctx = assign(ctx, selected: selected, next_id: next_id(selected))
+    broadcast_event(ctx, "snapshot", payload(ctx.assigns))
+    {:noreply, ctx}
+  end
+
+  @impl true
+  def handle_info(:refresh_runtime, ctx) do
+    schedule_refresh()
     broadcast_event(ctx, "snapshot", payload(ctx.assigns))
     {:noreply, ctx}
   end
@@ -66,6 +90,8 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
   end
 
   defp payload(assigns) do
+    selected = SimulatorConfig.selected_entries(assigns.selected)
+
     %{
       title: "EtherCAT Simulator",
       description:
@@ -73,7 +99,8 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
       simulator_host: SimulatorConfig.default_simulator_ip(),
       simulator_port: SimulatorConfig.default_port(),
       available_drivers: SimulatorConfig.available_drivers(),
-      selected: SimulatorConfig.selected_entries(assigns.selected)
+      selected: selected,
+      runtime: SimulatorRuntime.payload(selected, assigns.runtime_message)
     }
   end
 
@@ -93,5 +120,9 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
       {value, ""}, acc -> max(acc, value + 1)
       _, acc -> acc
     end)
+  end
+
+  defp schedule_refresh do
+    Process.send_after(self(), :refresh_runtime, @refresh_interval_ms)
   end
 end

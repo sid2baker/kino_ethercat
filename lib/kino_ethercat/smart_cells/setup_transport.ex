@@ -27,13 +27,23 @@ defmodule KinoEtherCAT.SmartCells.SetupTransport do
 
   @spec refresh_auto(t()) :: t()
   def refresh_auto(%{transport_mode: :auto} = config) do
-    case simulator_transport() do
-      {:ok, simulator} -> Map.merge(config, simulator)
-      :error -> config
+    case {auto_seedable?(config), simulator_transport()} do
+      {true, {:ok, simulator}} -> Map.merge(config, simulator)
+      _ -> config
     end
   end
 
   def refresh_auto(config), do: config
+
+  defp auto_seedable?(%{transport: :raw, interface: interface}) do
+    interface == @default_interface
+  end
+
+  defp auto_seedable?(%{transport: :udp, host: host, port: port}) do
+    host == @default_udp_host and port == @default_port
+  end
+
+  defp auto_seedable?(_config), do: false
 
   @spec runtime_start_opts(t()) :: {:ok, keyword()} | {:error, String.t()}
   def runtime_start_opts(%{transport: :raw, interface: interface})

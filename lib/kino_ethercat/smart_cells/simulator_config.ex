@@ -36,18 +36,18 @@ defmodule KinoEtherCAT.SmartCells.SimulatorConfig do
     end)
   end
 
+  @spec default_selected() :: [map()]
+  def default_selected do
+    ensure_default_selected([], available_driver_modules())
+  end
+
   @spec normalize(map()) :: %{selected: [map()]}
   def normalize(attrs) when is_map(attrs) do
-    available_modules =
-      available_drivers()
-      |> Enum.map(& &1.module)
-      |> MapSet.new()
-
     selected =
       attrs
       |> Map.get("selected")
-      |> normalize_selected(available_modules)
-      |> ensure_default_selected(available_modules)
+      |> normalize_selected(available_driver_modules())
+      |> ensure_default_selected(available_driver_modules())
 
     %{
       selected: selected
@@ -117,6 +117,12 @@ defmodule KinoEtherCAT.SmartCells.SimulatorConfig do
   end
 
   defp ensure_default_selected(selected, _available_modules), do: selected
+
+  defp available_driver_modules do
+    available_drivers()
+    |> Enum.map(& &1.module)
+    |> MapSet.new()
+  end
 
   defp default_name(module) do
     Map.get(@default_names, module, module |> module_label() |> String.downcase())

@@ -52,4 +52,27 @@ defmodule KinoEtherCAT.SmartCells.SetupTransportTest do
     assert config.transport == :raw
     assert config.interface == "eth1"
   end
+
+  test "auto mode only seeds the simulator endpoint while the transport is still at defaults" do
+    devices = [
+      Slave.from_driver(KinoEtherCAT.Driver.EK1100, name: :coupler),
+      Slave.from_driver(KinoEtherCAT.Driver.EL1809, name: :inputs)
+    ]
+
+    {:ok, _supervisor} =
+      Simulator.start(devices: devices, udp: [ip: {127, 0, 0, 2}, port: 34_980])
+
+    config =
+      SetupTransport.refresh_auto(%{
+        transport_mode: :auto,
+        transport: :udp,
+        host: "127.0.0.2",
+        port: 40_000,
+        interface: "eth0"
+      })
+
+    assert config.transport == :udp
+    assert config.host == "127.0.0.2"
+    assert config.port == 40_000
+  end
 end
