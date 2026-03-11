@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Renderable runtime resources for `Master`, `Slave`, `Domain`, `Bus`, and `DC`
 - A telemetry-driven diagnostics dashboard with time-sliced charts and a scrollable event timeline
 - A combined `EtherCAT Slave Explorer` Smart Cell for CoE SDO, ESC register, and SII EEPROM workflows
-- Top-level testing Livebooks under `livebooks/testing/` for loopback, DC lock, watchdog recovery, and manual fault tolerance checks
+- Top-level testing notebooks under `examples/testing/` for loopback, DC lock, watchdog recovery, and manual fault tolerance checks
 
 ### Changed
 

@@ -1,8 +1,8 @@
 # KinoEtherCAT
 
-[![Run in Livebook](https://livebook.dev/badge/v1/blue.svg)](https://livebook.dev/run/?url=https%3A%2F%2Fgithub.com%2Fsid2baker%2Fkino_ethercat%2Fblob%2Fmain%2Flivebooks%2Findex.livemd)
+[Livebook](https://livebook.dev) and [Kino](https://github.com/livebook-dev/kino) tools for [EtherCAT](https://github.com/sid2baker/ethercat) discovery, runtime inspection, diagnostics, hardware bring-up, and simulator-first examples.
 
-[Livebook](https://livebook.dev) and [Kino](https://github.com/livebook-dev/kino) tools for [EtherCAT](https://github.com/sid2baker/ethercat) discovery, runtime inspection, diagnostics, and hardware bring-up.
+The current teaching direction is documented in [examples/README.md](./examples/README.md). The old `.livemd` example notebooks have been removed while that curriculum is being redesigned.
 
 ## Installation
 
