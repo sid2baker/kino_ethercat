@@ -53,6 +53,7 @@ defmodule KinoEtherCAT.MixProject do
            lib/assets/value/build
            lib/assets/visualizer_cell/build
            lib/assets/diagnostics/build
+           lib/assets/introduction_panel/build
            lib/assets/simulator_faults_panel/build
            mix.exs README.md LICENSE CHANGELOG.md usage-rules.md)
     ]
@@ -67,6 +68,9 @@ defmodule KinoEtherCAT.MixProject do
       groups_for_modules: [
         Runtime: [
           KinoEtherCAT,
+          KinoEtherCAT.Introduction,
+          KinoEtherCAT.Introduction.Panel,
+          KinoEtherCAT.Introduction.View,
           KinoEtherCAT.Diagnostics,
           KinoEtherCAT.Diagnostics.Panel,
           KinoEtherCAT.Runtime,

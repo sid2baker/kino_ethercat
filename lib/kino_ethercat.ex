@@ -19,7 +19,7 @@ defmodule KinoEtherCAT do
   `KinoEtherCAT.simulator/0` and `KinoEtherCAT.simulator_faults/0`.
   """
 
-  alias KinoEtherCAT.{Runtime, Simulator}
+  alias KinoEtherCAT.{Introduction, Runtime, Simulator}
 
   @spec master() :: %EtherCAT.Master{}
   def master, do: Runtime.master()
@@ -47,6 +47,12 @@ defmodule KinoEtherCAT do
   """
   @spec simulator() :: Kino.JS.Live.t()
   def simulator, do: Simulator.panel()
+
+  @doc """
+  Render a simplified simulator-first introduction surface for learning EtherCAT concepts.
+  """
+  @spec introduction() :: Kino.JS.Live.t()
+  def introduction, do: Introduction.panel()
 
   @doc """
   Render the EtherCAT simulator fault-injection panel.

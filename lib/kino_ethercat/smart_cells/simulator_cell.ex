@@ -16,6 +16,7 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
      assign(ctx,
        selected: selected,
        connections: connections,
+       expert_mode: expert_mode?(attrs),
        next_id: next_id(selected),
        runtime_message: nil
      )}
@@ -67,6 +68,12 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
 
   def handle_event("runtime_action", %{"id" => id}, ctx) do
     ctx = assign(ctx, runtime_message: SimulatorRuntime.perform(id))
+    broadcast_event(ctx, "snapshot", payload(ctx.assigns))
+    {:noreply, ctx}
+  end
+
+  def handle_event("set_expert_mode", %{"enabled" => enabled}, ctx) do
+    ctx = assign(ctx, expert_mode: truthy?(enabled))
     broadcast_event(ctx, "snapshot", payload(ctx.assigns))
     {:noreply, ctx}
   end
@@ -167,7 +174,8 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
   def to_attrs(ctx) do
     %{
       "selected" => ctx.assigns.selected,
-      "connections" => ctx.assigns.connections
+      "connections" => ctx.assigns.connections,
+      "expert_mode" => ctx.assigns.expert_mode
     }
   end
 
@@ -182,11 +190,11 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
 
     %{
       title: "EtherCAT Simulator",
-      description:
-        "Build an ordered simulator ring, start EtherCAT.Simulator on 127.0.0.2:34980, and render the simulator control panel.",
+      description: description(assigns.expert_mode),
       simulator_host: SimulatorConfig.default_simulator_ip(),
       simulator_port: SimulatorConfig.default_port(),
       available_drivers: SimulatorConfig.available_drivers(),
+      expert_mode: assigns.expert_mode,
       selected: selected,
       connections: connections,
       runtime: SimulatorRuntime.payload(selected, connections, assigns.runtime_message)
@@ -227,5 +235,22 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
 
   defp connection_key(connection) do
     "#{Map.get(connection, "source_id")}.#{Map.get(connection, "source_signal")}->#{Map.get(connection, "target_id")}.#{Map.get(connection, "target_signal")}"
+  end
+
+  defp expert_mode?(attrs) when is_map(attrs) do
+    attrs
+    |> Map.get("expert_mode", false)
+    |> truthy?()
+  end
+
+  defp truthy?(value) when value in [true, "true", 1, "1"], do: true
+  defp truthy?(_value), do: false
+
+  defp description(true) do
+    "Build an ordered simulator ring, start EtherCAT.Simulator on 127.0.0.2:34980, and render the advanced simulator tabs."
+  end
+
+  defp description(false) do
+    "Start a simple EtherCAT simulator workspace with the default loopback ring. Enable Expert mode if you want to change the ring layout or loopback wiring."
   end
 end

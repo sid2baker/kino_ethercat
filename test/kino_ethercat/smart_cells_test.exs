@@ -180,10 +180,28 @@ defmodule KinoEtherCAT.SmartCellsTest do
     assert source =~ "Simulator.start(devices: devices, udp: [ip: simulator_ip, port: 34980])"
     assert source =~ ":ok = Slave.connect({:rack_outputs, :ch1}, {:rack_inputs, :ch1})"
     assert source =~ "Kino.Layout.tabs("
+    assert source =~ "Introduction: KinoEtherCAT.introduction()"
     assert source =~ "Simulator: KinoEtherCAT.simulator()"
     assert source =~ "Faults: KinoEtherCAT.simulator_faults()"
     refute source =~ "EtherCAT.start("
     refute source =~ "KinoEtherCAT.diagnostics()"
     refute source =~ "String.to_atom"
+  end
+
+  test "simulator cell omits introduction tab in expert mode" do
+    source =
+      Simulator.to_source(%{
+        "expert_mode" => true,
+        "selected" => [
+          %{"id" => "1", "driver" => "KinoEtherCAT.Driver.EK1100", "name" => "coupler"},
+          %{"id" => "2", "driver" => "KinoEtherCAT.Driver.EL1809", "name" => "inputs"},
+          %{"id" => "3", "driver" => "KinoEtherCAT.Driver.EL2809", "name" => "outputs"}
+        ]
+      })
+
+    assert source =~ "Kino.Layout.tabs("
+    refute source =~ "Introduction: KinoEtherCAT.introduction()"
+    assert source =~ "Simulator: KinoEtherCAT.simulator()"
+    assert source =~ "Faults: KinoEtherCAT.simulator_faults()"
   end
 end

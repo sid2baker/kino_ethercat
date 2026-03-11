@@ -1,3 +1,14 @@
+.ke95-simulator-cell__intro-copy {
+  line-height: 1.5;
+}
+
+.ke95-simulator-cell__steps {
+  margin: 0;
+  padding-left: 1.5rem;
+  display: grid;
+  gap: 6px;
+}
+
 .ke95-simulator-cell__actions {
   justify-content: flex-end;
 }

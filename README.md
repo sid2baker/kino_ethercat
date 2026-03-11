@@ -2,7 +2,7 @@
 
 [Livebook](https://livebook.dev) and [Kino](https://github.com/livebook-dev/kino) tools for [EtherCAT](https://github.com/sid2baker/ethercat) discovery, runtime inspection, diagnostics, hardware bring-up, and simulator-first examples.
 
-The current teaching direction is documented in [examples/README.md](./examples/README.md). The old `.livemd` example notebooks have been removed while that curriculum is being redesigned.
+The current teaching direction is documented in [examples/README.md](./examples/README.md). The old `.livemd` example notebooks have been removed while that curriculum is being rebuilt around a simulator-first introduction path.
 
 ## Installation
 
@@ -38,6 +38,15 @@ Scans the bus, discovers connected slaves, lets you assign names and drivers, an
 - Configure multiple domains and assign each slave to a domain
 - Tune grouped DC settings without leaving the cell
 - The master state badge (top-right) shows the live EtherCAT lifecycle state
+
+### EtherCAT Simulator
+
+Build a small virtual ring, auto-wire loopback connections, and render a teaching workspace with `Introduction`, `Simulator`, and `Faults` tabs.
+
+- Start with the default `coupler -> inputs -> outputs` ring
+- Rename devices to match the story you want to teach
+- Auto-wire matching signals for an immediate process-data playground
+- Use the generated `Introduction` tab for the simplified lesson surface
 
 ### EtherCAT Visualizer
 
@@ -79,6 +88,14 @@ In Livebook these render as interactive resource views via `Kino.Render`.
 KinoEtherCAT.diagnostics()
 KinoEtherCAT.Diagnostics.panel()
 ```
+
+### Introduction
+
+```elixir
+KinoEtherCAT.introduction()
+```
+
+This is the reduced teaching surface: a short learning path, clear next-step instructions, current state explanation, and a small process-data playground.
 
 ### Widgets
 

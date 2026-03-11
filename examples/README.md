@@ -1,8 +1,28 @@
-# EtherCAT Introduction Plan
+# EtherCAT Introduction
 
-This folder is now a plan-only space. The previous `.livemd` examples were removed on purpose so the introductory material can be rebuilt around a clearer teaching sequence.
+This folder describes the simulator-first teaching path that is now implemented in the library. The previous `.livemd` examples were removed on purpose so the introduction could be rebuilt around a smaller number of clearer steps.
 
-The objective is to create an excellent introduction to EtherCAT for newcomers with as little setup friction as possible. The simulator should be the default environment, real hardware should be optional, and the material should teach EtherCAT itself before it teaches this library or Elixir.
+The objective is still the same: create an excellent introduction to EtherCAT for newcomers with as little setup friction as possible. The simulator should be the default environment, real hardware should be optional, and the material should teach EtherCAT itself before it teaches this library or Elixir.
+
+## Current Teaching Workspace
+
+The main entrypoint is now the `EtherCAT Simulator` smart cell plus the generated `Introduction` tab:
+
+1. Add the `EtherCAT Simulator` smart cell.
+2. Keep or rename the default `coupler -> inputs -> outputs` ring.
+3. Click `Auto-wire matching signals`.
+4. Evaluate the generated code.
+5. Start in the `Introduction` tab.
+
+That workspace now gives you:
+
+- a guided learning path
+- a reduced teaching-mode UI instead of the full operator layout
+- short explanations next to master state and domain/WKC health
+- a direct process-data playground
+- a clear handoff from simulator loopback to setup/discovery and OP activation
+
+Use the `EtherCAT Setup` smart cell against the same simulator when you want to move from the virtual ring into discovery, PREOP readiness, and OP activation.
 
 ## Core Vision
 

@@ -8,13 +8,14 @@ defmodule KinoEtherCAT.SmartCells.SimulatorSource do
   @spec render(map()) :: String.t()
   def render(attrs) when is_map(attrs) do
     config = normalize(attrs)
+    expert_mode = expert_mode?(attrs)
 
     config
-    |> source()
+    |> source(expert_mode)
     |> Source.format()
   end
 
-  defp source(config) do
+  defp source(config, expert_mode) do
     Source.multiline([
       "alias EtherCAT.Simulator\n",
       "alias EtherCAT.Simulator.Slave\n\n",
@@ -29,8 +30,7 @@ defmodule KinoEtherCAT.SmartCells.SimulatorSource do
       connection_literals(config.connections),
       if(config.connections == [], do: "", else: "\n"),
       "Kino.Layout.tabs(\n",
-      "  Simulator: KinoEtherCAT.simulator(),\n",
-      "  Faults: KinoEtherCAT.simulator_faults()\n",
+      tabs_literal(expert_mode),
       ")\n"
     ])
   end
@@ -65,6 +65,17 @@ defmodule KinoEtherCAT.SmartCells.SimulatorSource do
     end)
     |> Kernel.<>("\n")
   end
+
+  defp tabs_literal(true) do
+    "  Simulator: KinoEtherCAT.simulator(),\n  Faults: KinoEtherCAT.simulator_faults()\n"
+  end
+
+  defp tabs_literal(false) do
+    "  Introduction: KinoEtherCAT.introduction(),\n  Simulator: KinoEtherCAT.simulator(),\n  Faults: KinoEtherCAT.simulator_faults()\n"
+  end
+
+  defp expert_mode?(attrs) when is_map(attrs),
+    do: Map.get(attrs, "expert_mode", false) in [true, "true", 1, "1"]
 
   defp ip_literal({a, b, c, d}), do: "{#{a}, #{b}, #{c}, #{d}}"
 end
