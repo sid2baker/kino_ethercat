@@ -135,20 +135,51 @@ defmodule KinoEtherCAT.SmartCellsTest do
     refute source =~ "simulator_ip"
   end
 
-  test "visualizer cell renders string-based calls" do
+  test "visualizer cell renders signal widget calls" do
     source =
       Visualizer.to_source(%{
         "columns" => 2,
         "selected" => [
-          %{"name" => "sensor_a"},
-          %{"name" => "output rack"}
+          %{
+            "key" => "outputs.ch1",
+            "slave" => "outputs",
+            "signal" => "ch1",
+            "direction" => "output",
+            "bit_size" => 1,
+            "default_widget" => "switch",
+            "widget" => "auto",
+            "label" => "Output 1"
+          },
+          %{
+            "key" => "inputs.ch1",
+            "slave" => "inputs",
+            "signal" => "ch1",
+            "direction" => "input",
+            "bit_size" => 1,
+            "default_widget" => "led",
+            "widget" => "auto",
+            "label" => nil
+          },
+          %{
+            "key" => "inputs.temperature",
+            "slave" => "inputs",
+            "signal" => "temperature",
+            "direction" => "input",
+            "bit_size" => 16,
+            "default_widget" => "value",
+            "widget" => "value",
+            "label" => "Temperature"
+          }
         ]
       })
 
-    assert source =~
-             ~s/KinoEtherCAT.Widgets.dashboard([:sensor_a, :"output rack"], columns: 2) |> Kino.render()/
-
+    assert source =~ "widgets = ["
+    assert source =~ ~s/KinoEtherCAT.Widgets.switch(:outputs, :ch1, label: "Output 1")/
+    assert source =~ ~s/KinoEtherCAT.Widgets.led(:inputs, :ch1)/
+    assert source =~ ~s/KinoEtherCAT.Widgets.value(:inputs, :temperature, label: "Temperature")/
+    assert source =~ "Kino.Layout.grid(widgets, columns: 2)"
     assert source =~ "Kino.nothing()"
+    refute source =~ "KinoEtherCAT.Widgets.dashboard"
     refute source =~ "String.to_atom"
   end
 
@@ -186,6 +217,12 @@ defmodule KinoEtherCAT.SmartCellsTest do
     refute source =~ "EtherCAT.start("
     refute source =~ "KinoEtherCAT.diagnostics()"
     refute source =~ "String.to_atom"
+  end
+
+  test "simulator cell seeds one default loopback connection for fresh attrs" do
+    source = Simulator.to_source(%{})
+
+    assert source =~ ":ok = Slave.connect({:outputs, :ch1}, {:inputs, :ch1})"
   end
 
   test "simulator cell omits introduction tab in expert mode" do

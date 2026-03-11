@@ -26,7 +26,7 @@ defmodule KinoEtherCAT.Introduction.ViewTest do
     :ok
   end
 
-  test "payload exposes a simplified learning path and playground" do
+  test "payload exposes a simplified learning path" do
     payload = View.payload()
 
     assert payload.status == "running"
@@ -35,43 +35,25 @@ defmodule KinoEtherCAT.Introduction.ViewTest do
     assert Enum.find(payload.setup_workflow, &(&1.label == "Next step")).value =~
              "Setup smart cell"
 
+    assert Enum.any?(payload.setup_workflow, &String.contains?(&1.value, "Visualizer"))
+
+    refute Enum.any?(payload.path, &String.contains?(&1.title, "Scan Bus"))
     assert Enum.any?(payload.path, &String.starts_with?(&1.title, "1. Evaluate"))
-    assert Enum.any?(payload.path, &String.starts_with?(&1.title, "4. Use the Master render"))
+    refute Enum.any?(payload.path, &String.starts_with?(&1.title, "4."))
     assert Enum.any?(payload.state_overview, &(&1.label == "Master state"))
-
-    assert [
-             %{
-               source_slave: "outputs",
-               source_signal: "ch1",
-               target_slave: "inputs",
-               target_signal: "ch1",
-               writable: true
-             }
-           ] = payload.playground.rows
   end
 
-  test "perform updates the playground value view" do
-    assert %{level: "info"} =
-             View.perform("set_output", %{
-               "slave" => "outputs",
-               "signal" => "ch1",
-               "value" => "1"
-             })
-
-    row = View.payload().playground.rows |> List.first()
-    assert row.source_value == "1"
-  end
-
-  test "offline payload stays renderable without playground rows" do
+  test "offline payload stays renderable" do
     assert :ok = Simulator.stop()
 
     payload = View.payload()
 
     assert payload.status == "offline"
-    assert payload.playground.rows == []
 
     assert Enum.find(payload.setup_workflow, &(&1.label == "First step")).value =~
              "Simulator smart cell"
+
+    assert Enum.any?(payload.setup_workflow, &String.contains?(&1.value, "Visualizer"))
 
     assert Enum.find(payload.summary, &(&1.label == "Domain")).value == "n/a"
   end

@@ -121,11 +121,12 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
 
   def handle_event("reset_defaults", _params, ctx) do
     selected = SimulatorConfig.default_selected()
+    connections = SimulatorConfig.default_connections(selected)
 
     ctx =
       assign(ctx,
         selected: selected,
-        connections: [],
+        connections: connections,
         next_id: next_id(selected),
         runtime_message: info_message("Loopback ring reset.")
       )

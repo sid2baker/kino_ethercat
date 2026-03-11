@@ -2,14 +2,15 @@ defmodule KinoEtherCAT.Simulator.FaultsView do
   @moduledoc false
 
   alias EtherCAT.Simulator
+  alias EtherCAT.Simulator.Fault
   alias EtherCAT.Simulator.Udp
+  alias EtherCAT.Simulator.Udp.Fault, as: UdpFault
   alias KinoEtherCAT.Simulator.Snapshot
 
   @default_al_error_code 0x001B
   @default_mailbox_index 0x1600
   @default_mailbox_subindex 0x00
   @default_mailbox_abort_code 0x0601_0002
-  @udp_fault_modes [:truncate, :unsupported_type, :wrong_idx, :replay_previous]
 
   @spec payload(map() | nil) :: map()
   def payload(message \\ nil), do: Snapshot.payload(message)
@@ -17,7 +18,7 @@ defmodule KinoEtherCAT.Simulator.FaultsView do
   @spec perform(String.t(), map()) :: map()
   def perform("inject_drop_responses", _params) do
     invoke(
-      fn -> Simulator.inject_fault(:drop_responses) end,
+      fn -> Simulator.inject_fault(Fault.drop_responses()) end,
       info_message("Dropped responses enabled.")
     )
   end
@@ -43,7 +44,7 @@ defmodule KinoEtherCAT.Simulator.FaultsView do
   def perform("set_wkc_offset", %{"value" => raw_value}) do
     with {:ok, delta} <- parse_integer(raw_value) do
       invoke(
-        fn -> Simulator.inject_fault({:wkc_offset, delta}) end,
+        fn -> Simulator.inject_fault(Fault.wkc_offset(delta)) end,
         info_message("WKC offset set to #{delta}.")
       )
     else
@@ -55,7 +56,7 @@ defmodule KinoEtherCAT.Simulator.FaultsView do
   def perform("inject_disconnect", %{"slave" => raw_slave}) do
     with {:ok, slave_name} <- resolve_slave_name(raw_slave) do
       invoke(
-        fn -> Simulator.inject_fault({:disconnect, slave_name}) end,
+        fn -> Simulator.inject_fault(Fault.disconnect(slave_name)) end,
         info_message("Disconnected #{raw_slave}.")
       )
     else
@@ -68,7 +69,7 @@ defmodule KinoEtherCAT.Simulator.FaultsView do
     with {:ok, fault} <- build_runtime_fault_plan(params) do
       invoke(
         fn -> Simulator.inject_fault(fault) end,
-        info_message("Queued #{planned_runtime_fault_label(fault)}.")
+        info_message("Queued #{Fault.describe(fault)}.")
       )
     else
       {:error, :invalid_fault_type} ->
@@ -89,7 +90,7 @@ defmodule KinoEtherCAT.Simulator.FaultsView do
     with {:ok, fault} <- build_udp_fault_plan(params) do
       invoke(
         fn -> Udp.inject_fault(fault) end,
-        info_message("Queued #{planned_udp_fault_label(fault)}.")
+        info_message("Queued #{UdpFault.describe(fault)}.")
       )
     else
       {:error, :invalid_fault_type} ->
@@ -103,7 +104,7 @@ defmodule KinoEtherCAT.Simulator.FaultsView do
   def perform("retreat_to_safeop", %{"slave" => raw_slave}) do
     with {:ok, slave_name} <- resolve_slave_name(raw_slave) do
       invoke(
-        fn -> Simulator.inject_fault({:retreat_to_safeop, slave_name}) end,
+        fn -> Simulator.inject_fault(Fault.retreat_to_safeop(slave_name)) end,
         info_message("#{raw_slave} forced back to SAFEOP.")
       )
     else
@@ -116,7 +117,7 @@ defmodule KinoEtherCAT.Simulator.FaultsView do
     with {:ok, slave_name} <- resolve_slave_name(raw_slave),
          {:ok, code} <- parse_non_neg_integer(raw_code, @default_al_error_code) do
       invoke(
-        fn -> Simulator.inject_fault({:latch_al_error, slave_name, code}) end,
+        fn -> Simulator.inject_fault(Fault.latch_al_error(slave_name, code)) end,
         info_message("Latched AL error #{hex(code)} on #{raw_slave}.")
       )
     else
@@ -140,7 +141,7 @@ defmodule KinoEtherCAT.Simulator.FaultsView do
          {:ok, abort_code} <- parse_non_neg_integer(raw_abort_code, @default_mailbox_abort_code) do
       invoke(
         fn ->
-          Simulator.inject_fault({:mailbox_abort, slave_name, index, subindex, abort_code})
+          Simulator.inject_fault(Fault.mailbox_abort(slave_name, index, subindex, abort_code))
         end,
         info_message(
           "Injected mailbox abort #{hex(abort_code)} on #{raw_slave} for #{hex(index)}:#{hex_byte(subindex)}."
@@ -161,34 +162,34 @@ defmodule KinoEtherCAT.Simulator.FaultsView do
     with {:ok, fault} <- build_runtime_fault(params),
          {:ok, plan} <- parse_queue_plan(Map.get(params, "plan"), Map.get(params, "count")) do
       case plan do
-        :next -> {:ok, {:next_exchange, fault}}
-        {:count, count} -> {:ok, {:next_exchanges, count, fault}}
+        :next -> {:ok, Fault.next(fault)}
+        {:count, count} -> {:ok, Fault.next(fault, count)}
       end
     end
   end
 
-  defp build_runtime_fault(%{"kind" => "drop_responses"}), do: {:ok, :drop_responses}
+  defp build_runtime_fault(%{"kind" => "drop_responses"}), do: {:ok, Fault.drop_responses()}
 
   defp build_runtime_fault(%{"kind" => "wkc_offset", "value" => raw_value}) do
     with {:ok, delta} <- parse_integer(raw_value) do
-      {:ok, {:wkc_offset, delta}}
+      {:ok, Fault.wkc_offset(delta)}
     end
   end
 
   defp build_runtime_fault(%{"kind" => "disconnect", "slave" => raw_slave}) do
     with {:ok, slave_name} <- resolve_slave_name(raw_slave) do
-      {:ok, {:disconnect, slave_name}}
+      {:ok, Fault.disconnect(slave_name)}
     end
   end
 
   defp build_runtime_fault(_params), do: {:error, :invalid_fault_type}
 
   defp build_udp_fault_plan(params) do
-    with {:ok, mode} <- parse_udp_fault_mode(Map.get(params, "mode")),
+    with {:ok, fault} <- parse_udp_fault_mode(Map.get(params, "mode")),
          {:ok, plan} <- parse_queue_plan(Map.get(params, "plan"), Map.get(params, "count")) do
       case plan do
-        :next -> {:ok, {:corrupt_next_response, mode}}
-        {:count, count} -> {:ok, {:corrupt_next_responses, count, mode}}
+        :next -> {:ok, UdpFault.next(fault)}
+        {:count, count} -> {:ok, UdpFault.next(fault, count)}
       end
     end
   end
@@ -204,15 +205,16 @@ defmodule KinoEtherCAT.Simulator.FaultsView do
   defp parse_queue_plan(_plan, _raw_count), do: {:ok, :next}
 
   defp parse_udp_fault_mode(raw_mode) when is_binary(raw_mode) do
-    mode =
+    fault =
       raw_mode
       |> String.trim()
       |> String.to_existing_atom()
+      |> build_udp_fault()
 
-    if mode in @udp_fault_modes do
-      {:ok, mode}
-    else
+    if fault == :error do
       {:error, :invalid_fault_type}
+    else
+      {:ok, fault}
     end
   rescue
     ArgumentError -> {:error, :invalid_fault_type}
@@ -220,32 +222,11 @@ defmodule KinoEtherCAT.Simulator.FaultsView do
 
   defp parse_udp_fault_mode(_raw_mode), do: {:error, :invalid_fault_type}
 
-  defp planned_runtime_fault_label({:next_exchange, fault}),
-    do: "next exchange #{runtime_fault_label(fault)}"
-
-  defp planned_runtime_fault_label({:next_exchanges, count, fault}),
-    do: "next #{count} exchanges #{runtime_fault_label(fault)}"
-
-  defp planned_runtime_fault_label(other), do: inspect(other)
-
-  defp planned_udp_fault_label({:corrupt_next_response, mode}),
-    do: "next UDP reply #{udp_mode_label(mode)}"
-
-  defp planned_udp_fault_label({:corrupt_next_responses, count, mode}),
-    do: "next #{count} UDP replies #{udp_mode_label(mode)}"
-
-  defp planned_udp_fault_label(other), do: inspect(other)
-
-  defp runtime_fault_label(:drop_responses), do: "drop responses"
-  defp runtime_fault_label({:wkc_offset, delta}), do: "WKC offset #{delta}"
-  defp runtime_fault_label({:disconnect, slave_name}), do: "disconnect #{slave_name}"
-  defp runtime_fault_label(other), do: inspect(other)
-
-  defp udp_mode_label(:truncate), do: "truncate reply"
-  defp udp_mode_label(:unsupported_type), do: "unsupported reply type"
-  defp udp_mode_label(:wrong_idx), do: "wrong datagram index"
-  defp udp_mode_label(:replay_previous), do: "replay previous response"
-  defp udp_mode_label(other), do: inspect(other)
+  defp build_udp_fault(:truncate), do: UdpFault.truncate()
+  defp build_udp_fault(:unsupported_type), do: UdpFault.unsupported_type()
+  defp build_udp_fault(:wrong_idx), do: UdpFault.wrong_idx()
+  defp build_udp_fault(:replay_previous), do: UdpFault.replay_previous()
+  defp build_udp_fault(_mode), do: :error
 
   defp resolve_slave_name(raw_slave) when is_binary(raw_slave) do
     with {:ok, info} <- Simulator.info(),

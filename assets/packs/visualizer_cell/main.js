@@ -1,6 +1,6 @@
 import "./main.css";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   DndContext,
@@ -20,13 +20,13 @@ import { CSS } from "@dnd-kit/utilities";
 
 import {
   Button,
-  ControlField,
+  Checkbox,
   EmptyState,
-  Frame,
-  Input,
+  Fieldset,
   Mono,
   Panel,
   Shell,
+  Stack,
   StatusBadge,
 } from "../../ui/react95";
 
@@ -40,9 +40,37 @@ function statusTone(status) {
   return status === "ok" ? "ok" : status === "not_running" ? "warn" : "neutral";
 }
 
-function SlaveRow({ entry, position, onRemove }) {
+function naturalCompare(a, b) {
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+}
+
+function buildSignalGroups(selected, available) {
+  const merged = new Map();
+
+  for (const entry of available) merged.set(entry.key, entry);
+  for (const entry of selected) if (entry.available) merged.set(entry.key, entry);
+
+  return [...merged.values()]
+    .sort((left, right) => {
+      const slaveOrder = naturalCompare(left.slave ?? "", right.slave ?? "");
+      if (slaveOrder !== 0) return slaveOrder;
+      return naturalCompare(left.signal ?? "", right.signal ?? "");
+    })
+    .reduce((groups, entry) => {
+      const last = groups[groups.length - 1];
+
+      if (last && last.slave === entry.slave) {
+        last.signals.push(entry);
+        return groups;
+      }
+
+      return [...groups, { slave: entry.slave, signals: [entry] }];
+    }, []);
+}
+
+function SelectedRow({ entry, position, onRemove }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: entry.name });
+    useSortable({ id: entry.key });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -55,118 +83,126 @@ function SlaveRow({ entry, position, onRemove }) {
     <li
       ref={setNodeRef}
       style={style}
-      className={`ke95-visualizer__row${isDragging ? " ke95-visualizer__row--dragging" : ""}`}
+      className={`ke95-visualizer__selected-row${isDragging ? " ke95-visualizer__selected-row--dragging" : ""}`}
     >
       <button className="ke95-visualizer__handle" title="Reorder" {...attributes} {...listeners}>
         ::
       </button>
       <Mono>{String(position + 1).padStart(2, "0")}</Mono>
-      <Mono>{entry.name}</Mono>
-      <Button onClick={() => onRemove(entry.name)}>Remove</Button>
+      <Mono>{entry.display_name}</Mono>
+      {!entry.available ? <StatusBadge tone="warn">stale</StatusBadge> : null}
+      <Button onClick={() => onRemove(entry.key)}>Remove</Button>
     </li>
   );
 }
 
+function SignalCheckbox({ entry, checked, onToggle }) {
+  return (
+    <div className="ke95-visualizer__signal">
+      <Checkbox
+        checked={checked}
+        label={entry.signal}
+        onChange={(event) => onToggle(entry.key, event.target.checked)}
+      />
+    </div>
+  );
+}
+
 function VisualizerCell({ ctx, data }) {
-  const [selected, setSelected] = useState(data.selected ?? []);
-  const [columnsInput, setColumnsInput] = useState(data.columns ?? "");
-  const [status, setStatus] = useState(data.status ?? "ok");
+  const [snapshot, setSnapshot] = useState(data);
 
   useEffect(() => {
-    ctx.handleEvent("refreshed", ({ selected, columns, status }) => {
-      setSelected(selected);
-      setColumnsInput(columns ?? "");
-      setStatus(status);
-    });
-    ctx.handleSync(() => {
-      const active = document.activeElement;
-      if (active instanceof HTMLElement && ctx.root.contains(active)) {
-        active.blur();
-      }
+    ctx.handleEvent("snapshot", (next) => {
+      setSnapshot(next);
     });
   }, [ctx]);
 
   const sensors = useSensors(useSensor(PointerSensor));
+  const selected = snapshot.selected ?? [];
+  const available = snapshot.available ?? [];
+  const status = snapshot.status ?? "ok";
+  const selectedByKey = useMemo(() => new Map(selected.map((entry) => [entry.key, entry])), [selected]);
+  const groups = useMemo(() => buildSignalGroups(selected, available), [selected, available]);
 
   const handleDragEnd = ({ active, over }) => {
     if (!over || active.id === over.id) return;
-    const oldIndex = selected.findIndex((s) => s.name === active.id);
-    const newIndex = selected.findIndex((s) => s.name === over.id);
+    const oldIndex = selected.findIndex((entry) => entry.key === active.id);
+    const newIndex = selected.findIndex((entry) => entry.key === over.id);
     const next = arrayMove(selected, oldIndex, newIndex);
-    setSelected(next);
-    ctx.pushEvent("reorder", { names: next.map((s) => s.name) });
+    ctx.pushEvent("reorder", { keys: next.map((entry) => entry.key) });
   };
 
-  const handleRemove = (name) => {
-    const next = selected.filter((s) => s.name !== name);
-    setSelected(next);
-    ctx.pushEvent("remove", { name });
-  };
-
-  const commitColumns = () => {
-    const columns =
-      columnsInput === "" ? null : Math.max(1, Math.min(4, Number(columnsInput)));
-    setColumnsInput(columns ?? "");
-    ctx.pushEvent("update_columns", { columns });
+  const toggleSignal = (key, checked) => {
+    ctx.pushEvent(checked ? "add" : "remove", { key });
   };
 
   return (
     <Shell
-      title="Dashboard slaves"
+      title={snapshot.title ?? "Signal visualizer"}
       subtitle={`${selected.length} selected`}
-      status={<StatusBadge tone={statusTone(status)}>{status === "not_running" ? "offline" : status}</StatusBadge>}
-      toolbar={<Button onClick={() => ctx.pushEvent("refresh")}>Refresh</Button>}
+      status={
+        <StatusBadge tone={statusTone(status)}>
+          {status === "not_running" ? "offline" : status}
+        </StatusBadge>
+      }
     >
-      <Panel title="Layout">
-        <div className="ke95-toolbar">
-          <ControlField label="Columns" help="Leave empty for automatic layout.">
-            <Input
-              type="number"
-              min="1"
-              max="4"
-              placeholder="auto"
-              className="ke95-fill"
-              value={columnsInput}
-              onChange={(event) => setColumnsInput(event.target.value)}
-              onBlur={commitColumns}
-              onKeyDown={(event) => event.key === "Enter" && commitColumns()}
-            />
-          </ControlField>
-        </div>
-      </Panel>
-
-      <Panel title="Selected slaves">
-        {selected.length === 0 ? (
-          <EmptyState>
-            {status === "not_running"
-              ? "Start EtherCAT, then refresh to load available slaves."
-              : "No slaves selected. Refresh to load the current bus inventory."}
-          </EmptyState>
-        ) : (
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            modifiers={[restrictToVerticalAxis, restrictToParentElement]}
-            onDragEnd={handleDragEnd}
-          >
-            <SortableContext
-              items={selected.map((s) => s.name)}
-              strategy={verticalListSortingStrategy}
+      <Stack className="ke95-visualizer">
+        <Panel title="Selected">
+          {selected.length === 0 ? (
+            <EmptyState>Select signals below.</EmptyState>
+          ) : (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+              onDragEnd={handleDragEnd}
             >
-              <ul className="ke95-list">
-                {selected.map((entry, index) => (
-                  <SlaveRow
-                    key={entry.name}
-                    entry={entry}
-                    position={index}
-                    onRemove={handleRemove}
-                  />
-                ))}
-              </ul>
-            </SortableContext>
-          </DndContext>
-        )}
-      </Panel>
+              <SortableContext
+                items={selected.map((entry) => entry.key)}
+                strategy={verticalListSortingStrategy}
+              >
+                <ul className="ke95-list ke95-visualizer__selected-list">
+                  {selected.map((entry, index) => (
+                    <SelectedRow
+                      key={entry.key}
+                      entry={entry}
+                      position={index}
+                      onRemove={(key) => ctx.pushEvent("remove", { key })}
+                    />
+                  ))}
+                </ul>
+              </SortableContext>
+            </DndContext>
+          )}
+        </Panel>
+
+        <Panel title="Signals">
+          {groups.length === 0 ? (
+            <EmptyState>
+              {status === "not_running"
+                ? "Evaluate the setup cell first."
+                : "No supported signals found."}
+            </EmptyState>
+          ) : (
+            <Stack>
+              {groups.map((group) => (
+                <Fieldset key={group.slave} legend={group.slave}>
+                  <div className="ke95-visualizer__group">
+                    {group.signals.map((entry) => (
+                      <SignalCheckbox
+                        key={entry.key}
+                        entry={entry}
+                        checked={selectedByKey.has(entry.key)}
+                        onToggle={toggleSignal}
+                      />
+                    ))}
+                  </div>
+                </Fieldset>
+              ))}
+            </Stack>
+          )}
+        </Panel>
+      </Stack>
     </Shell>
   );
 }

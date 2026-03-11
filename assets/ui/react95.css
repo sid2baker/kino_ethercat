@@ -1,8 +1,4 @@
 .ke95-shell {
-  --r95-color-headerBackground: #008000;
-  --r95-color-headerNotActiveBackground: #7f787f;
-  --r95-color-headerText: #fefefe;
-  --r95-color-headerNotActiveText: #c6c6c6;
   display: grid;
   gap: 0;
   color: #222;
@@ -16,10 +12,6 @@
 }
 
 .ke95-modal {
-  --r95-color-headerBackground: #008000;
-  --r95-color-headerNotActiveBackground: #7f787f;
-  --r95-color-headerText: #fefefe;
-  --r95-color-headerNotActiveText: #c6c6c6;
   color: #222;
   font-size: 12px;
   margin-block: 4px;

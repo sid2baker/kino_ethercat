@@ -25,13 +25,6 @@ defmodule KinoEtherCAT.Introduction.Panel do
   end
 
   @impl true
-  def handle_event("action", %{"id" => id} = params, ctx) do
-    message = View.perform(id, Map.delete(params, "id"))
-    ctx = Context.assign(ctx, message: message)
-    {:noreply, broadcast_snapshot(ctx)}
-  end
-
-  @impl true
   def handle_info(:refresh_snapshot, ctx) do
     schedule_refresh()
     {:noreply, broadcast_snapshot(ctx)}

@@ -4,10 +4,7 @@ import React, { startTransition, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 
 import {
-  Button,
-  DataTable,
   EmptyState,
-  InlineButtons,
   MessageLine,
   Mono,
   Panel,
@@ -34,15 +31,9 @@ function stepTone(state) {
   return "neutral";
 }
 
-function signalTone(value, on) {
-  if (value === "nil") return "neutral";
-  return on ? "ok" : "neutral";
-}
-
 function IntroductionPanel({ ctx, data }) {
   const [snapshot, setSnapshot] = React.useState(data);
   const status = <StatusBadge tone={statusTone(snapshot.status)}>{snapshot.status}</StatusBadge>;
-  const hasWritableRows = (snapshot.playground?.rows ?? []).some((row) => row.writable);
 
   useEffect(() => {
     ctx.handleEvent("snapshot", (next) => {
@@ -74,25 +65,6 @@ function IntroductionPanel({ ctx, data }) {
             <PropertyList items={snapshot.state_overview ?? []} minWidth="14rem" />
           </Stack>
         </Panel>
-
-        <Panel
-          title="Optional loopback playground"
-          actions={
-            <InlineButtons>
-              <Button
-                disabled={!hasWritableRows}
-                onClick={() => ctx.pushEvent("action", { id: "reset_outputs" })}
-              >
-                Zero outputs
-              </Button>
-            </InlineButtons>
-          }
-        >
-          <Stack compact>
-            <MessageLine tone="info">{snapshot.playground?.hint ?? null}</MessageLine>
-            <PlaygroundTable ctx={ctx} rows={snapshot.playground?.rows ?? []} />
-          </Stack>
-        </Panel>
       </Stack>
     </Shell>
   );
@@ -115,64 +87,5 @@ function LearningPath({ steps }) {
         </div>
       ))}
     </div>
-  );
-}
-
-function PlaygroundTable({ ctx, rows }) {
-  if (!rows.length) {
-    return <EmptyState>No connected output/input pairs are available yet.</EmptyState>;
-  }
-
-  return (
-    <DataTable headers={["Connection", "Output", "Input", "Action"]}>
-      {rows.map((row) => (
-        <tr key={row.key}>
-          <td className="ke95-intro-panel__connection">
-            <Mono>{`${row.source_slave}.${row.source_signal}`}</Mono>
-            <Mono>{`-> ${row.target_slave}.${row.target_signal}`}</Mono>
-          </td>
-          <td>
-            <StatusBadge tone={signalTone(row.source_value, row.source_on)}>{row.source_value}</StatusBadge>
-          </td>
-          <td>
-            <StatusBadge tone={signalTone(row.target_value, row.target_on)}>{row.target_value}</StatusBadge>
-          </td>
-          <td>
-            {row.writable ? (
-              <InlineButtons>
-                <Button
-                  disabled={!row.source_on}
-                  onClick={() =>
-                    ctx.pushEvent("action", {
-                      id: "set_output",
-                      slave: row.source_slave,
-                      signal: row.source_signal,
-                      value: "0",
-                    })
-                  }
-                >
-                  Off
-                </Button>
-                <Button
-                  disabled={row.source_on}
-                  onClick={() =>
-                    ctx.pushEvent("action", {
-                      id: "set_output",
-                      slave: row.source_slave,
-                      signal: row.source_signal,
-                      value: "1",
-                    })
-                  }
-                >
-                  On
-                </Button>
-              </InlineButtons>
-            ) : (
-              <Mono>{row.bit_size > 0 ? `${row.bit_size} bit observed` : "observed"}</Mono>
-            )}
-          </td>
-        </tr>
-      ))}
-    </DataTable>
   );
 }

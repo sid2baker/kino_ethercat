@@ -3,6 +3,19 @@ defmodule KinoEtherCAT.SmartCells.SimulatorConfigTest do
 
   alias KinoEtherCAT.SmartCells.SimulatorConfig
 
+  test "fresh simulator config seeds one default ch1 loopback connection" do
+    config = SimulatorConfig.normalize(%{})
+
+    assert config.connections == [
+             %{
+               "source_id" => "3",
+               "source_signal" => "ch1",
+               "target_id" => "2",
+               "target_signal" => "ch1"
+             }
+           ]
+  end
+
   test "auto-wire matching connects output and input channels with the same name" do
     {connections, stats} =
       SimulatorConfig.auto_wire_matching([

@@ -1,13 +1,35 @@
-.ke95-visualizer__row {
+.ke95-visualizer {
   display: grid;
-  grid-template-columns: auto auto 1fr auto;
+  gap: 8px;
+}
+
+.ke95-visualizer__selected-list {
+  display: grid;
+  gap: 8px;
+}
+
+.ke95-visualizer__selected-row {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto auto;
   gap: 8px;
   align-items: center;
   padding: 6px 8px;
 }
 
-.ke95-visualizer__row--dragging {
+.ke95-visualizer__selected-row--dragging {
   pointer-events: none;
+}
+
+.ke95-visualizer__group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+}
+
+.ke95-visualizer__signal {
+  padding: 2px 0;
+  min-width: 7rem;
 }
 
 .ke95-visualizer__handle {
@@ -16,4 +38,10 @@
   cursor: grab;
   font-family: "ms_sans_serif", "Microsoft Sans Serif", sans-serif;
   font-weight: 700;
+}
+
+@media (max-width: 720px) {
+  .ke95-visualizer__selected-row {
+    grid-template-columns: auto 1fr auto;
+  }
 }

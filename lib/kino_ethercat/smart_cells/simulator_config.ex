@@ -42,6 +42,27 @@ defmodule KinoEtherCAT.SmartCells.SimulatorConfig do
     ensure_default_selected([], available_driver_modules())
   end
 
+  @spec default_connections([map()]) :: [map()]
+  def default_connections(selected) when is_list(selected) do
+    devices = device_entries(selected)
+
+    with %{id: source_id, signal: source_signal, bit_size: bit_size} <-
+           Enum.find(signal_refs_by_name(devices, :output, "ch1"), &match?(%{bit_size: 1}, &1)),
+         %{id: target_id, signal: target_signal, bit_size: ^bit_size} <-
+           Enum.find(signal_refs_by_name(devices, :input, "ch1"), &match?(%{bit_size: 1}, &1)) do
+      [
+        %{
+          "source_id" => source_id,
+          "source_signal" => source_signal,
+          "target_id" => target_id,
+          "target_signal" => target_signal
+        }
+      ]
+    else
+      _ -> []
+    end
+  end
+
   @spec normalize(map()) :: %{selected: [map()], connections: [map()]}
   def normalize(attrs) when is_map(attrs) do
     selected =
@@ -52,7 +73,7 @@ defmodule KinoEtherCAT.SmartCells.SimulatorConfig do
 
     connections =
       attrs
-      |> Map.get("connections", [])
+      |> initial_connections(selected)
       |> normalize_connections(selected)
 
     %{
@@ -240,6 +261,14 @@ defmodule KinoEtherCAT.SmartCells.SimulatorConfig do
 
   defp normalize_connections(_connections, _selected), do: []
 
+  defp initial_connections(attrs, selected) when is_map(attrs) do
+    if Map.has_key?(attrs, "connections") do
+      Map.get(attrs, "connections", [])
+    else
+      default_connections(selected)
+    end
+  end
+
   defp available_driver_modules do
     available_drivers()
     |> Enum.map(& &1.module)
@@ -286,6 +315,12 @@ defmodule KinoEtherCAT.SmartCells.SimulatorConfig do
         bit_size: signal.bit_size
       }
     end)
+  end
+
+  defp signal_refs_by_name(devices, direction, signal_name) do
+    devices
+    |> Enum.flat_map(&signal_refs(&1, direction))
+    |> Enum.filter(&(&1.signal == signal_name))
   end
 
   defp normalize_connection_entry(%{

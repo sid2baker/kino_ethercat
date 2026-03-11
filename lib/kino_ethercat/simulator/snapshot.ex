@@ -2,6 +2,8 @@ defmodule KinoEtherCAT.Simulator.Snapshot do
   @moduledoc false
 
   alias EtherCAT.Simulator
+  alias EtherCAT.Simulator.Fault
+  alias EtherCAT.Simulator.Udp.Fault, as: UdpFault
 
   @spec payload(map() | nil) :: map()
   def payload(message \\ nil) do
@@ -88,7 +90,7 @@ defmodule KinoEtherCAT.Simulator.Snapshot do
       |> Enum.reverse()
 
     pending_faults = Map.get(info, :pending_faults, [])
-    pending_labels = Enum.map(pending_faults, &runtime_fault_label/1)
+    pending_labels = Enum.map(pending_faults, &Fault.describe/1)
 
     sticky_count =
       if(Map.get(info, :drop_responses?, false), do: 1, else: 0) +
@@ -132,7 +134,7 @@ defmodule KinoEtherCAT.Simulator.Snapshot do
       endpoint: udp_label(udp),
       last_response_captured: Map.get(udp, :last_response_captured?, false),
       next_label: udp_wrapper_label(Map.get(udp, :next_fault)),
-      pending_labels: Enum.map(pending_faults, &udp_mode_label/1),
+      pending_labels: Enum.map(pending_faults, &UdpFault.describe/1),
       active_count: length(pending_faults),
       summary: udp_fault_summary(pending_faults, Map.get(udp, :next_fault))
     }
@@ -236,24 +238,13 @@ defmodule KinoEtherCAT.Simulator.Snapshot do
       if(is_binary(next_label), do: " (next: #{next_label})", else: "")
   end
 
-  defp runtime_fault_label(:drop_responses), do: "drop responses"
-  defp runtime_fault_label({:wkc_offset, delta}), do: "WKC offset #{delta}"
-  defp runtime_fault_label({:disconnect, slave_name}), do: "disconnect #{slave_name}"
-  defp runtime_fault_label(other), do: inspect(other)
-
-  defp runtime_wrapper_label({:next_exchange, fault}), do: runtime_fault_label(fault)
+  defp runtime_wrapper_label({:next_exchange, fault}), do: Fault.describe(fault)
   defp runtime_wrapper_label(nil), do: nil
-  defp runtime_wrapper_label(other), do: inspect(other)
+  defp runtime_wrapper_label(other), do: Fault.describe(other)
 
-  defp udp_mode_label(:truncate), do: "truncate reply"
-  defp udp_mode_label(:unsupported_type), do: "unsupported reply type"
-  defp udp_mode_label(:wrong_idx), do: "wrong datagram index"
-  defp udp_mode_label(:replay_previous), do: "replay previous response"
-  defp udp_mode_label(other), do: inspect(other)
-
-  defp udp_wrapper_label({:corrupt_next_response, mode}), do: udp_mode_label(mode)
+  defp udp_wrapper_label({:corrupt_next_response, mode}), do: UdpFault.describe(mode)
   defp udp_wrapper_label(nil), do: nil
-  defp udp_wrapper_label(other), do: inspect(other)
+  defp udp_wrapper_label(other), do: UdpFault.describe(other)
 
   defp udp_label(%{ip: ip, port: port}), do: "#{format_ip(ip)}:#{port}"
   defp udp_label(_udp), do: "disabled"
