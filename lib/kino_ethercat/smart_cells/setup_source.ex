@@ -1,31 +1,35 @@
 defmodule KinoEtherCAT.SmartCells.SetupSource do
   @moduledoc false
 
-  alias KinoEtherCAT.SmartCells.Source
+  alias KinoEtherCAT.SmartCells.{SetupTransport, Source}
 
   @spec render(map()) :: String.t()
   def render(attrs) when is_map(attrs) do
     config = normalize(attrs)
 
-    if config.interface == "" or Enum.empty?(config.slaves) do
-      ""
-    else
+    with false <- Enum.empty?(config.slaves),
+         {:ok, transport} <- SetupTransport.source_config(config) do
       config
-      |> static_start_source()
+      |> static_start_source(transport)
       |> Source.format()
+    else
+      _ -> ""
     end
   end
 
-  defp static_start_source(config) do
+  defp static_start_source(config, transport) do
     Source.multiline([
       aliases(config),
+      transport_prelude(transport),
       "# Persisted from live bus discovery.\n",
       "# The notebook now boots the master from a single static EtherCAT.start/1 call.\n",
       "_ = EtherCAT.stop()\n\n",
       ":ok =\n",
       "  EtherCAT.start(\n",
       indent_lines(
-        keyword_entries(start_entries(config) ++ [slaves: slave_literals(config.slaves)]),
+        keyword_entries(
+          start_entries(config, transport) ++ [slaves: slave_literals(config.slaves)]
+        ),
         4
       ),
       "\n",
@@ -48,6 +52,18 @@ defmodule KinoEtherCAT.SmartCells.SetupSource do
     ])
   end
 
+  defp transport_prelude(%{transport: :raw}), do: ""
+
+  defp transport_prelude(%{transport: :udp, host: host, bind_ip: bind_ip}) do
+    Source.multiline([
+      "udp_host = ",
+      ip_literal(host),
+      "\n",
+      if(bind_ip, do: ["udp_bind_ip = ", ip_literal(bind_ip), "\n"], else: ""),
+      "\n"
+    ])
+  end
+
   defp slave_literals(slaves) do
     "[" <>
       (slaves
@@ -55,13 +71,22 @@ defmodule KinoEtherCAT.SmartCells.SetupSource do
        |> Enum.join(", ")) <> "]"
   end
 
-  defp start_entries(config) do
-    [
-      interface: inspect(config.interface),
-      domains: domain_literals(config.domains),
-      dc: dc_literal(config)
-    ]
+  defp start_entries(config, transport) do
+    (transport_entries(transport) ++
+       [
+         domains: domain_literals(config.domains),
+         dc: dc_literal(config)
+       ])
     |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+  end
+
+  defp transport_entries(%{transport: :raw, interface: interface}) do
+    [interface: inspect(interface)]
+  end
+
+  defp transport_entries(%{transport: :udp, port: port, bind_ip: bind_ip}) do
+    [transport: ":udp", host: "udp_host", port: Source.integer_literal(port)] ++
+      if(bind_ip, do: [bind_ip: "udp_bind_ip"], else: [])
   end
 
   defp domain_literals(domains) do
@@ -103,10 +128,15 @@ defmodule KinoEtherCAT.SmartCells.SetupSource do
   end
 
   defp normalize(attrs) do
+    transport = SetupTransport.normalize(attrs)
     domains = attrs |> Map.get("domains", legacy_domains(attrs)) |> normalize_domains()
 
     %{
-      interface: attrs |> Map.get("interface", "") |> String.trim(),
+      transport: transport.transport,
+      interface: transport.interface,
+      host: transport.host,
+      port: transport.port,
+      bind_ip: transport.bind_ip,
       domains: domains,
       dc_enabled:
         attrs |> Map.get("dc_enabled", Map.get(attrs, "dc_enabled?", true)) |> truthy?(true),
@@ -283,4 +313,6 @@ defmodule KinoEtherCAT.SmartCells.SetupSource do
     |> String.split("\n")
     |> Enum.map_join("\n", &(padding <> &1))
   end
+
+  defp ip_literal({a, b, c, d}), do: "{#{a}, #{b}, #{c}, #{d}}"
 end

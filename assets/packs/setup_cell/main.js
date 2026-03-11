@@ -34,7 +34,11 @@ function toHex(value, pad = 4) {
 
 function serialize(state) {
   return {
+    transport: state.transport,
     interface: state.interface,
+    host: state.host,
+    port: state.port,
+    bind_ip: state.bind_ip,
     domains: state.domains,
     slaves: state.slaves,
     dc_enabled: state.dc_enabled,
@@ -124,6 +128,12 @@ function interfaceOptions(state) {
   }
 
   return options;
+}
+
+function transportSourceLabel(state) {
+  return state.transport === "udp"
+    ? state.transport_source || "udp:unconfigured"
+    : state.interface || "n/a";
 }
 
 function masterStateTone(state) {
@@ -216,27 +226,75 @@ function SetupCell({ ctx, data }) {
       <SummaryGrid
         items={[
           { label: "Master PID", value: state.master_pid ?? "not running" },
-          { label: "Interface", value: state.interface || "n/a" },
+          { label: "Transport", value: state.transport ?? "raw" },
+          { label: "Bus source", value: transportSourceLabel(state) },
           { label: "Slaves", value: String(state.slaves.length) },
           { label: "Domains", value: String(state.domains.length) },
         ]}
       />
 
-      <Panel title="Session">
-        <div className="ke95-toolbar">
-          <ControlField label="Interface" className="ke95-fill">
+      <Panel title="Bus">
+        <div className="ke95-grid ke95-grid--2">
+          <ControlField label="Transport">
             <Dropdown
               className="ke95-fill"
-              value={state.interface}
-              onChange={(event) => commit((previous) => ({ ...previous, interface: event.target.value }))}
+              value={state.transport}
+              onChange={(event) => commit((previous) => ({ ...previous, transport: event.target.value }))}
             >
-              {interfaces.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
+              <option value="raw">Raw socket</option>
+              <option value="udp">UDP</option>
             </Dropdown>
           </ControlField>
+
+          {state.transport === "udp" ? (
+            <>
+              <ControlField label="Host">
+                <Input
+                  className="ke95-fill"
+                  placeholder="127.0.0.2"
+                  value={state.host}
+                  onChange={(event) => updateLocal((previous) => ({ ...previous, host: event.target.value }))}
+                  onBlur={(event) => commit((previous) => ({ ...previous, host: event.target.value }))}
+                />
+              </ControlField>
+
+              <ControlField label="Port">
+                <Input
+                  className="ke95-fill"
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={state.port}
+                  onChange={(event) => updateLocal((previous) => ({ ...previous, port: Number(event.target.value) || 34980 }))}
+                  onBlur={(event) => commit((previous) => ({ ...previous, port: Number(event.target.value) || 34980 }))}
+                />
+              </ControlField>
+
+              <ControlField label="Bind IP" help="Optional local UDP bind address. Leave empty to use the OS default route.">
+                <Input
+                  className="ke95-fill"
+                  placeholder="127.0.0.1"
+                  value={state.bind_ip}
+                  onChange={(event) => updateLocal((previous) => ({ ...previous, bind_ip: event.target.value }))}
+                  onBlur={(event) => commit((previous) => ({ ...previous, bind_ip: event.target.value }))}
+                />
+              </ControlField>
+            </>
+          ) : (
+            <ControlField label="Interface" className="ke95-fill">
+              <Dropdown
+                className="ke95-fill"
+                value={state.interface}
+                onChange={(event) => commit((previous) => ({ ...previous, interface: event.target.value }))}
+              >
+                {interfaces.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </Dropdown>
+            </ControlField>
+          )}
         </div>
       </Panel>
 

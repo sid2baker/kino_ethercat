@@ -3,7 +3,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
   use Kino.JS.Live
   use Kino.SmartCell, name: "EtherCAT Setup"
 
-  alias KinoEtherCAT.SmartCells.SetupSource
+  alias KinoEtherCAT.SmartCells.{SetupSource, SetupTransport}
 
   @impl true
   def init(attrs, ctx) do
@@ -18,7 +18,11 @@ defmodule KinoEtherCAT.SmartCells.Setup do
        master_state: runtime_state(),
        master_pid: Process.whereis(EtherCAT.Master),
        available_interfaces: available_interfaces(),
+       transport: config.transport,
        interface: config.interface,
+       host: config.host,
+       port: config.port,
+       bind_ip: config.bind_ip,
        slaves: config.slaves,
        domains: config.domains,
        dc_enabled: config.dc_enabled,
@@ -38,9 +42,10 @@ defmodule KinoEtherCAT.SmartCells.Setup do
   @impl true
   def handle_event("scan", _params, ctx) do
     server = self()
+    transport = transport_assigns(ctx.assigns)
 
     Task.start(fn ->
-      run_scan(server, ctx.assigns.interface, ctx.assigns.slaves, ctx.assigns.domains)
+      run_scan(server, transport, ctx.assigns.slaves, ctx.assigns.domains)
     end)
 
     ctx = assign(ctx, status: :scanning, error: nil)
@@ -69,7 +74,11 @@ defmodule KinoEtherCAT.SmartCells.Setup do
     ctx =
       assign(ctx,
         available_interfaces: available_interfaces(),
+        transport: config.transport,
         interface: config.interface,
+        host: config.host,
+        port: config.port,
+        bind_ip: config.bind_ip,
         slaves: config.slaves,
         domains: config.domains,
         dc_enabled: config.dc_enabled,
@@ -127,7 +136,11 @@ defmodule KinoEtherCAT.SmartCells.Setup do
   @impl true
   def to_attrs(ctx) do
     %{
+      "transport" => Atom.to_string(ctx.assigns.transport),
       "interface" => ctx.assigns.interface,
+      "host" => ctx.assigns.host,
+      "port" => ctx.assigns.port,
+      "bind_ip" => ctx.assigns.bind_ip,
       "slaves" => ctx.assigns.slaves,
       "domains" => ctx.assigns.domains,
       "dc_enabled" => ctx.assigns.dc_enabled,
@@ -144,12 +157,14 @@ defmodule KinoEtherCAT.SmartCells.Setup do
     SetupSource.render(attrs)
   end
 
-  defp run_scan(server, interface, existing_slaves, domains) do
+  defp run_scan(server, transport, existing_slaves, domains) do
     result =
-      with :ok <- ensure_master_running(interface),
+      with {:ok, start_opts} <- SetupTransport.runtime_start_opts(transport),
+           :ok <- ensure_master_running(start_opts),
            :ok <- EtherCAT.await_running(15_000) do
         {:ok, discovered_slaves(existing_slaves, domains)}
       else
+        {:error, reason} when is_binary(reason) -> {:error, reason}
         {:error, reason} -> {:error, inspect(reason)}
       end
 
@@ -158,8 +173,8 @@ defmodule KinoEtherCAT.SmartCells.Setup do
     e -> send(server, {:scan_complete, {:error, Exception.message(e)}})
   end
 
-  defp ensure_master_running(interface) do
-    case EtherCAT.start(interface: interface) do
+  defp ensure_master_running(start_opts) when is_list(start_opts) do
+    case EtherCAT.start(start_opts) do
       :ok -> :ok
       {:error, :already_started} -> :ok
       {:error, {:already_started, _pid}} -> :ok
@@ -208,8 +223,15 @@ defmodule KinoEtherCAT.SmartCells.Setup do
   end
 
   defp payload(assigns) do
+    transport = transport_assigns(assigns)
+
     %{
+      transport: Atom.to_string(assigns.transport),
       interface: assigns.interface,
+      host: assigns.host,
+      port: assigns.port,
+      bind_ip: assigns.bind_ip,
+      transport_source: SetupTransport.summary_label(transport),
       available_interfaces: assigns.available_interfaces,
       status: to_string(assigns.status),
       error: assigns.error,
@@ -231,13 +253,19 @@ defmodule KinoEtherCAT.SmartCells.Setup do
   end
 
   defp normalize_attrs(attrs) when is_map(attrs) do
+    transport = SetupTransport.normalize(attrs)
+
     domains =
       attrs
       |> Map.get("domains", legacy_domains(attrs))
       |> normalize_domains()
 
     %{
-      interface: attrs |> Map.get("interface", "eth0") |> normalize_interface(),
+      transport: transport.transport,
+      interface: transport.interface,
+      host: transport.host,
+      port: transport.port,
+      bind_ip: transport.bind_ip,
       domains: domains,
       slaves: attrs |> Map.get("slaves", []) |> normalize_slaves(domains),
       dc_enabled:
@@ -384,15 +412,6 @@ defmodule KinoEtherCAT.SmartCells.Setup do
   defp format_pid(pid) when is_pid(pid), do: inspect(pid)
   defp format_pid(_pid), do: nil
 
-  defp normalize_interface(value) when is_binary(value) do
-    case String.trim(value) do
-      "" -> "eth0"
-      trimmed -> trimmed
-    end
-  end
-
-  defp normalize_interface(_value), do: "eth0"
-
   defp available_interfaces do
     "/sys/class/net"
     |> File.ls()
@@ -409,6 +428,16 @@ defmodule KinoEtherCAT.SmartCells.Setup do
 
   defp normalize_string(value) when is_binary(value), do: String.trim(value)
   defp normalize_string(_value), do: ""
+
+  defp transport_assigns(assigns) do
+    %{
+      transport: assigns.transport,
+      interface: assigns.interface,
+      host: assigns.host,
+      port: assigns.port,
+      bind_ip: assigns.bind_ip
+    }
+  end
 
   defp positive_integer(value, _default) when is_integer(value) and value > 0, do: value
 

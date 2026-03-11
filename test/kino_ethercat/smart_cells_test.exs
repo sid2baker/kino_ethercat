@@ -57,6 +57,7 @@ defmodule KinoEtherCAT.SmartCellsTest do
     assert source =~ ~s(process_data: {:all, :fast})
     assert source =~ ~s(process_data: {:all, :slow})
     assert source =~ ~s(warmup_cycles: 8)
+    refute source =~ "transport: :udp"
     assert source =~ ":ok = EtherCAT.await_operational()"
     assert source =~ "Kino.Layout.tabs("
     assert source =~ "Master: KinoEtherCAT.master()"
@@ -94,8 +95,42 @@ defmodule KinoEtherCAT.SmartCellsTest do
     assert source =~ "process_data: {:all, :main}"
     assert source =~ "target_state: :op"
 
+    refute source =~ "transport: :udp"
     refute source =~ "EtherCAT.configure_slave"
     refute source =~ "activation_mode"
+  end
+
+  test "setup cell renders udp transport source without simulator-specific code" do
+    source =
+      Setup.to_source(%{
+        "transport" => "udp",
+        "host" => "127.0.0.2",
+        "port" => 34_980,
+        "bind_ip" => "127.0.0.1",
+        "dc_enabled" => false,
+        "domains" => [
+          %{"id" => "main", "cycle_time_ms" => 10, "miss_threshold" => 1_000}
+        ],
+        "slaves" => [
+          %{
+            "name" => "inputs",
+            "discovered_name" => "inputs",
+            "driver" => "KinoEtherCAT.Driver.EL1809",
+            "domain_id" => "main"
+          }
+        ]
+      })
+
+    assert source =~ "udp_host = {127, 0, 0, 2}"
+    assert source =~ "udp_bind_ip = {127, 0, 0, 1}"
+    assert source =~ "transport: :udp"
+    assert source =~ "host: udp_host"
+    assert source =~ "port: 34980"
+    assert source =~ "bind_ip: udp_bind_ip"
+    assert source =~ "driver: KinoEtherCAT.Driver.EL1809"
+    assert source =~ ~s(process_data: {:all, :main})
+    refute source =~ "EtherCAT.Simulator"
+    refute source =~ "simulator_ip"
   end
 
   test "visualizer cell renders string-based calls" do
