@@ -75,6 +75,14 @@ defmodule KinoEtherCAT.Runtime do
     end
   end
 
+  @doc false
+  @spec slave_state_display(atom() | nil, map()) :: String.t()
+  def slave_state_display(state_name, info) when is_map(info) do
+    state_name
+    |> slave_public_state(Map.get(info, :al_state))
+    |> to_string()
+  end
+
   @spec subscribe_logs(pid(), struct()) :: :ok
   def subscribe_logs(pid, resource) when is_pid(pid) do
     WidgetLogs.subscribe(pid, resource)
@@ -193,6 +201,8 @@ defmodule KinoEtherCAT.Runtime do
 
     case info do
       {:ok, info} ->
+        public_state = slave_state_display(state_name, info)
+
         signal_rows =
           Enum.map(info.signals, fn signal ->
             %{
@@ -209,12 +219,12 @@ defmodule KinoEtherCAT.Runtime do
         %{
           kind: "slave",
           title: "Slave #{name}",
-          status: to_string(info.al_state),
+          status: public_state,
           message: message,
           logs: payload_logs(slave),
           log_controls: log_controls(slave),
           summary: [
-            %{label: "State", value: to_string(state_name || info.al_state)},
+            %{label: "State", value: public_state},
             %{label: "Station", value: hex(info.station, 4)},
             %{label: "Driver", value: format_term(info.driver)},
             %{label: "AL error", value: format_term(slave.error_code || "none")},
@@ -230,6 +240,7 @@ defmodule KinoEtherCAT.Runtime do
             }
           ],
           details: [
+            %{label: "Reported AL state", value: to_string(Map.get(info, :al_state, :unknown))},
             %{label: "Identity", value: format_term(info.identity || %{})},
             %{
               label: "Configuration error",
@@ -756,6 +767,15 @@ defmodule KinoEtherCAT.Runtime do
   end
 
   defp current_log_level(resource), do: WidgetLogs.level(resource)
+
+  defp slave_public_state(state_name, _al_state)
+       when is_atom(state_name) and not is_nil(state_name),
+       do: state_name
+
+  defp slave_public_state(_state_name, al_state) when is_atom(al_state) and not is_nil(al_state),
+    do: al_state
+
+  defp slave_public_state(_state_name, _al_state), do: :unknown
 
   defp domain_actual_wkc(%{cycle_health: {:invalid, {:wkc_mismatch, %{actual: actual}}}})
        when is_integer(actual),

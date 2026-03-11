@@ -165,6 +165,12 @@ defmodule KinoEtherCAT.RuntimeTest do
            }) == "3"
   end
 
+  test "slave state display prefers the live state-machine state" do
+    assert Runtime.slave_state_display(:init, %{al_state: :op}) == "init"
+    assert Runtime.slave_state_display(nil, %{al_state: :safeop}) == "safeop"
+    assert Runtime.slave_state_display(nil, %{}) == "unknown"
+  end
+
   defp default_dc_resource do
     cond do
       Code.ensure_loaded?(EtherCAT.DC.Status) and
