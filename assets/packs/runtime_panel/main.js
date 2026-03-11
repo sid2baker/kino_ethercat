@@ -48,7 +48,7 @@ const LOG_TONES = {
 function statusTone(status) {
   const value = String(status ?? "").toLowerCase();
 
-  if (["operational", "ok", "op", "locked", "active", "preop_ready"].includes(value)) {
+  if (["operational", "ok", "op", "locked", "active"].includes(value)) {
     return "ok";
   }
 
@@ -59,7 +59,11 @@ function statusTone(status) {
     return "danger";
   }
 
-  if (["recovering", "awaiting_preop", "discovering", "safeop", "preop", "inactive"].includes(value)) {
+  if (
+    ["recovering", "awaiting_preop", "discovering", "preop_ready", "deactivated", "safeop", "preop", "inactive"].includes(
+      value
+    )
+  ) {
     return "warn";
   }
 

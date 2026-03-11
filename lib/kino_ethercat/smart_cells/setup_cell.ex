@@ -15,6 +15,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
   def init(attrs, ctx) do
     config = normalize_attrs(attrs)
     status = if config.slaves == [], do: :idle, else: :discovered
+    if should_auto_scan?(attrs, config), do: Process.send_after(self(), :auto_scan, 0)
     Process.send_after(self(), :poll_state, 500)
 
     {:ok,
@@ -47,17 +48,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
 
   @impl true
   def handle_event("scan", _params, ctx) do
-    server = self()
-    transport = ctx.assigns |> transport_assigns() |> SetupTransport.refresh_auto()
-    ctx = assign_transport(ctx, transport)
-
-    Task.start(fn ->
-      run_scan(server, transport, ctx.assigns.slaves, ctx.assigns.domains)
-    end)
-
-    ctx = assign(ctx, status: :scanning, error: nil)
-    broadcast_event(ctx, "snapshot", payload(ctx.assigns))
-    {:noreply, ctx}
+    {:noreply, begin_scan(ctx)}
   end
 
   def handle_event("stop", _params, ctx) do
@@ -122,6 +113,14 @@ defmodule KinoEtherCAT.SmartCells.Setup do
     {:noreply, ctx}
   end
 
+  def handle_info(:auto_scan, ctx) do
+    if ctx.assigns.status == :idle and ctx.assigns.slaves == [] do
+      {:noreply, begin_scan(ctx)}
+    else
+      {:noreply, ctx}
+    end
+  end
+
   def handle_info(:poll_state, ctx) do
     Process.send_after(self(), :poll_state, 2_000)
 
@@ -170,6 +169,25 @@ defmodule KinoEtherCAT.SmartCells.Setup do
     SetupSource.render(attrs)
   end
 
+  @doc false
+  def should_auto_scan?(attrs, %{slaves: slaves}) when is_map(attrs) and is_list(slaves) do
+    map_size(attrs) == 0 and slaves == []
+  end
+
+  defp begin_scan(ctx) do
+    server = self()
+    transport = ctx.assigns |> transport_assigns() |> SetupTransport.refresh_auto()
+    ctx = assign_transport(ctx, transport)
+
+    Task.start(fn ->
+      run_scan(server, transport, ctx.assigns.slaves, ctx.assigns.domains)
+    end)
+
+    ctx = assign(ctx, status: :scanning, error: nil)
+    broadcast_event(ctx, "snapshot", payload(ctx.assigns))
+    ctx
+  end
+
   defp run_scan(server, transport, existing_slaves, domains) do
     result =
       case scan_discovered_slaves(transport, existing_slaves, domains) do
@@ -205,7 +223,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
     with {:ok, start_opts} <- SetupTransport.runtime_start_opts(transport),
          :ok <- ensure_master_running(scan_start_opts(start_opts)),
          :ok <- EtherCAT.await_running(@scan_await_timeout_ms) do
-      {:ok, discovered_slaves(existing_slaves, domains)}
+      {:ok, discovered_slaves(existing_slaves, domains, start_opts)}
     end
   end
 
@@ -244,13 +262,14 @@ defmodule KinoEtherCAT.SmartCells.Setup do
     end
   end
 
-  defp discovered_slaves(existing_slaves, domains) do
+  defp discovered_slaves(existing_slaves, domains, start_opts) do
     existing_by_key =
       Map.new(existing_slaves, fn slave ->
         {slave_lookup_key(slave), slave}
       end)
 
     default_domain_id = first_domain_id(domains)
+    simulator_names_by_station = simulator_names_by_station(start_opts)
 
     EtherCAT.slaves()
     |> Enum.map(fn %{name: name, station: station} ->
@@ -266,22 +285,73 @@ defmodule KinoEtherCAT.SmartCells.Setup do
           :error -> ""
         end
 
-      discovered_name = to_string(name)
-      existing = Map.get(existing_by_key, discovered_name, %{})
-      driver = if existing["driver"] in [nil, ""], do: driver, else: existing["driver"]
+      generated_name = to_string(name)
+      discovered_name = discovered_name(name, station, simulator_names_by_station)
+      existing = matching_existing_slave(existing_by_key, discovered_name, generated_name)
 
-      %{
-        "station" => station,
-        "vendor_id" => Map.get(identity, :vendor_id, 0),
-        "product_code" => Map.get(identity, :product_code, 0),
-        "name" => Map.get(existing, "name", discovered_name),
-        "discovered_name" => discovered_name,
-        "driver" => driver,
-        "domain_id" =>
-          normalize_domain_id(existing["domain_id"], driver, domains, default_domain_id)
-      }
+      discovered_slave_entry(
+        existing,
+        discovered_name,
+        station,
+        identity,
+        driver,
+        domains,
+        default_domain_id
+      )
     end)
     |> normalize_slaves(domains)
+  end
+
+  @doc false
+  def discovered_name(name, station, simulator_names_by_station)
+      when is_atom(name) and is_integer(station) and is_map(simulator_names_by_station) do
+    Map.get(simulator_names_by_station, station, to_string(name))
+  end
+
+  @doc false
+  def discovered_slave_entry(
+        existing,
+        discovered_name,
+        station,
+        identity,
+        detected_driver,
+        domains,
+        default_domain_id
+      ) do
+    driver = if existing["driver"] in [nil, ""], do: detected_driver, else: existing["driver"]
+
+    %{
+      "station" => station,
+      "vendor_id" => Map.get(identity, :vendor_id, 0),
+      "product_code" => Map.get(identity, :product_code, 0),
+      # First discovery inherits the runtime/simulator name, later scans keep user edits.
+      "name" => Map.get(existing, "name", discovered_name),
+      "discovered_name" => discovered_name,
+      "driver" => driver,
+      "domain_id" =>
+        normalize_domain_id(existing["domain_id"], driver, domains, default_domain_id)
+    }
+  end
+
+  defp matching_existing_slave(existing_by_key, discovered_name, generated_name)
+       when is_map(existing_by_key) do
+    Map.get(existing_by_key, discovered_name) || Map.get(existing_by_key, generated_name, %{})
+  end
+
+  defp simulator_names_by_station(start_opts) when is_list(start_opts) do
+    host = Keyword.get(start_opts, :host)
+    port = Keyword.get(start_opts, :port)
+
+    with :udp <- Keyword.get(start_opts, :transport, :raw),
+         {:ok, %{udp: %{ip: ^host, port: ^port}, slaves: slaves}} <- EtherCAT.Simulator.info() do
+      Map.new(slaves, fn %{station: station, name: name} ->
+        {station, to_string(name)}
+      end)
+    else
+      _ -> %{}
+    end
+  rescue
+    _ -> %{}
   end
 
   defp payload(assigns) do

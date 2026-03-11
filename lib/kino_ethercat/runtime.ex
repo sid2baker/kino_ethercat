@@ -83,6 +83,22 @@ defmodule KinoEtherCAT.Runtime do
     |> to_string()
   end
 
+  @doc false
+  @spec slave_transition_options(atom()) :: [String.t()]
+  def slave_transition_options(master_state) when master_state in [:operational, :recovering] do
+    ["safeop", "op"]
+  end
+
+  def slave_transition_options(_master_state), do: ["init", "preop", "safeop", "op"]
+
+  @doc false
+  @spec slave_transition_help(atom()) :: String.t() | nil
+  def slave_transition_help(master_state) when master_state in [:operational, :recovering] do
+    "With the master running, PREOP and INIT do not stick because a slave reaching PREOP is treated as reconnect-ready and is promoted back toward OP."
+  end
+
+  def slave_transition_help(_master_state), do: nil
+
   @spec subscribe_logs(pid(), struct()) :: :ok
   def subscribe_logs(pid, resource) when is_pid(pid) do
     WidgetLogs.subscribe(pid, resource)
@@ -105,48 +121,12 @@ defmodule KinoEtherCAT.Runtime do
     slaves = runtime_slaves()
     domains = runtime_domains()
     dc_status = dc_snapshot(dc())
-    start_config_available? = StartConfig.available?()
+    desired_target = master_desired_target(master)
     start_available? = master_start_available?(public_state)
     activation_available? = master_activation_available?(public_state)
+    deactivate_safeop_available? = master_deactivate_safeop_available?(public_state)
+    deactivate_preop_available? = master_deactivate_preop_available?(public_state)
     stop_available? = master_stop_available?(public_state)
-
-    slave_rows =
-      Enum.map(slaves, fn %{name: name, station: station} ->
-        info = safe(fn -> EtherCAT.slave_info(name) end, {:error, :not_found})
-
-        al_state =
-          if match?({:ok, _}, info),
-            do: info |> elem(1) |> Map.get(:al_state, :unknown),
-            else: :unknown
-
-        %{
-          key: Atom.to_string(name),
-          cells: [
-            Atom.to_string(name),
-            hex(station, 4),
-            to_string(al_state)
-          ]
-        }
-      end)
-
-    domain_rows =
-      Enum.map(domains, fn {id, cycle_time_us, _pid} ->
-        info = safe(fn -> EtherCAT.domain_info(id) end, {:error, :not_found})
-
-        state =
-          if match?({:ok, _}, info),
-            do: info |> elem(1) |> Map.get(:state, :unknown),
-            else: :unknown
-
-        %{
-          key: Atom.to_string(id),
-          cells: [
-            Atom.to_string(id),
-            "#{cycle_time_us} us",
-            to_string(state)
-          ]
-        }
-      end)
 
     %{
       kind: "master",
@@ -159,38 +139,30 @@ defmodule KinoEtherCAT.Runtime do
       summary: [
         %{label: "Slaves", value: Integer.to_string(length(slaves))},
         %{label: "Domains", value: Integer.to_string(length(domains))},
-        %{
-          label: "Pending PREOP",
-          value: Integer.to_string(MapSet.size(master.pending_preop || MapSet.new()))
-        },
-        %{label: "Activatable", value: Integer.to_string(length(master.activatable_slaves || []))}
+        %{label: "Transport", value: master_transport_label()}
       ],
-      tables: [
-        %{title: "Slaves", headers: ["Name", "Station", "State"], rows: slave_rows},
-        %{title: "Domains", headers: ["Domain", "Cycle", "State"], rows: domain_rows}
-      ],
-      details_title: "Runtime",
-      details: [
-        %{label: "Bus monitor", value: format_term(master.bus_ref || "none")},
-        %{label: "DC lock", value: to_string(dc_status.lock_state || :disabled)},
-        %{label: "DC reference station", value: format_term(master.dc_ref_station || "none")},
-        %{label: "Last failure", value: format_term(master.last_failure || "none")}
-      ],
+      tables: [],
+      details_title: "Session",
+      details: master_details(master, desired_target, dc_status),
       controls: %{
-        title: "Actions",
+        title: "Session",
         buttons:
-          master_buttons(public_state, start_available?, activation_available?, stop_available?),
-        summary: [
-          %{
-            label: "Remembered start",
-            value: boolean_label(start_config_available?, "ready", "missing")
-          },
-          %{
-            label: "Next step",
-            value: master_next_step(public_state, start_available?, activation_available?)
-          }
-        ],
-        help: master_control_help(public_state, start_available?, activation_available?)
+          master_buttons(
+            public_state,
+            start_available?,
+            activation_available?,
+            deactivate_safeop_available?,
+            deactivate_preop_available?,
+            stop_available?
+          ),
+        help:
+          master_control_help(
+            public_state,
+            start_available?,
+            activation_available?,
+            deactivate_safeop_available?,
+            deactivate_preop_available?
+          )
       }
     }
   end
@@ -198,6 +170,7 @@ defmodule KinoEtherCAT.Runtime do
   def payload(%Slave{name: name} = slave, message) do
     info = safe(fn -> EtherCAT.slave_info(name) end, {:error, :not_found})
     state_name = fetch_state_name(slave)
+    master_state = runtime_state(fetch_state_name(%Master{}) || :idle)
 
     case info do
       {:ok, info} ->
@@ -249,7 +222,12 @@ defmodule KinoEtherCAT.Runtime do
             %{label: "Process data", value: format_term(slave.process_data_request || :none)}
           ],
           controls: %{
-            select: %{id: "transition", label: "Transition", options: ~w(init preop safeop op)}
+            select: %{
+              id: "transition",
+              label: "Transition",
+              options: slave_transition_options(master_state)
+            },
+            help: slave_transition_help(master_state)
           }
         }
 
@@ -428,6 +406,14 @@ defmodule KinoEtherCAT.Runtime do
 
   def perform(%Master{} = resource, "activate", _params) do
     run_action(resource, fn -> EtherCAT.activate() end, "Master activated")
+  end
+
+  def perform(%Master{} = resource, "deactivate_safeop", _params) do
+    run_action(resource, fn -> EtherCAT.deactivate() end, "Master deactivated to SAFEOP")
+  end
+
+  def perform(%Master{} = resource, "deactivate_preop", _params) do
+    run_action(resource, fn -> EtherCAT.deactivate(:preop) end, "Master deactivated to PREOP")
   end
 
   def perform(%Master{} = resource, "stop", _params) do
@@ -859,10 +845,87 @@ defmodule KinoEtherCAT.Runtime do
   defp maybe_put_required_bus_opt(_opts, _key, nil), do: []
   defp maybe_put_required_bus_opt(opts, key, value), do: Keyword.put(opts, key, value)
 
+  defp master_desired_target(%Master{} = master) do
+    case Map.get(master, :desired_runtime_target, :op) do
+      target when target in [:op, :safeop, :preop] -> target
+      _ -> :op
+    end
+  end
+
+  defp master_details(%Master{} = master, desired_target, dc_status) do
+    [
+      %{label: "Desired target", value: Atom.to_string(desired_target)},
+      maybe_detail("DC lock", dc_lock_value(dc_status)),
+      maybe_detail("Last failure", last_failure_value(master.last_failure))
+    ]
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp dc_lock_value(%{lock_state: :disabled}), do: nil
+  defp dc_lock_value(%{lock_state: nil}), do: nil
+  defp dc_lock_value(%{lock_state: lock_state}), do: to_string(lock_state)
+  defp dc_lock_value(_status), do: nil
+
+  defp last_failure_value(nil), do: nil
+  defp last_failure_value(:none), do: nil
+  defp last_failure_value(value), do: format_term(value)
+
+  defp master_transport_label do
+    case fetch_bus_state() do
+      {:ok, _state_name, %Bus{} = bus} ->
+        transport_label(bus_start_opts(bus))
+
+      _ ->
+        transport_label(StartConfig.current() || [])
+    end
+  end
+
+  defp transport_label(opts) when is_list(opts) do
+    cond do
+      udp_transport_opts?(opts) ->
+        udp_transport_label(opts)
+
+      interface = Keyword.get(opts, :interface) ->
+        redundant_transport_label(interface, Keyword.get(opts, :backup_interface))
+
+      true ->
+        "unconfigured"
+    end
+  end
+
+  defp transport_label(_opts), do: "unconfigured"
+
+  defp udp_transport_label(opts) do
+    host = opts |> Keyword.get(:host) |> format_ip()
+    port = Keyword.get(opts, :port)
+
+    case {host, port} do
+      {host, port} when is_binary(host) and is_integer(port) -> "#{host}:#{port}"
+      {host, _port} when is_binary(host) -> host
+      _ -> "udp"
+    end
+  end
+
+  defp redundant_transport_label(interface, backup_interface) when is_binary(backup_interface),
+    do: "#{interface} + #{backup_interface}"
+
+  defp redundant_transport_label(interface, _backup_interface), do: interface
+
+  defp format_ip({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"
+  defp format_ip({_, _, _, _, _, _, _, _} = ip), do: ip |> :inet.ntoa() |> to_string()
+  defp format_ip(ip) when is_binary(ip), do: ip
+  defp format_ip(_ip), do: nil
+
   defp master_start_available?(:idle), do: StartConfig.available?()
   defp master_start_available?(_state), do: false
 
-  defp master_activation_available?(state), do: state in [:preop_ready, :activation_blocked]
+  defp master_activation_available?(state), do: state in [:preop_ready, :deactivated]
+
+  defp master_deactivate_safeop_available?(state),
+    do: state in [:operational, :activation_blocked, :recovering]
+
+  defp master_deactivate_preop_available?(state),
+    do: state in [:operational, :activation_blocked, :recovering, :deactivated]
 
   defp master_stop_available?(:idle), do: false
   defp master_stop_available?(_state), do: true
@@ -872,7 +935,14 @@ defmodule KinoEtherCAT.Runtime do
   defp master_start_title(false),
     do: "Start becomes available after EtherCAT has been started with notebook config"
 
-  defp master_buttons(:idle, start_available?, _activation_available?, _stop_available?) do
+  defp master_buttons(
+         :idle,
+         start_available?,
+         _activation_available?,
+         _deactivate_safeop_available?,
+         _deactivate_preop_available?,
+         _stop_available?
+       ) do
     [
       %{
         id: "start",
@@ -884,45 +954,102 @@ defmodule KinoEtherCAT.Runtime do
     ]
   end
 
-  defp master_buttons(_state, _start_available?, true, stop_available?) do
+  defp master_buttons(
+         _state,
+         _start_available?,
+         true,
+         deactivate_safeop_available?,
+         deactivate_preop_available?,
+         stop_available?
+       ) do
     [
       %{id: "activate", label: "Activate OP", tone: "primary"},
+      maybe_button(
+        %{id: "deactivate_safeop", label: "Deactivate SAFEOP", tone: "secondary"},
+        deactivate_safeop_available?
+      ),
+      maybe_button(
+        %{id: "deactivate_preop", label: "Deactivate PREOP", tone: "secondary"},
+        deactivate_preop_available?
+      ),
       %{id: "stop", label: "Stop session", tone: "danger", disabled: not stop_available?}
     ]
+    |> Enum.reject(&is_nil/1)
   end
 
-  defp master_buttons(_state, _start_available?, _activation_available?, stop_available?) do
+  defp master_buttons(
+         _state,
+         _start_available?,
+         _activation_available?,
+         deactivate_safeop_available?,
+         deactivate_preop_available?,
+         stop_available?
+       ) do
     [
+      maybe_button(
+        %{id: "deactivate_safeop", label: "Deactivate SAFEOP", tone: "secondary"},
+        deactivate_safeop_available?
+      ),
+      maybe_button(
+        %{id: "deactivate_preop", label: "Deactivate PREOP", tone: "secondary"},
+        deactivate_preop_available?
+      ),
       %{id: "stop", label: "Stop session", tone: "danger", disabled: not stop_available?}
     ]
+    |> Enum.reject(&is_nil/1)
   end
 
-  defp master_next_step(:idle, true, _activation_available?), do: "Start remembered session"
-
-  defp master_next_step(:idle, false, _activation_available?),
-    do: "Start EtherCAT once from notebook config"
-
-  defp master_next_step(_state, _start_available?, true), do: "Activate OP"
-  defp master_next_step(_state, _start_available?, false), do: "Inspect runtime or stop master"
-
-  defp master_control_help(:idle, true, _activation_available?) do
+  defp master_control_help(
+         :idle,
+         true,
+         _activation_available?,
+         _safeop_available?,
+         _preop_available?
+       ) do
     "Start replays the remembered notebook configuration for this EtherCAT session."
   end
 
-  defp master_control_help(:idle, false, _activation_available?) do
+  defp master_control_help(
+         :idle,
+         false,
+         _activation_available?,
+         _safeop_available?,
+         _preop_available?
+       ) do
     "Start becomes available after EtherCAT has been started once from notebook configuration."
   end
 
-  defp master_control_help(_state, _start_available?, true) do
+  defp master_control_help(
+         _state,
+         _start_available?,
+         true,
+         _safeop_available?,
+         _preop_available?
+       ) do
     "Activate is available because the master is ready to request OP."
   end
 
-  defp master_control_help(_state, _start_available?, false) do
-    "Use Stop to tear down the current runtime, or inspect slaves and domains below."
+  defp master_control_help(_state, _start_available?, false, true, true) do
+    "Use Deactivate to settle the session below OP without tearing it down, or Stop to end it completely."
   end
 
-  defp boolean_label(true, true_label, _false_label), do: true_label
-  defp boolean_label(false, _true_label, false_label), do: false_label
+  defp master_control_help(_state, _start_available?, false, true, false) do
+    "Use Deactivate SAFEOP to keep the session live below OP, or Stop to end it completely."
+  end
+
+  defp master_control_help(_state, _start_available?, false, false, true) do
+    "Use Deactivate PREOP for reconfiguration without a full stop, or Stop to end the session completely."
+  end
+
+  defp master_control_help(_state, _start_available?, false, false, false) do
+    "Use Stop to tear down the current EtherCAT runtime."
+  end
+
+  defp maybe_button(button, true), do: button
+  defp maybe_button(_button, false), do: nil
+
+  defp maybe_detail(_label, nil), do: nil
+  defp maybe_detail(label, value), do: %{label: label, value: value}
 
   defp format_term(value) when is_binary(value), do: value
   defp format_term(value), do: inspect(value, pretty: false, limit: 20)

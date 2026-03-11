@@ -48,11 +48,11 @@ defmodule KinoEtherCAT.RuntimeTest do
     assert %{
              kind: "master",
              meta_layout: "stacked",
-             details_title: "Runtime",
+             details_title: "Session",
+             summary: summary,
              controls: %{
-               title: "Actions",
+               title: "Session",
                buttons: buttons,
-               summary: control_summary,
                help: control_help
              },
              log_controls: log_controls
@@ -60,8 +60,9 @@ defmodule KinoEtherCAT.RuntimeTest do
              Runtime.payload(%Master{})
 
     assert [%{id: "start", label: "Start session", disabled: true}] = buttons
-    assert Enum.any?(control_summary, &(&1.label == "Remembered start" and &1.value == "missing"))
-    assert Enum.any?(control_summary, &(&1.label == "Next step"))
+    assert Enum.any?(summary, &(&1.label == "Slaves" and &1.value == "0"))
+    assert Enum.any?(summary, &(&1.label == "Domains" and &1.value == "0"))
+    assert Enum.any?(summary, &(&1.label == "Transport" and &1.value == "unconfigured"))
     assert is_binary(control_help)
     assert log_controls.select.id == "set_log_level"
     assert log_controls.select.label == "Log filter"
@@ -151,6 +152,14 @@ defmodule KinoEtherCAT.RuntimeTest do
              Runtime.perform(%Master{}, "set_log_level", %{"value" => "verbose"})
   end
 
+  test "master deactivate actions map to the new lifecycle API" do
+    assert {:error, %Master{}, %{level: "error", text: ":not_started"}} =
+             Runtime.perform(%Master{}, "deactivate_safeop")
+
+    assert {:error, %Master{}, %{level: "error", text: ":not_started"}} =
+             Runtime.perform(%Master{}, "deactivate_preop")
+  end
+
   test "domain WKC display reflects the current mismatch window" do
     assert Runtime.domain_wkc_display(%{expected_wkc: 3, cycle_health: :healthy}) == "3"
 
@@ -169,6 +178,16 @@ defmodule KinoEtherCAT.RuntimeTest do
     assert Runtime.slave_state_display(:init, %{al_state: :op}) == "init"
     assert Runtime.slave_state_display(nil, %{al_state: :safeop}) == "safeop"
     assert Runtime.slave_state_display(nil, %{}) == "unknown"
+  end
+
+  test "slave transition options only offer stable targets while the master is running" do
+    assert Runtime.slave_transition_options(:operational) == ["safeop", "op"]
+    assert Runtime.slave_transition_options(:recovering) == ["safeop", "op"]
+    assert Runtime.slave_transition_options(:deactivated) == ["init", "preop", "safeop", "op"]
+    assert Runtime.slave_transition_options(:preop_ready) == ["init", "preop", "safeop", "op"]
+
+    assert is_binary(Runtime.slave_transition_help(:operational))
+    assert Runtime.slave_transition_help(:preop_ready) == nil
   end
 
   defp default_dc_resource do
