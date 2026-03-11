@@ -11,6 +11,8 @@
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
+  margin-block: 4px;
+  outline: 1px solid var(--r95-color-borderDark);
 }
 
 .ke95-modal {
@@ -20,6 +22,8 @@
   --r95-color-headerNotActiveText: #c6c6c6;
   color: #222;
   font-size: 12px;
+  margin-block: 4px;
+  outline: 1px solid var(--r95-color-borderDark);
 }
 
 .ke95-modal__content {
@@ -47,13 +51,20 @@
   display: none;
 }
 
-.ke95-window__close:disabled {
+.ke95-window__close:disabled,
+.ke95-window__close[disabled],
+.ke95-window__close[aria-disabled="true"] {
   cursor: default;
-  opacity: 0.55;
+  opacity: 1;
+  color: #7f787f;
+  filter: grayscale(1);
 }
 
-.ke95-window__close:disabled img {
+.ke95-window__close:disabled img,
+.ke95-window__close[disabled] img,
+.ke95-window__close[aria-disabled="true"] img {
   filter: grayscale(1);
+  opacity: 0.5;
 }
 
 .ke95-window__body {
@@ -100,6 +111,16 @@
   min-width: 0;
 }
 
+.ke95-stack {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ke95-stack--compact {
+  gap: 6px;
+}
+
 .ke95-modal--compact .ke95-modal__content,
 .ke95-modal--compact .ke95-window__meta,
 .ke95-shell--compact .ke95-window__body,
@@ -117,6 +138,13 @@
   display: grid;
   gap: 8px;
   padding: 10px;
+}
+
+.ke95-inset {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  min-width: 0;
 }
 
 .ke95-panel__actions,
@@ -147,6 +175,13 @@
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
+.ke95-columns {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--ke95-columns-min, 16rem)), 1fr));
+}
+
 .ke95-field {
   display: grid;
   gap: 4px;
@@ -166,6 +201,11 @@
 .ke95-field__help {
   line-height: 1.4;
   color: #444;
+}
+
+.ke95-disabled-group {
+  opacity: 0.55;
+  filter: grayscale(0.2);
 }
 
 .ke95-summary {
@@ -334,6 +374,24 @@
   color: inherit;
   font: inherit;
   padding: 3px 4px;
+}
+
+.ke95-properties {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--ke95-property-min, 10rem)), 1fr));
+}
+
+.ke95-property {
+  display: grid;
+  gap: 4px;
+  padding: 6px 8px;
+  min-width: 0;
+}
+
+.ke95-property__value {
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 640px) {

@@ -6,17 +6,15 @@
   min-width: 0;
 }
 
-.ke95-runtime-panel__meta {
-  display: grid;
-  gap: 0.75rem;
-  min-width: 0;
+.ke95-runtime-panel__input-row {
+  align-items: end;
 }
 
-.ke95-runtime-panel__meta--split {
-  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+.ke95-runtime-panel__input-actions {
+  align-self: end;
 }
 
-.ke95-runtime-panel__details .ke95-detail-grid {
+.ke95-runtime-panel__details .ke95-runtime-panel__properties {
   max-height: 16rem;
   overflow: auto;
   padding-right: 0.125rem;
@@ -28,7 +26,7 @@
   scrollbar-gutter: stable;
 }
 
-.ke95-runtime-panel--fullscreen .ke95-runtime-panel__details .ke95-detail-grid {
+.ke95-runtime-panel--fullscreen .ke95-runtime-panel__details .ke95-runtime-panel__properties {
   max-height: min(24rem, 42vh);
 }
 
@@ -65,7 +63,6 @@
   gap: 0.4rem;
   max-height: 15rem;
   overflow: auto;
-  padding: 0.5rem;
   scrollbar-gutter: stable;
 }
 

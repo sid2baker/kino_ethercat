@@ -1,7 +1,5 @@
 .ke95-slave-panel__domain,
-.ke95-slave-panel__card,
 .ke95-slave-panel__signal {
   display: grid;
   gap: 6px;
-  padding: 8px;
 }

@@ -15,7 +15,19 @@ import { TextArea } from "@react95/core/TextArea";
 import { Tabs as React95Tabs } from "@react95/core/Tabs";
 import { TitleBar } from "@react95/core/TitleBar";
 
-export { Button, Checkbox, Fieldset, Frame, Input, Modal, ProgressBar, React95Tab as Tab, TextArea, React95Tabs as Tabs, TitleBar };
+export {
+  Button,
+  Checkbox,
+  Fieldset,
+  Frame,
+  Input,
+  Modal,
+  ProgressBar,
+  React95Tab as Tab,
+  TextArea,
+  React95Tabs as Tabs,
+  TitleBar,
+};
 
 function useWindowControls(windowRef) {
   const [fullscreenActive, setFullscreenActive] = useState(false);
@@ -236,6 +248,26 @@ export function Panel({ title, actions = null, children, className = "" }) {
   );
 }
 
+export function Stack({ children, className = "", compact = false }) {
+  return <div className={`ke95-stack${compact ? " ke95-stack--compact" : ""} ${className}`.trim()}>{children}</div>;
+}
+
+export function Columns({ children, className = "", minWidth = "16rem" }) {
+  return (
+    <div className={`ke95-columns ${className}`.trim()} style={{ "--ke95-columns-min": minWidth }}>
+      {children}
+    </div>
+  );
+}
+
+export function Inset({ children, className = "" }) {
+  return (
+    <Frame boxShadow="in" className={`ke95-inset ${className}`.trim()}>
+      {children}
+    </Frame>
+  );
+}
+
 export function ControlField({ label = null, help = null, children, className = "" }) {
   return (
     <label className={`ke95-field ${className}`.trim()}>
@@ -255,6 +287,23 @@ export function SummaryGrid({ items }) {
         <Frame key={item.label} boxShadow="in" className="ke95-summary__item">
           <div className="ke95-summary__label">{item.label}</div>
           <div className="ke95-summary__value">{item.value}</div>
+        </Frame>
+      ))}
+    </div>
+  );
+}
+
+export function PropertyList({ items, className = "", minWidth = "10rem" }) {
+  if (!items?.length) return null;
+
+  return (
+    <div className={`ke95-properties ${className}`.trim()} style={{ "--ke95-property-min": minWidth }}>
+      {items.map((item) => (
+        <Frame key={item.label} boxShadow="in" className="ke95-property">
+          <div className="ke95-summary__label">{item.label}</div>
+          <Mono as="div" className="ke95-property__value">
+            {item.value}
+          </Mono>
         </Frame>
       ))}
     </div>

@@ -6,9 +6,11 @@ defmodule KinoEtherCAT.Driver do
   `lookup/1` to resolve a slave identity map to its driver module.
 
   `simulator_all/0` returns the built-in drivers that also expose simulator
-  hydration through `simulator_definition/1`.
+  hydration through a `MyDriver.Simulator` companion implementing
+  `EtherCAT.Simulator.DriverAdapter`.
   """
 
+  alias EtherCAT.Simulator.DriverAdapter
   alias EtherCAT.Slave.Driver, as: SlaveDriver
 
   @driver_modules [
@@ -56,8 +58,8 @@ defmodule KinoEtherCAT.Driver do
 
   defp entry(module) do
     identity = SlaveDriver.identity(module) || %{}
-    simulator_definition = SlaveDriver.simulator_definition(module, %{})
-    process_data_model = process_data_model(module)
+    simulator_adapter = DriverAdapter.resolve(module, nil)
+    signal_model = signal_model(module)
 
     %{
       module: module,
@@ -66,8 +68,8 @@ defmodule KinoEtherCAT.Driver do
       vendor_id: Map.get(identity, :vendor_id),
       product_code: Map.get(identity, :product_code),
       revision: Map.get(identity, :revision, :any),
-      assignable?: process_data_model != [],
-      simulator?: not is_nil(simulator_definition)
+      assignable?: signal_model != [],
+      simulator?: not is_nil(simulator_adapter)
     }
   end
 
@@ -87,8 +89,8 @@ defmodule KinoEtherCAT.Driver do
     |> List.last()
   end
 
-  defp process_data_model(module) do
-    module.process_data_model(%{})
+  defp signal_model(module) do
+    SlaveDriver.signal_model(module, %{})
   rescue
     _ -> []
   end

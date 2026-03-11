@@ -6,12 +6,15 @@ import { createRoot } from "react-dom/client";
 import uPlot from "uplot";
 
 import {
+  Columns,
   DataTable,
   EmptyState,
-  Frame,
+  Inset,
   ModalShell,
   Mono,
   Panel,
+  PropertyList,
+  Stack,
   StatusBadge,
   SummaryGrid,
   Tab,
@@ -86,6 +89,10 @@ function formatHex(value, pad = 4) {
 function formatTime(atMs) {
   if (!atMs) return "n/a";
   return new Date(atMs).toLocaleTimeString();
+}
+
+function sumSlices(slices = []) {
+  return slices.reduce((sum, slice) => sum + (slice.value ?? 0), 0);
 }
 
 function sliceWindowLabel(sliceMs) {
@@ -248,7 +255,7 @@ function ChartPanel({ title, subtitle, series, height = 210, yUnit = "", emptyLa
   const data = buildChartData(series);
 
   return (
-    <Frame boxShadow="in" className="ke95-diagnostics__chart-panel">
+    <Inset className="ke95-diagnostics__chart-panel">
       <div className="ke95-diagnostics__chart-copy">
         <div className="ke95-kicker">{title}</div>
         <Mono as="div">{subtitle}</Mono>
@@ -272,12 +279,12 @@ function ChartPanel({ title, subtitle, series, height = 210, yUnit = "", emptyLa
             chartKey={`${seriesKey}:${yUnit}:${layoutVersion}`}
           />
         ) : (
-          <Frame boxShadow="in" className="ke95-chart__empty">
+          <Inset className="ke95-chart__empty">
             <Mono>{emptyLabel}</Mono>
-          </Frame>
+          </Inset>
         )}
       </div>
-    </Frame>
+    </Inset>
   );
 }
 
@@ -305,63 +312,70 @@ function Diagnostics({ ctx, data }) {
     >
       {({ layoutVersion }) => (
         <LayoutVersionContext.Provider value={layoutVersion}>
-          <SummaryGrid
-            items={[
-              { label: "Slice window", value: sliceWindowLabel(snapshot.slice_ms) },
-              { label: "Expired RT", value: formatCount(snapshot.bus.expired_realtime) },
-              { label: "Bus exceptions", value: formatCount(snapshot.bus.exceptions) },
-              { label: "Slaves", value: String(snapshot.slaves.length) },
-              { label: "Domains", value: String(snapshot.domains.length) },
-              { label: "DC state", value: snapshot.dc?.lock_state ?? "disabled" },
-            ]}
-          />
+          <Stack className="ke95-diagnostics">
+            <SummaryGrid
+              items={[
+                { label: "Slice window", value: sliceWindowLabel(snapshot.slice_ms) },
+                { label: "Expired RT", value: formatCount(snapshot.bus.expired_realtime) },
+                { label: "Bus exceptions", value: formatCount(snapshot.bus.exceptions) },
+                { label: "Slaves", value: String(snapshot.slaves.length) },
+                { label: "Domains", value: String(snapshot.domains.length) },
+                { label: "DC state", value: snapshot.dc?.lock_state ?? "disabled" },
+              ]}
+            />
 
-          <Tabs defaultActiveTab="Performance">
-            <Tab title="Performance">
-              <div className="ke95-grid">
-                <div className="ke95-grid ke95-grid--2">
-                  <TransactionCard
-                    title="Realtime bus"
-                    accent="#0f766e"
-                    transaction={snapshot.bus.transactions.realtime}
-                    queue={snapshot.bus.queues.realtime}
-                  />
-                  <TransactionCard
-                    title="Reliable bus"
-                    accent="#1d4ed8"
-                    transaction={snapshot.bus.transactions.reliable}
-                    queue={snapshot.bus.queues.reliable}
-                  />
-                </div>
-                <FrameSection frames={snapshot.bus.frames} links={snapshot.bus.links} />
-              </div>
-            </Tab>
-            <Tab title="DC">
-              <DcSection dc={snapshot.dc} />
-            </Tab>
-            <Tab title="Domains">
-              <DomainsSection domains={snapshot.domains} />
-            </Tab>
-            <Tab title="Slaves">
-              <SlavesSection slaves={snapshot.slaves} />
-            </Tab>
-            <Tab title="Events">
-              <TimelineSection timeline={snapshot.timeline} />
-            </Tab>
-          </Tabs>
+            <Tabs defaultActiveTab="Performance">
+              <Tab title="Performance">
+                <PerformanceSection bus={snapshot.bus} />
+              </Tab>
+              <Tab title="DC">
+                <DcSection dc={snapshot.dc} />
+              </Tab>
+              <Tab title="Domains">
+                <DomainsSection domains={snapshot.domains} />
+              </Tab>
+              <Tab title="Slaves">
+                <SlavesSection slaves={snapshot.slaves} />
+              </Tab>
+              <Tab title="Events">
+                <TimelineSection timeline={snapshot.timeline} />
+              </Tab>
+            </Tabs>
+          </Stack>
         </LayoutVersionContext.Provider>
       )}
     </ModalShell>
   );
 }
 
+function PerformanceSection({ bus }) {
+  return (
+    <Stack>
+      <TransactionCard
+        title="Realtime bus"
+        accent="#0f766e"
+        transaction={bus.transactions.realtime}
+        queue={bus.queues.realtime}
+      />
+      <TransactionCard
+        title="Reliable bus"
+        accent="#1d4ed8"
+        transaction={bus.transactions.reliable}
+        queue={bus.queues.reliable}
+      />
+      <FrameSection frames={bus.frames} links={bus.links} />
+    </Stack>
+  );
+}
+
 function TransactionCard({ title, accent, transaction, queue }) {
   return (
     <Panel title={title}>
+      <Stack compact>
       <Mono as="div">
         latency last {formatUs(transaction.last_latency_us)} • avg {formatUs(transaction.avg_latency_us)}
       </Mono>
-      <div className="ke95-grid ke95-grid--2">
+      <Columns minWidth="22rem">
         <ChartPanel
           title="Latency"
           subtitle={`dispatches ${formatCount(transaction.dispatches)} • wkc ${formatCount(transaction.last_wkc)}`}
@@ -375,7 +389,7 @@ function TransactionCard({ title, accent, transaction, queue }) {
           series={[{ label: "Queue", slices: queue.slices, stroke: "#475569", fill: "#47556926" }]}
           emptyLabel="No queue samples yet"
         />
-      </div>
+      </Columns>
       <SummaryGrid
         items={[
           { label: "Transactions", value: formatCount(transaction.transactions) },
@@ -384,53 +398,65 @@ function TransactionCard({ title, accent, transaction, queue }) {
           { label: "Queue peak", value: formatCount(queue.peak_depth) },
         ]}
       />
+      </Stack>
     </Panel>
   );
 }
 
 function FrameSection({ frames, links }) {
   return (
-    <div className="ke95-grid ke95-grid--2">
+    <Stack>
       <Panel title="Bus frames">
-        <Mono as="div">RTT last {formatNs(frames.last_rtt_ns)} • peak {formatNs(frames.peak_rtt_ns)}</Mono>
-        <ChartPanel
-          title="Traffic"
-          subtitle={`sent ${formatCount(frames.sent)} • received ${formatCount(frames.received)} • dropped ${formatCount(frames.dropped)}`}
-          series={[
-            { label: "Sent", slices: frames.sent_slices, stroke: "#0f766e", fill: "#0f766e20" },
-            { label: "Received", slices: frames.received_slices, stroke: "#2563eb", fill: "#2563eb20" },
-            { label: "Dropped", slices: frames.dropped_slices, stroke: "#be123c", fill: "#be123c20" },
-          ]}
-          emptyLabel="No frame traffic yet"
-        />
-        <div className="ke95-grid ke95-grid--2">
+        <Stack compact>
+          <Mono as="div">RTT last {formatNs(frames.last_rtt_ns)} • peak {formatNs(frames.peak_rtt_ns)}</Mono>
           <ChartPanel
-            title="Round trip"
-            subtitle={`ignored ${formatCount(frames.ignored)} • exceptions ${formatCount(frames.exception_slices.reduce((sum, slice) => sum + (slice.value ?? 0), 0))}`}
-            series={[{ label: "RTT", slices: frames.rtt_slices, stroke: "#7c3aed", fill: "#7c3aed20" }]}
-            yUnit="ns"
-            emptyLabel="No RTT samples yet"
-          />
-          <ChartPanel
-            title="Fault timeline"
-            subtitle={`expired realtime ${formatCount(frames.expired_slices.reduce((sum, slice) => sum + (slice.value ?? 0), 0))}`}
+            title="Traffic"
+            subtitle={`sent ${formatCount(frames.sent)} • received ${formatCount(frames.received)} • dropped ${formatCount(frames.dropped)}`}
             series={[
-              { label: "Expired", slices: frames.expired_slices, stroke: "#ea580c", fill: "#ea580c20" },
-              { label: "Exceptions", slices: frames.exception_slices, stroke: "#dc2626", fill: "#dc262620" },
-              { label: "Ignored", slices: frames.ignored_slices, stroke: "#78716c", fill: "#78716c20" },
+              { label: "Sent", slices: frames.sent_slices, stroke: "#0f766e", fill: "#0f766e20" },
+              { label: "Received", slices: frames.received_slices, stroke: "#2563eb", fill: "#2563eb20" },
+              { label: "Dropped", slices: frames.dropped_slices, stroke: "#be123c", fill: "#be123c20" },
             ]}
-            emptyLabel="No bus faults recorded"
+            emptyLabel="No frame traffic yet"
           />
-        </div>
+          <Columns minWidth="22rem">
+            <ChartPanel
+              title="Round trip"
+              subtitle={`ignored ${formatCount(frames.ignored)} • exceptions ${formatCount(sumSlices(frames.exception_slices))}`}
+              series={[{ label: "RTT", slices: frames.rtt_slices, stroke: "#7c3aed", fill: "#7c3aed20" }]}
+              yUnit="ns"
+              emptyLabel="No RTT samples yet"
+            />
+            <ChartPanel
+              title="Fault timeline"
+              subtitle={`expired realtime ${formatCount(sumSlices(frames.expired_slices))}`}
+              series={[
+                { label: "Expired", slices: frames.expired_slices, stroke: "#ea580c", fill: "#ea580c20" },
+                { label: "Exceptions", slices: frames.exception_slices, stroke: "#dc2626", fill: "#dc262620" },
+                { label: "Ignored", slices: frames.ignored_slices, stroke: "#78716c", fill: "#78716c20" },
+              ]}
+              emptyLabel="No bus faults recorded"
+            />
+          </Columns>
+          {frames.dropped_reasons?.length ? (
+            <PropertyList
+              minWidth="12rem"
+              items={frames.dropped_reasons.map((item) => ({
+                label: item.reason,
+                value: formatCount(item.count),
+              }))}
+            />
+          ) : null}
+        </Stack>
       </Panel>
 
       <Panel title="Links">
         {links.length === 0 ? (
           <EmptyState>No link telemetry yet</EmptyState>
         ) : (
-          <div className="ke95-grid">
+          <Stack compact className="ke95-diagnostics__feed">
             {links.map((link) => (
-              <Frame key={link.name} boxShadow="in" className="ke95-diagnostics__card">
+              <Inset key={link.name} className="ke95-diagnostics__card">
                 <div className="ke95-toolbar">
                   <Mono>{link.name}</Mono>
                   <StatusBadge tone={link.status === "down" ? "danger" : "ok"}>{link.status}</StatusBadge>
@@ -439,24 +465,24 @@ function FrameSection({ frames, links }) {
                   {link.reason ? `${link.reason} • ` : ""}
                   {formatTime(link.at_ms)}
                 </Mono>
-              </Frame>
+              </Inset>
             ))}
-          </div>
+          </Stack>
         )}
       </Panel>
-    </div>
+    </Stack>
   );
 }
 
 function DcSection({ dc }) {
   return (
     <Panel title="Distributed clocks">
-      <div className="ke95-toolbar">
-        <StatusBadge tone={badgeTone(LOCK_TONES, dc.lock_state)}>{dc.lock_state}</StatusBadge>
-      </div>
+      <Stack compact>
+        <div className="ke95-toolbar">
+          <StatusBadge tone={badgeTone(LOCK_TONES, dc.lock_state)}>{dc.lock_state}</StatusBadge>
+        </div>
 
-      <div className="ke95-grid ke95-grid--2">
-        <div className="ke95-grid">
+        <Columns minWidth="22rem">
           <ChartPanel
             title="Sync diff"
             subtitle={`tick wkc ${formatCount(dc.tick_wkc)} • max ${formatNs(dc.max_sync_diff_ns)}`}
@@ -464,7 +490,8 @@ function DcSection({ dc }) {
             yUnit="ns"
             emptyLabel="No DC sync samples yet"
           />
-          <SummaryGrid
+          <PropertyList
+            minWidth="12rem"
             items={[
               { label: "Configured", value: String(dc.configured) },
               { label: "Active", value: String(dc.active) },
@@ -474,21 +501,20 @@ function DcSection({ dc }) {
               { label: "Lock", value: dc.lock_state },
             ]}
           />
-        </div>
-
+        </Columns>
         {dc.lock_events?.length ? (
-          <div className="ke95-grid">
+          <Stack compact className="ke95-diagnostics__feed">
             {dc.lock_events.slice().reverse().map((event, index) => (
-              <Frame key={`${event.from}-${event.to}-${index}`} boxShadow="in" className="ke95-diagnostics__card">
+              <Inset key={`${event.from}-${event.to}-${index}`} className="ke95-diagnostics__card">
                 <Mono as="div">{event.from} → {event.to}</Mono>
                 <Mono as="div">{formatNs(event.max_sync_diff_ns)}</Mono>
-              </Frame>
+              </Inset>
             ))}
-          </div>
+          </Stack>
         ) : (
           <EmptyState>No DC lock changes yet</EmptyState>
         )}
-      </div>
+      </Stack>
     </Panel>
   );
 }
@@ -499,14 +525,14 @@ function DomainsSection({ domains }) {
       {domains.length === 0 ? (
         <EmptyState>No domains running</EmptyState>
       ) : (
-        <div className="ke95-grid ke95-grid--2">
+        <Stack>
           {domains.map((domain) => (
-            <Frame key={domain.id} boxShadow="in" className="ke95-diagnostics__domain">
+            <Inset key={domain.id} className="ke95-diagnostics__domain">
               <div className="ke95-toolbar">
                 <Mono>{domain.id}</Mono>
                 <StatusBadge tone={badgeTone(DOMAIN_TONES, domain.state)}>{domain.state}</StatusBadge>
               </div>
-              <div className="ke95-grid">
+              <Columns minWidth="22rem">
                 <ChartPanel
                   title="Cycle duration"
                   subtitle={`last ${formatUs(domain.last_cycle_us)} • avg ${formatUs(domain.avg_cycle_us)}`}
@@ -520,17 +546,19 @@ function DomainsSection({ domains }) {
                   series={[{ label: "Misses", slices: domain.miss_slices, stroke: "#dc2626", fill: "#dc262620" }]}
                   emptyLabel="No misses recorded"
                 />
-              </div>
-              <SummaryGrid
+              </Columns>
+              <PropertyList
+                minWidth="12rem"
                 items={[
                   { label: "Cycle", value: formatUs(domain.cycle_time_us) },
                   { label: "WKC", value: formatCount(domain.expected_wkc) },
                   { label: "Miss count", value: formatCount(domain.miss_count) },
+                  { label: "Total misses", value: formatCount(domain.total_miss_count) },
                   { label: "Miss reason", value: domain.last_miss_reason ?? "n/a" },
                 ]}
               />
               {domain.last_miss_reason || domain.stop_reason || domain.crash_reason ? (
-                <Frame boxShadow="in" className="ke95-diagnostics__event ke95-diagnostics__event--warn">
+                <Inset className="ke95-diagnostics__event ke95-diagnostics__event--warn">
                   <Mono>
                     {domain.crash_reason
                       ? `crashed ${domain.crash_reason}`
@@ -538,11 +566,11 @@ function DomainsSection({ domains }) {
                         ? `stopped ${domain.stop_reason}`
                         : `missed ${domain.last_miss_reason}`}
                   </Mono>
-                </Frame>
+                </Inset>
               ) : null}
-            </Frame>
+            </Inset>
           ))}
-        </div>
+        </Stack>
       )}
     </Panel>
   );
@@ -577,17 +605,17 @@ function TimelineSection({ timeline }) {
       {timeline.length === 0 ? (
         <EmptyState>No fault or recovery events yet</EmptyState>
       ) : (
-        <div className="ke95-scroll ke95-grid">
+        <Stack compact className="ke95-scroll ke95-diagnostics__feed">
           {timeline.map((event) => (
-            <Frame key={event.id} boxShadow="in" className={`ke95-diagnostics__event ke95-diagnostics__event--${event.level}`}>
+            <Inset key={event.id} className={`ke95-diagnostics__event ke95-diagnostics__event--${event.level}`}>
               <div className="ke95-toolbar">
                 <div>{event.title}</div>
                 <Mono>{formatTime(event.at_ms)}</Mono>
               </div>
               <Mono as="div">{event.detail}</Mono>
-            </Frame>
+            </Inset>
           ))}
-        </div>
+        </Stack>
       )}
     </Panel>
   );

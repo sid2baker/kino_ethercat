@@ -1,6 +1,8 @@
 defmodule KinoEtherCAT.RuntimeTest do
   use ExUnit.Case, async: false
 
+  alias EtherCAT.Bus.Link.SinglePort
+  alias EtherCAT.Domain.Config, as: DomainConfig
   alias EtherCAT.{Bus, Domain, Master, Slave}
   alias KinoEtherCAT.{Runtime, StartConfig}
 
@@ -57,9 +59,7 @@ defmodule KinoEtherCAT.RuntimeTest do
            } =
              Runtime.payload(%Master{})
 
-    assert Enum.any?(buttons, &(&1.id == "start" and &1.disabled))
-    assert Enum.any?(buttons, &(&1.id == "activate" and &1.disabled))
-    assert Enum.any?(buttons, &(&1.id == "stop" and &1.disabled))
+    assert [%{id: "start", label: "Start session", disabled: true}] = buttons
     assert Enum.any?(control_summary, &(&1.label == "Remembered start" and &1.value == "missing"))
     assert Enum.any?(control_summary, &(&1.label == "Next step"))
     assert is_binary(control_help)
@@ -101,7 +101,33 @@ defmodule KinoEtherCAT.RuntimeTest do
     assert :ok = StartConfig.remember(interface: "eth0")
 
     assert %{controls: %{buttons: buttons}} = Runtime.payload(%Master{})
-    assert Enum.any?(buttons, &(&1.id == "start" and !&1.disabled))
+    assert [%{id: "start", label: "Start session", disabled: false}] = buttons
+  end
+
+  test "runtime start option reconstruction preserves UDP transport" do
+    master = %Master{
+      slave_configs: [],
+      domain_configs: [%{id: :main, cycle_time_us: 1_000, miss_threshold: 10}],
+      dc_config: nil,
+      scan_poll_ms: 100,
+      scan_stable_ms: 1_000,
+      base_station: 0x1000
+    }
+
+    bus = %Bus{
+      idx: 0,
+      link: %SinglePort{
+        open_opts: [transport: :udp, host: {127, 0, 0, 2}, port: 34_980]
+      },
+      link_mod: SinglePort
+    }
+
+    assert {:ok, opts} = Runtime.start_options_from_runtime(master, bus)
+    assert opts[:transport] == :udp
+    assert opts[:host] == {127, 0, 0, 2}
+    assert opts[:port] == 34_980
+    refute Keyword.has_key?(opts, :interface)
+    assert [%DomainConfig{id: :main, cycle_time_us: 1_000, miss_threshold: 10}] = opts[:domains]
   end
 
   test "runtime actions validate numeric inputs before touching EtherCAT" do

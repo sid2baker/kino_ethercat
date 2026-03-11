@@ -152,7 +152,7 @@ defmodule KinoEtherCAT.SmartCells.SetupSource do
       port: transport.port,
       domains: domains,
       dc_enabled:
-        attrs |> Map.get("dc_enabled", Map.get(attrs, "dc_enabled?", true)) |> truthy?(true),
+        attrs |> Map.get("dc_enabled", Map.get(attrs, "dc_enabled?", false)) |> truthy?(false),
       dc_cycle_ns:
         attrs
         |> Map.get("dc_cycle_ns", default_dc_cycle_ns(domains))

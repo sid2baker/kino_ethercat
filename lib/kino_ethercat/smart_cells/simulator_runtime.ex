@@ -2,6 +2,7 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntime do
   @moduledoc false
 
   alias EtherCAT.Simulator
+  alias EtherCAT.Simulator.Udp
 
   @type message :: %{level: String.t(), text: String.t()} | nil
 
@@ -47,7 +48,13 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntime do
   end
 
   def perform("clear_faults") do
-    invoke(&Simulator.clear_faults/0, info_message("Simulator faults cleared."))
+    invoke_many(
+      [
+        {&Simulator.clear_faults/0, []},
+        {&Udp.clear_faults/0, [optional: true]}
+      ],
+      info_message("Runtime and UDP faults cleared.")
+    )
   end
 
   def perform(_action), do: error_message("Unknown simulator action.")
@@ -56,12 +63,9 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntime do
     slaves = Map.get(info, :slaves, [])
     connections = Map.get(info, :connections, [])
     subscriptions = Map.get(info, :subscriptions, [])
-    disconnected = Map.get(info, :disconnected, [])
-    drop_responses? = Map.get(info, :drop_responses?, false)
-    wkc_offset = Map.get(info, :wkc_offset, 0)
     running_names = Enum.map(slaves, &Atom.to_string(&1.name))
     running_connection_keys = Enum.map(connections, &connection_key(&1.source, &1.target))
-    fault_count = fault_count(drop_responses?, wkc_offset, disconnected)
+    fault_counts = fault_counts(info)
 
     config_matches? =
       configured_names == running_names and
@@ -74,7 +78,7 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntime do
         %{label: "Slaves", value: Integer.to_string(length(slaves))},
         %{label: "Connections", value: Integer.to_string(length(connections))},
         %{label: "Subscriptions", value: Integer.to_string(length(subscriptions))},
-        %{label: "Faults", value: Integer.to_string(fault_count)}
+        %{label: "Faults", value: Integer.to_string(fault_counts.total)}
       ],
       configured_names: configured_names,
       running_names: running_names,
@@ -97,11 +101,11 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntime do
         ),
       message: message,
       faults: %{
-        active_count: fault_count,
-        drop_responses?: drop_responses?,
-        wkc_offset: wkc_offset,
-        disconnected: Enum.map(disconnected, &Atom.to_string/1),
-        summary: fault_summary(drop_responses?, wkc_offset, disconnected)
+        active_count: fault_counts.total,
+        runtime_sticky_count: fault_counts.runtime_sticky,
+        runtime_pending_count: fault_counts.runtime_pending,
+        udp_pending_count: fault_counts.udp_pending,
+        summary: fault_summary(fault_counts)
       }
     }
   end
@@ -127,30 +131,42 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntime do
       message: message,
       faults: %{
         active_count: 0,
-        drop_responses?: false,
-        wkc_offset: 0,
-        disconnected: [],
+        runtime_sticky_count: 0,
+        runtime_pending_count: 0,
+        udp_pending_count: 0,
         summary: "No active faults."
       }
     }
   end
 
-  defp fault_count(drop_responses?, wkc_offset, disconnected) do
-    length(disconnected) +
-      if(drop_responses?, do: 1, else: 0) +
-      if(wkc_offset != 0, do: 1, else: 0)
+  defp fault_counts(info) do
+    runtime_sticky =
+      if(Map.get(info, :drop_responses?, false), do: 1, else: 0) +
+        if(Map.get(info, :wkc_offset, 0) != 0, do: 1, else: 0) +
+        length(Map.get(info, :disconnected, []))
+
+    runtime_pending = length(Map.get(info, :pending_faults, []))
+    udp_pending = length(get_in(info, [:udp, :pending_faults]) || [])
+
+    %{
+      runtime_sticky: runtime_sticky,
+      runtime_pending: runtime_pending,
+      udp_pending: udp_pending,
+      total: runtime_sticky + runtime_pending + udp_pending
+    }
   end
 
-  defp fault_summary(false, 0, []), do: "No active faults."
+  defp fault_summary(%{total: 0}), do: "No active faults."
 
-  defp fault_summary(drop_responses?, wkc_offset, disconnected) do
+  defp fault_summary(%{
+         runtime_sticky: runtime_sticky,
+         runtime_pending: runtime_pending,
+         udp_pending: udp_pending
+       }) do
     []
-    |> maybe_prepend(drop_responses?, "Responses dropped")
-    |> maybe_prepend(wkc_offset != 0, "WKC offset #{wkc_offset}")
-    |> maybe_prepend(
-      disconnected != [],
-      "Disconnected: #{Enum.map_join(disconnected, ", ", &Atom.to_string/1)}"
-    )
+    |> maybe_prepend(runtime_sticky > 0, "#{runtime_sticky} runtime sticky")
+    |> maybe_prepend(runtime_pending > 0, "#{runtime_pending} runtime queued")
+    |> maybe_prepend(udp_pending > 0, "#{udp_pending} UDP queued")
     |> Enum.reverse()
     |> Enum.join(" | ")
   end
@@ -209,13 +225,35 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntime do
   defp offline_message(_message), do: nil
 
   defp invoke(fun, success_message) do
-    case safe_invoke(fun) do
+    case normalize_invoke_result(safe_invoke(fun), []) do
       :ok -> success_message
-      {:ok, _value} -> success_message
       {:error, :not_found} -> error_message("Simulator unavailable.")
       {:error, reason} -> error_message("Simulator action failed: #{inspect(reason)}")
     end
   end
+
+  defp invoke_many(actions, success_message) do
+    case Enum.reduce_while(actions, :ok, fn {fun, opts}, :ok ->
+           case normalize_invoke_result(safe_invoke(fun), opts) do
+             :ok -> {:cont, :ok}
+             {:error, reason} -> {:halt, {:error, reason}}
+           end
+         end) do
+      :ok -> success_message
+      {:error, :not_found} -> error_message("Simulator unavailable.")
+      {:error, reason} -> error_message("Simulator action failed: #{inspect(reason)}")
+    end
+  end
+
+  defp normalize_invoke_result(:ok, _opts), do: :ok
+  defp normalize_invoke_result({:ok, _value}, _opts), do: :ok
+
+  defp normalize_invoke_result({:error, :not_found}, opts) do
+    if Keyword.get(opts, :optional, false), do: :ok, else: {:error, :not_found}
+  end
+
+  defp normalize_invoke_result({:error, reason}, _opts), do: {:error, reason}
+  defp normalize_invoke_result(other, _opts), do: {:error, other}
 
   defp safe_invoke(fun) do
     fun.()

@@ -1,11 +1,11 @@
-defmodule KinoEtherCAT.Simulator.Panel do
+defmodule KinoEtherCAT.Simulator.FaultsPanel do
   @moduledoc false
 
-  use Kino.JS, assets_path: "lib/assets/simulator_panel/build"
+  use Kino.JS, assets_path: "lib/assets/simulator_faults_panel/build"
   use Kino.JS.Live
 
   alias Kino.JS.Live.Context
-  alias KinoEtherCAT.Simulator.View
+  alias KinoEtherCAT.Simulator.FaultsView
 
   @refresh_interval_ms 1_000
 
@@ -14,7 +14,7 @@ defmodule KinoEtherCAT.Simulator.Panel do
 
   @impl true
   def init(_arg, ctx) do
-    payload = View.payload()
+    payload = FaultsView.payload()
     schedule_refresh()
     {:ok, Context.assign(ctx, payload: payload, message: payload.message)}
   end
@@ -22,6 +22,13 @@ defmodule KinoEtherCAT.Simulator.Panel do
   @impl true
   def handle_connect(ctx) do
     {:ok, ctx.assigns.payload, ctx}
+  end
+
+  @impl true
+  def handle_event("action", %{"id" => id} = params, ctx) do
+    message = FaultsView.perform(id, Map.delete(params, "id"))
+    ctx = Context.assign(ctx, message: message)
+    {:noreply, broadcast_snapshot(ctx)}
   end
 
   @impl true
@@ -37,7 +44,7 @@ defmodule KinoEtherCAT.Simulator.Panel do
   end
 
   defp broadcast_snapshot(ctx) do
-    payload = View.payload(ctx.assigns.message)
+    payload = FaultsView.payload(ctx.assigns.message)
 
     if payload != ctx.assigns.payload do
       Context.broadcast_event(ctx, "snapshot", payload)

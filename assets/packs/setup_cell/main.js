@@ -6,16 +6,18 @@ import { createRoot } from "react-dom/client";
 import {
   Button,
   Checkbox,
+  Columns,
   ControlField,
   DataTable,
   Dropdown,
   EmptyState,
-  Frame,
+  Inset,
   Input,
   MessageLine,
   Mono,
   Panel,
   Shell,
+  Stack,
   StatusBadge,
   SummaryGrid,
 } from "../../ui/react95";
@@ -145,10 +147,13 @@ function masterStateTone(state) {
   return "neutral";
 }
 
-function statusTone(status) {
-  if (status === "scanning") return "warn";
-  if (status === "error") return "danger";
-  return "neutral";
+function headerState(state) {
+  if (state.status === "error") return "error";
+  if (state.status === "scanning" && (!state.master_state || state.master_state === "idle")) {
+    return "scanning";
+  }
+
+  return state.master_state ?? "idle";
 }
 
 function SetupCell({ ctx, data }) {
@@ -156,6 +161,7 @@ function SetupCell({ ctx, data }) {
   const [udpPortInput, setUdpPortInput] = useState(String(data.port ?? 34980));
   const stateRef = useRef(state);
   const interfaces = interfaceOptions(state);
+  const displayState = headerState(state);
 
   useEffect(() => {
     stateRef.current = state;
@@ -222,12 +228,7 @@ function SetupCell({ ctx, data }) {
     <Shell
       title="EtherCAT Setup"
       subtitle="Scan the bus, assign drivers and domains, then persist a single static EtherCAT.start/1 configuration."
-      status={
-        <>
-          <StatusBadge tone={masterStateTone(state.master_state)}>{state.master_state ?? "idle"}</StatusBadge>
-          <StatusBadge tone={statusTone(state.status)}>{state.status}</StatusBadge>
-        </>
-      }
+      status={<StatusBadge tone={masterStateTone(displayState)}>{displayState}</StatusBadge>}
       toolbar={
         <>
           <Button
@@ -243,88 +244,88 @@ function SetupCell({ ctx, data }) {
         </>
       }
     >
-      <SummaryGrid
-        items={[
-          { label: "Master PID", value: state.master_pid ?? "not running" },
-          { label: "Transport", value: state.transport ?? "raw" },
-          { label: "Bus source", value: transportSourceLabel(state) },
-          { label: "Slaves", value: String(state.slaves.length) },
-          { label: "Domains", value: String(state.domains.length) },
-        ]}
-      />
+      <Stack className="ke95-setup">
+        <SummaryGrid
+          items={[
+            { label: "Master PID", value: state.master_pid ?? "not running" },
+            { label: "Transport", value: state.transport ?? "raw" },
+            { label: "Bus source", value: transportSourceLabel(state) },
+            { label: "Slaves", value: String(state.slaves.length) },
+            { label: "Domains", value: String(state.domains.length) },
+          ]}
+        />
 
-      <Panel title="Bus">
-        <div className="ke95-grid ke95-grid--2">
-          <ControlField label="Transport">
-            <Dropdown
-              className="ke95-fill"
-              value={state.transport}
-              onChange={(event) =>
-                commit((previous) => markTransportManual(previous, { transport: event.target.value }))
-              }
-            >
-              <option value="raw">Raw socket</option>
-              <option value="udp">UDP</option>
-            </Dropdown>
-          </ControlField>
-
-          {state.transport === "udp" ? (
-            <>
-              <ControlField label="Host">
-                <Input
-                  className="ke95-fill"
-                  placeholder="127.0.0.2"
-                  value={state.host}
-                  onChange={(event) =>
-                    updateLocal((previous) => markTransportManual(previous, { host: event.target.value }))
-                  }
-                  onBlur={(event) =>
-                    commit((previous) => markTransportManual(previous, { host: event.target.value }))
-                  }
-                />
-              </ControlField>
-
-              <ControlField label="Port">
-                <Input
-                  className="ke95-fill"
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={udpPortInput}
-                  onChange={(event) => setUdpPortInput(event.target.value)}
-                  onBlur={(event) => commitUdpPort(event.target.value)}
-                  onKeyDown={(event) => event.key === "Enter" && commitUdpPort(event.target.value)}
-                />
-              </ControlField>
-            </>
-          ) : (
-            <ControlField label="Interface" className="ke95-fill">
+        <Panel title="Bus">
+          <Columns minWidth="14rem">
+            <ControlField label="Transport">
               <Dropdown
                 className="ke95-fill"
-                value={state.interface}
+                value={state.transport}
                 onChange={(event) =>
-                  commit((previous) => markTransportManual(previous, { interface: event.target.value }))
+                  commit((previous) => markTransportManual(previous, { transport: event.target.value }))
                 }
               >
-                {interfaces.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
+                <option value="raw">Raw socket</option>
+                <option value="udp">UDP</option>
               </Dropdown>
             </ControlField>
-          )}
-        </div>
-      </Panel>
 
-      {state.error ? <MessageLine tone="error">{state.error}</MessageLine> : null}
+            {state.transport === "udp" ? (
+              <>
+                <ControlField label="Host">
+                  <Input
+                    className="ke95-fill"
+                    placeholder="127.0.0.2"
+                    value={state.host}
+                    onChange={(event) =>
+                      updateLocal((previous) => markTransportManual(previous, { host: event.target.value }))
+                    }
+                    onBlur={(event) =>
+                      commit((previous) => markTransportManual(previous, { host: event.target.value }))
+                    }
+                  />
+                </ControlField>
 
-      <div className="ke95-grid">
+                <ControlField label="Port">
+                  <Input
+                    className="ke95-fill"
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={udpPortInput}
+                    onChange={(event) => setUdpPortInput(event.target.value)}
+                    onBlur={(event) => commitUdpPort(event.target.value)}
+                    onKeyDown={(event) => event.key === "Enter" && commitUdpPort(event.target.value)}
+                  />
+                </ControlField>
+              </>
+            ) : (
+              <ControlField label="Interface" className="ke95-fill">
+                <Dropdown
+                  className="ke95-fill"
+                  value={state.interface}
+                  onChange={(event) =>
+                    commit((previous) => markTransportManual(previous, { interface: event.target.value }))
+                  }
+                >
+                  {interfaces.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </Dropdown>
+              </ControlField>
+            )}
+          </Columns>
+        </Panel>
+
+        {state.error ? <MessageLine tone="error">{state.error}</MessageLine> : null}
+
         <Panel
           title="Domains"
           actions={<Button onClick={addDomain}>Add domain</Button>}
         >
-          <div className="ke95-grid">
+          <Stack>
             {state.domains.map((domain, index) => (
               <DomainCard
                 key={`domain-${index}`}
@@ -336,147 +337,151 @@ function SetupCell({ ctx, data }) {
                 onRemove={() => commit((previous) => removeDomain(previous, index))}
               />
             ))}
-          </div>
+          </Stack>
         </Panel>
 
         <Panel title="Distributed clocks">
-          <div className="ke95-grid ke95-grid--2">
+          <Stack compact>
             <Checkbox
               checked={state.dc_enabled}
               label="Enable DC runtime"
               onChange={(event) => commit((previous) => ({ ...previous, dc_enabled: event.target.checked }))}
             />
 
-            <Checkbox
-              checked={state.await_lock}
-              disabled={!state.dc_enabled}
-              label="Gate startup on lock"
-              onChange={(event) => commit((previous) => ({ ...previous, await_lock: event.target.checked }))}
-            />
+            <div className={!state.dc_enabled ? "ke95-disabled-group" : ""}>
+              <Columns minWidth="15rem">
+                <Checkbox
+                  checked={state.await_lock}
+                  disabled={!state.dc_enabled}
+                  label="Gate startup on lock"
+                  onChange={(event) => commit((previous) => ({ ...previous, await_lock: event.target.checked }))}
+                />
 
-            <ControlField label="Cycle (ns)">
-              <Input
-                type="number"
-                min="1000000"
-                step="1000000"
-                disabled={!state.dc_enabled}
-                className="ke95-fill"
-                value={state.dc_cycle_ns}
-                onChange={(event) =>
-                  updateLocal((previous) => ({ ...previous, dc_cycle_ns: Number(event.target.value) || 10000000 }))
-                }
-                onBlur={(event) =>
-                  commit((previous) => ({ ...previous, dc_cycle_ns: Number(event.target.value) || 10000000 }))
-                }
-              />
-            </ControlField>
+                <ControlField label="Cycle (ns)">
+                  <Input
+                    type="number"
+                    min="1000000"
+                    step="1000000"
+                    disabled={!state.dc_enabled}
+                    className="ke95-fill"
+                    value={state.dc_cycle_ns}
+                    onChange={(event) =>
+                      updateLocal((previous) => ({ ...previous, dc_cycle_ns: Number(event.target.value) || 10000000 }))
+                    }
+                    onBlur={(event) =>
+                      commit((previous) => ({ ...previous, dc_cycle_ns: Number(event.target.value) || 10000000 }))
+                    }
+                  />
+                </ControlField>
 
-            <ControlField label="Lock threshold (ns)">
-              <Input
-                type="number"
-                min="1"
-                step="1"
-                disabled={!state.dc_enabled}
-                className="ke95-fill"
-                value={state.lock_threshold_ns}
-                onChange={(event) =>
-                  updateLocal((previous) => ({
-                    ...previous,
-                    lock_threshold_ns: Number(event.target.value) || 1,
-                  }))
-                }
-                onBlur={(event) =>
-                  commit((previous) => ({
-                    ...previous,
-                    lock_threshold_ns: Number(event.target.value) || 1,
-                  }))
-                }
-              />
-            </ControlField>
+                <ControlField label="Lock threshold (ns)">
+                  <Input
+                    type="number"
+                    min="1"
+                    step="1"
+                    disabled={!state.dc_enabled}
+                    className="ke95-fill"
+                    value={state.lock_threshold_ns}
+                    onChange={(event) =>
+                      updateLocal((previous) => ({
+                        ...previous,
+                        lock_threshold_ns: Number(event.target.value) || 1,
+                      }))
+                    }
+                    onBlur={(event) =>
+                      commit((previous) => ({
+                        ...previous,
+                        lock_threshold_ns: Number(event.target.value) || 1,
+                      }))
+                    }
+                  />
+                </ControlField>
 
-            <ControlField label="Lock timeout (ms)">
-              <Input
-                type="number"
-                min="1"
-                step="1"
-                disabled={!state.dc_enabled}
-                className="ke95-fill"
-                value={state.lock_timeout_ms}
-                onChange={(event) =>
-                  updateLocal((previous) => ({
-                    ...previous,
-                    lock_timeout_ms: Number(event.target.value) || 1,
-                  }))
-                }
-                onBlur={(event) =>
-                  commit((previous) => ({
-                    ...previous,
-                    lock_timeout_ms: Number(event.target.value) || 1,
-                  }))
-                }
-              />
-            </ControlField>
+                <ControlField label="Lock timeout (ms)">
+                  <Input
+                    type="number"
+                    min="1"
+                    step="1"
+                    disabled={!state.dc_enabled}
+                    className="ke95-fill"
+                    value={state.lock_timeout_ms}
+                    onChange={(event) =>
+                      updateLocal((previous) => ({
+                        ...previous,
+                        lock_timeout_ms: Number(event.target.value) || 1,
+                      }))
+                    }
+                    onBlur={(event) =>
+                      commit((previous) => ({
+                        ...previous,
+                        lock_timeout_ms: Number(event.target.value) || 1,
+                      }))
+                    }
+                  />
+                </ControlField>
 
-            <ControlField label="Warmup cycles">
-              <Input
-                type="number"
-                min="0"
-                step="1"
-                disabled={!state.dc_enabled}
-                className="ke95-fill"
-                value={state.warmup_cycles}
-                onChange={(event) =>
-                  updateLocal((previous) => ({
-                    ...previous,
-                    warmup_cycles: Number(event.target.value) || 0,
-                  }))
-                }
-                onBlur={(event) =>
-                  commit((previous) => ({
-                    ...previous,
-                    warmup_cycles: Number(event.target.value) || 0,
-                  }))
-                }
-              />
-            </ControlField>
-          </div>
+                <ControlField label="Warmup cycles">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1"
+                    disabled={!state.dc_enabled}
+                    className="ke95-fill"
+                    value={state.warmup_cycles}
+                    onChange={(event) =>
+                      updateLocal((previous) => ({
+                        ...previous,
+                        warmup_cycles: Number(event.target.value) || 0,
+                      }))
+                    }
+                    onBlur={(event) =>
+                      commit((previous) => ({
+                        ...previous,
+                        warmup_cycles: Number(event.target.value) || 0,
+                      }))
+                    }
+                  />
+                </ControlField>
+              </Columns>
+            </div>
+          </Stack>
         </Panel>
-      </div>
 
-      <Panel title="Slave inventory">
-        {hasDiscovery ? (
-          <DataTable headers={["Station", "Identity", "Name", "Discovered", "Driver", "Domain"]}>
-            {state.slaves.map((slave, index) => (
-              <SlaveRow
-                key={`${slave.discovered_name}-${index}`}
-                slave={slave}
-                index={index}
-                domains={state.domains}
-                availableDrivers={state.available_drivers}
-                updateLocal={(rowIndex, patch) =>
-                  updateLocal((previous) => applySlaveUpdate(previous, rowIndex, patch))
-                }
-                commit={(rowIndex, patch) => commit((previous) => applySlaveUpdate(previous, rowIndex, patch))}
-              />
-            ))}
-          </DataTable>
-        ) : (
-          <EmptyState>Scan the bus to discover slaves and assign each driven device to a PDO domain.</EmptyState>
-        )}
-      </Panel>
+        <Panel title="Slave inventory">
+          {hasDiscovery ? (
+            <DataTable headers={["Station", "Identity", "Name", "Discovered", "Driver", "Domain"]}>
+              {state.slaves.map((slave, index) => (
+                <SlaveRow
+                  key={`${slave.discovered_name}-${index}`}
+                  slave={slave}
+                  index={index}
+                  domains={state.domains}
+                  availableDrivers={state.available_drivers}
+                  updateLocal={(rowIndex, patch) =>
+                    updateLocal((previous) => applySlaveUpdate(previous, rowIndex, patch))
+                  }
+                  commit={(rowIndex, patch) => commit((previous) => applySlaveUpdate(previous, rowIndex, patch))}
+                />
+              ))}
+            </DataTable>
+          ) : (
+            <EmptyState>Scan the bus to discover slaves and assign each driven device to a PDO domain.</EmptyState>
+          )}
+        </Panel>
+      </Stack>
     </Shell>
   );
 }
 
 function DomainCard({ domain, index, canRemove, onChange, onCommit, onRemove }) {
   return (
-    <Frame boxShadow="in" className="ke95-setup__domain-card">
+    <Inset>
       <div className="ke95-toolbar">
         <div className="ke95-kicker">Domain {index + 1}</div>
         {canRemove ? <Button onClick={onRemove}>Remove</Button> : null}
       </div>
 
-      <div className="ke95-grid ke95-grid--3">
+      <Columns minWidth="12rem">
         <ControlField label="ID">
           <Input
             className="ke95-fill"
@@ -509,8 +514,8 @@ function DomainCard({ domain, index, canRemove, onChange, onCommit, onRemove }) 
             onBlur={(event) => onCommit({ miss_threshold: Number(event.target.value) || 1 })}
           />
         </ControlField>
-      </div>
-    </Frame>
+      </Columns>
+    </Inset>
   );
 }
 

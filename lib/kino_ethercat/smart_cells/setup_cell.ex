@@ -5,6 +5,12 @@ defmodule KinoEtherCAT.SmartCells.Setup do
 
   alias KinoEtherCAT.SmartCells.{SetupSource, SetupTransport}
 
+  @scan_await_timeout_ms 30_000
+  @scan_frame_timeout_ms 25
+  @scan_retry_delay_ms 300
+  @scan_stable_ms 250
+  @scan_poll_ms 100
+
   @impl true
   def init(attrs, ctx) do
     config = normalize_attrs(attrs)
@@ -166,11 +172,8 @@ defmodule KinoEtherCAT.SmartCells.Setup do
 
   defp run_scan(server, transport, existing_slaves, domains) do
     result =
-      with {:ok, start_opts} <- SetupTransport.runtime_start_opts(transport),
-           :ok <- ensure_master_running(start_opts),
-           :ok <- EtherCAT.await_running(15_000) do
-        {:ok, discovered_slaves(existing_slaves, domains)}
-      else
+      case scan_discovered_slaves(transport, existing_slaves, domains) do
+        {:ok, _slaves} = ok -> ok
         {:error, reason} when is_binary(reason) -> {:error, reason}
         {:error, reason} -> {:error, inspect(reason)}
       end
@@ -179,6 +182,58 @@ defmodule KinoEtherCAT.SmartCells.Setup do
   rescue
     e -> send(server, {:scan_complete, {:error, Exception.message(e)}})
   end
+
+  defp scan_discovered_slaves(transport, existing_slaves, domains) do
+    with {:ok, slaves} <- scan_discovered_slaves_once(transport, existing_slaves, domains) do
+      {:ok, slaves}
+    else
+      {:error, reason} = error ->
+        if retryable_scan_reason?(reason) do
+          _ = EtherCAT.stop()
+          Process.sleep(@scan_retry_delay_ms)
+
+          transport
+          |> SetupTransport.refresh_auto()
+          |> scan_discovered_slaves_once(existing_slaves, domains)
+        else
+          error
+        end
+    end
+  end
+
+  defp scan_discovered_slaves_once(transport, existing_slaves, domains) do
+    with {:ok, start_opts} <- SetupTransport.runtime_start_opts(transport),
+         :ok <- ensure_master_running(scan_start_opts(start_opts)),
+         :ok <- EtherCAT.await_running(@scan_await_timeout_ms) do
+      {:ok, discovered_slaves(existing_slaves, domains)}
+    end
+  end
+
+  @doc false
+  def scan_start_opts(start_opts) when is_list(start_opts) do
+    start_opts
+    |> Keyword.put(:frame_timeout_ms, @scan_frame_timeout_ms)
+    |> Keyword.put(:scan_stable_ms, @scan_stable_ms)
+    |> Keyword.put(:scan_poll_ms, @scan_poll_ms)
+  end
+
+  @doc false
+  def retryable_scan_reason?(reason)
+
+  def retryable_scan_reason?(:timeout), do: true
+  def retryable_scan_reason?(:awaiting_preop_timeout), do: true
+
+  def retryable_scan_reason?(reason) when is_tuple(reason) do
+    reason
+    |> Tuple.to_list()
+    |> Enum.any?(&retryable_scan_reason?/1)
+  end
+
+  def retryable_scan_reason?(reason) when is_list(reason) do
+    Enum.any?(reason, &retryable_scan_reason?/1)
+  end
+
+  def retryable_scan_reason?(_reason), do: false
 
   defp ensure_master_running(start_opts) when is_list(start_opts) do
     case EtherCAT.start(start_opts) do
@@ -276,7 +331,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
       domains: domains,
       slaves: attrs |> Map.get("slaves", []) |> normalize_slaves(domains),
       dc_enabled:
-        attrs |> Map.get("dc_enabled", Map.get(attrs, "dc_enabled?", true)) |> truthy?(true),
+        attrs |> Map.get("dc_enabled", Map.get(attrs, "dc_enabled?", false)) |> truthy?(false),
       dc_cycle_ns:
         attrs
         |> Map.get("dc_cycle_ns", default_dc_cycle_ns(domains))

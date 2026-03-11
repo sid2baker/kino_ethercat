@@ -28,7 +28,10 @@ defmodule KinoEtherCAT.SmartCells.SimulatorSource do
       "{:ok, _supervisor} = Simulator.start(devices: devices, udp: [ip: simulator_ip, port: #{SimulatorConfig.default_port()}])\n\n",
       connection_literals(config.connections),
       if(config.connections == [], do: "", else: "\n"),
-      "KinoEtherCAT.simulator()\n"
+      "Kino.Layout.tabs(\n",
+      "  Simulator: KinoEtherCAT.simulator(),\n",
+      "  Faults: KinoEtherCAT.simulator_faults()\n",
+      ")\n"
     ])
   end
 

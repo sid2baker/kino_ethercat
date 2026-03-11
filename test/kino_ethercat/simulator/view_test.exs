@@ -14,7 +14,8 @@ defmodule KinoEtherCAT.Simulator.ViewTest do
       Slave.from_driver(KinoEtherCAT.Driver.EL2809, name: :outputs)
     ]
 
-    {:ok, _supervisor} = Simulator.start(devices: devices)
+    {:ok, _supervisor} =
+      Simulator.start(devices: devices, udp: [ip: {127, 0, 0, 2}, port: 0])
 
     on_exit(fn ->
       _ = Simulator.stop()
@@ -23,33 +24,21 @@ defmodule KinoEtherCAT.Simulator.ViewTest do
     :ok
   end
 
-  test "payload exposes simulator topology and fault state" do
+  test "payload exposes simulator topology and fault summary" do
     payload = View.payload()
 
     assert payload.status == "running"
     assert Enum.map(payload.slaves, & &1.name) == ["coupler", "inputs", "outputs"]
     assert Enum.find(payload.summary, &(&1.label == "Slaves")).value == "3"
-    assert payload.faults == %{drop_responses?: false, wkc_offset: 0, disconnected: []}
-  end
+    assert payload.runtime_faults.active_count == 0
+    assert payload.udp_faults.enabled
+    assert payload.udp_faults.active_count == 0
 
-  test "perform updates coarse simulator faults and clears them again" do
-    assert %{level: "info"} = View.perform("set_wkc_offset", %{"value" => "-2"})
-    assert View.payload().faults.wkc_offset == -2
-
-    assert %{level: "info"} = View.perform("inject_disconnect", %{"slave" => "inputs"})
-    assert "inputs" in View.payload().faults.disconnected
-
-    assert %{level: "info"} = View.perform("clear_faults", %{})
-    assert View.payload().faults == %{drop_responses?: false, wkc_offset: 0, disconnected: []}
-  end
-
-  test "perform latches an al error on a selected slave" do
-    assert %{level: "info"} =
-             View.perform("inject_al_error", %{"slave" => "outputs", "code" => "0x0011"})
-
-    outputs = Enum.find(View.payload().slaves, &(&1.name == "outputs"))
-
-    assert outputs.al_error == "latched"
-    assert outputs.al_status_code == "0x0011"
+    assert payload.fault_summary == [
+             %{label: "Runtime", value: "No runtime faults."},
+             %{label: "Next runtime", value: "none"},
+             %{label: "UDP", value: "No queued UDP reply faults."},
+             %{label: "Next UDP", value: "none"}
+           ]
   end
 end

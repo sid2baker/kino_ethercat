@@ -140,7 +140,6 @@ defmodule KinoEtherCAT.Runtime do
       summary: [
         %{label: "Slaves", value: Integer.to_string(length(slaves))},
         %{label: "Domains", value: Integer.to_string(length(domains))},
-        %{label: "DC lock", value: to_string(dc_status.lock_state || :disabled)},
         %{
           label: "Pending PREOP",
           value: Integer.to_string(MapSet.size(master.pending_preop || MapSet.new()))
@@ -154,27 +153,14 @@ defmodule KinoEtherCAT.Runtime do
       details_title: "Runtime",
       details: [
         %{label: "Bus monitor", value: format_term(master.bus_ref || "none")},
+        %{label: "DC lock", value: to_string(dc_status.lock_state || :disabled)},
         %{label: "DC reference station", value: format_term(master.dc_ref_station || "none")},
         %{label: "Last failure", value: format_term(master.last_failure || "none")}
       ],
       controls: %{
         title: "Actions",
-        buttons: [
-          %{
-            id: "start",
-            label: "Start",
-            tone: "primary",
-            disabled: not start_available?,
-            title: master_start_title(start_available?)
-          },
-          %{
-            id: "activate",
-            label: "Activate",
-            tone: "primary",
-            disabled: not activation_available?
-          },
-          %{id: "stop", label: "Stop", tone: "danger", disabled: not stop_available?}
-        ],
+        buttons:
+          master_buttons(public_state, start_available?, activation_available?, stop_available?),
         summary: [
           %{
             label: "Remembered start",
@@ -287,7 +273,8 @@ defmodule KinoEtherCAT.Runtime do
               id: "cycle_time_us",
               label: "Update cycle (us)",
               value: Integer.to_string(info.cycle_time_us)
-            }
+            },
+            submit: %{id: "update_cycle_time", label: "Apply cycle"}
           }
         }
 
@@ -334,6 +321,24 @@ defmodule KinoEtherCAT.Runtime do
 
   def payload(resource, message) when is_struct(resource, EtherCAT.DC.Status) do
     payload_dc_resource(resource, message)
+  end
+
+  @doc false
+  @spec start_options_from_runtime(Master.t(), Bus.t()) :: {:ok, keyword()} | :error
+  def start_options_from_runtime(%Master{} = master, %Bus{} = bus) do
+    with bus_opts when is_list(bus_opts) and bus_opts != [] <- bus_start_opts(bus) do
+      {:ok,
+       bus_opts
+       |> Keyword.put(:slaves, master.slave_configs || [])
+       |> Keyword.put(:domains, domain_configs(master.domain_configs || []))
+       |> Keyword.put(:base_station, master.base_station || 0x1000)
+       |> Keyword.put(:dc, master.dc_config)
+       |> Keyword.put(:scan_poll_ms, master.scan_poll_ms || 100)
+       |> Keyword.put(:scan_stable_ms, master.scan_stable_ms || 1_000)
+       |> maybe_put_start_opt(:frame_timeout_ms, master.frame_timeout_override_ms)}
+    else
+      _ -> :error
+    end
   end
 
   defp payload_dc_resource(resource, message) do
@@ -757,33 +762,26 @@ defmodule KinoEtherCAT.Runtime do
   end
 
   defp remember_start_options(%Master{} = master) do
-    case start_options(master) do
-      {:ok, opts} -> StartConfig.remember(opts)
-      :error -> :ok
-    end
-  end
+    case fetch_bus_state() do
+      {:ok, _state_name, %Bus{} = bus} ->
+        case start_options_from_runtime(master, bus) do
+          {:ok, opts} -> StartConfig.remember(opts)
+          :error -> :ok
+        end
 
-  defp start_options(%Master{} = master) do
-    with {:ok, _state_name, %Bus{} = bus} <- fetch_bus_state(),
-         bus_opts when is_list(bus_opts) and bus_opts != [] <- bus_start_opts(bus) do
-      {:ok,
-       bus_opts
-       |> Keyword.put(:slaves, master.slave_configs || [])
-       |> Keyword.put(:domains, domain_configs(master.domain_configs || []))
-       |> Keyword.put(:base_station, master.base_station || 0x1000)
-       |> Keyword.put(:dc, master.dc_config)
-       |> Keyword.put(:scan_poll_ms, master.scan_poll_ms || 100)
-       |> Keyword.put(:scan_stable_ms, master.scan_stable_ms || 1_000)
-       |> maybe_put_start_opt(:frame_timeout_ms, master.frame_timeout_override_ms)}
-    else
-      _ -> :error
+      _ ->
+        :ok
     end
   end
 
   defp bus_start_opts(%Bus{link: %SinglePort{open_opts: open_opts}}) when is_list(open_opts) do
-    open_opts
-    |> Keyword.drop([:name, :frame_timeout_ms])
-    |> maybe_put_required_bus_opt(:interface, Keyword.get(open_opts, :interface))
+    opts = Keyword.drop(open_opts, [:name, :frame_timeout_ms])
+
+    if udp_transport_opts?(opts) do
+      opts
+    else
+      maybe_put_required_bus_opt(opts, :interface, Keyword.get(opts, :interface))
+    end
   end
 
   defp bus_start_opts(%Bus{
@@ -811,6 +809,11 @@ defmodule KinoEtherCAT.Runtime do
   defp maybe_put_start_opt(opts, _key, nil), do: opts
   defp maybe_put_start_opt(opts, key, value), do: Keyword.put(opts, key, value)
 
+  defp udp_transport_opts?(opts) when is_list(opts) do
+    Keyword.get(opts, :transport) == :udp or
+      Keyword.get(opts, :transport_mod) == EtherCAT.Bus.Transport.UdpSocket
+  end
+
   defp maybe_put_required_bus_opt(_opts, _key, nil), do: []
   defp maybe_put_required_bus_opt(opts, key, value), do: Keyword.put(opts, key, value)
 
@@ -826,6 +829,31 @@ defmodule KinoEtherCAT.Runtime do
 
   defp master_start_title(false),
     do: "Start becomes available after EtherCAT has been started with notebook config"
+
+  defp master_buttons(:idle, start_available?, _activation_available?, _stop_available?) do
+    [
+      %{
+        id: "start",
+        label: "Start session",
+        tone: "primary",
+        disabled: not start_available?,
+        title: master_start_title(start_available?)
+      }
+    ]
+  end
+
+  defp master_buttons(_state, _start_available?, true, stop_available?) do
+    [
+      %{id: "activate", label: "Activate OP", tone: "primary"},
+      %{id: "stop", label: "Stop session", tone: "danger", disabled: not stop_available?}
+    ]
+  end
+
+  defp master_buttons(_state, _start_available?, _activation_available?, stop_available?) do
+    [
+      %{id: "stop", label: "Stop session", tone: "danger", disabled: not stop_available?}
+    ]
+  end
 
   defp master_next_step(:idle, true, _activation_available?), do: "Start remembered session"
 

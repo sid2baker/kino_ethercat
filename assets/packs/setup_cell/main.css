@@ -1,5 +1,1 @@
-.ke95-setup__domain-card {
-  display: grid;
-  gap: 8px;
-  padding: 8px;
-}
+/* Setup layout is handled by the shared React95 primitives. */

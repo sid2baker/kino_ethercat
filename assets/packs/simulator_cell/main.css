@@ -2,15 +2,14 @@
   justify-content: flex-end;
 }
 
-.ke95-simulator-cell__runtime-meta {
-  display: grid;
-  gap: 0.5rem;
-  margin-top: 0.75rem;
+.ke95-simulator-cell__add-actions {
+  align-self: end;
 }
 
-.ke95-simulator-cell__runtime-row {
-  display: grid;
-  gap: 0.15rem;
+.ke95-simulator-cell__connections {
+  max-height: 18rem;
+  overflow: auto;
+  scrollbar-gutter: stable;
 }
 
 .ke95-simulator-cell__connection {

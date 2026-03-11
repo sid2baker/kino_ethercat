@@ -3,8 +3,6 @@ defmodule KinoEtherCAT.Driver.EL2809 do
 
   @behaviour EtherCAT.Slave.Driver
 
-  alias EtherCAT.Simulator.Slave.Definition
-
   @vendor_id 0x00000002
   @product_code 0x0AF93052
 
@@ -17,19 +15,7 @@ defmodule KinoEtherCAT.Driver.EL2809 do
   end
 
   @impl true
-  def simulator_definition(_config) do
-    Definition.build(:digital_io,
-      mode: :channels,
-      direction: :output,
-      channels: 16,
-      vendor_id: @vendor_id,
-      product_code: @product_code,
-      serial_number: 0
-    )
-  end
-
-  @impl true
-  def process_data_model(_config) do
+  def signal_model(_config) do
     [
       ch1: 0x1600,
       ch2: 0x1601,
@@ -55,4 +41,21 @@ defmodule KinoEtherCAT.Driver.EL2809 do
 
   @impl true
   def decode_signal(_pdo, _config, _), do: nil
+end
+
+defmodule KinoEtherCAT.Driver.EL2809.Simulator do
+  @moduledoc false
+
+  @behaviour EtherCAT.Simulator.DriverAdapter
+
+  @impl true
+  def definition_options(_config) do
+    [
+      profile: :digital_io,
+      mode: :channels,
+      direction: :output,
+      channels: 16,
+      serial_number: 0
+    ]
+  end
 end

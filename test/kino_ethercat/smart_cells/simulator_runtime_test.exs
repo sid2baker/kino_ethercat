@@ -3,6 +3,7 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntimeTest do
 
   alias EtherCAT.Simulator
   alias EtherCAT.Simulator.Slave
+  alias EtherCAT.Simulator.Udp
   alias KinoEtherCAT.SmartCells.{SimulatorConfig, SimulatorRuntime}
 
   setup do
@@ -53,8 +54,22 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntimeTest do
     assert payload.sync_tone == "warn"
   end
 
+  test "runtime fault summary includes queued runtime and udp reply faults" do
+    :ok = Simulator.inject_fault(:drop_responses)
+    :ok = Simulator.inject_fault({:next_exchanges, 2, {:disconnect, :inputs}})
+    :ok = Udp.inject_fault({:corrupt_next_responses, 3, :truncate})
+
+    payload = SimulatorRuntime.payload([], [])
+
+    assert payload.faults.active_count == 6
+    assert payload.faults.runtime_sticky_count == 1
+    assert payload.faults.runtime_pending_count == 2
+    assert payload.faults.udp_pending_count == 3
+  end
+
   test "runtime actions clear faults and stop the simulator" do
     :ok = Simulator.inject_fault(:drop_responses)
+    :ok = Udp.inject_fault({:corrupt_next_response, :wrong_idx})
 
     assert %{level: "info"} = SimulatorRuntime.perform("clear_faults")
     assert SimulatorRuntime.payload([], []).faults.active_count == 0

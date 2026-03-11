@@ -1,0 +1,20 @@
+.ke95-simulator-faults-panel {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.ke95-simulator-faults-panel__row-actions {
+  align-self: end;
+}
+
+.ke95-simulator-faults-panel .ke95-table-wrap {
+  max-height: 18rem;
+  scrollbar-gutter: stable;
+}
+
+@media (max-width: 640px) {
+  .ke95-simulator-faults-panel__row-actions {
+    width: 100%;
+  }
+}

@@ -5,13 +5,16 @@ import { createRoot } from "react-dom/client";
 
 import {
   Button,
+  Columns,
   EmptyState,
-  Frame,
+  Inset,
   InlineButtons,
   MessageLine,
   Mono,
   Panel,
+  PropertyList,
   Shell,
+  Stack,
   StatusBadge,
   SummaryGrid,
 } from "../../ui/react95";
@@ -62,7 +65,7 @@ function SlavePanel({ ctx, initialData }) {
       {data.status === "unavailable" ? (
         <EmptyState>Start the master and this panel will attach automatically.</EmptyState>
       ) : (
-        <>
+        <Stack className="ke95-slave-panel">
           {data.write_error ? (
             <MessageLine tone="error">
               write {data.write_error.signal}: {data.write_error.reason}
@@ -82,9 +85,9 @@ function SlavePanel({ ctx, initialData }) {
 
           {data.domains.length > 0 ? (
             <Panel title="Domains">
-              <div className="ke95-grid ke95-grid--3">
+              <Columns minWidth="11rem">
                 {data.domains.map((domain) => (
-                  <Frame key={domain.id} boxShadow="in" className="ke95-slave-panel__domain">
+                  <Inset key={domain.id} className="ke95-slave-panel__domain">
                     <div className="ke95-toolbar">
                       <Mono>{domain.id}</Mono>
                       <StatusBadge tone={toneFromStatus(domain.state)}>{domain.state}</StatusBadge>
@@ -92,39 +95,31 @@ function SlavePanel({ ctx, initialData }) {
                     <Mono as="div">miss {domain.miss_count}</Mono>
                     <Mono as="div">total {domain.total_miss_count}</Mono>
                     <Mono as="div">wkc {domain.expected_wkc}</Mono>
-                  </Frame>
+                  </Inset>
                 ))}
-              </div>
+              </Columns>
             </Panel>
           ) : null}
 
           {data.summary.identity ? (
             <Panel title="Identity">
-              <div className="ke95-grid ke95-grid--3">
-                <IdentityField label="Vendor" value={toHex(data.summary.identity.vendor_id, 8)} />
-                <IdentityField label="Product" value={toHex(data.summary.identity.product_code, 8)} />
-                <IdentityField label="Revision" value={toHex(data.summary.identity.revision, 8)} />
-                <IdentityField label="Serial" value={toHex(data.summary.identity.serial_number, 8)} />
-              </div>
+              <PropertyList
+                minWidth="11rem"
+                items={[
+                  { label: "Vendor", value: toHex(data.summary.identity.vendor_id, 8) },
+                  { label: "Product", value: toHex(data.summary.identity.product_code, 8) },
+                  { label: "Revision", value: toHex(data.summary.identity.revision, 8) },
+                  { label: "Serial", value: toHex(data.summary.identity.serial_number, 8) },
+                ]}
+              />
             </Panel>
           ) : null}
 
-          <div className="ke95-grid ke95-grid--2">
-            <SignalSection title="Inputs" signals={data.inputs} ctx={ctx} />
-            <SignalSection title="Outputs" signals={data.outputs} ctx={ctx} />
-          </div>
-        </>
+          <SignalSection title="Inputs" signals={data.inputs} ctx={ctx} />
+          <SignalSection title="Outputs" signals={data.outputs} ctx={ctx} />
+        </Stack>
       )}
     </Shell>
-  );
-}
-
-function IdentityField({ label, value }) {
-  return (
-    <Frame boxShadow="in" className="ke95-slave-panel__card">
-      <div className="ke95-summary__label">{label}</div>
-      <Mono as="div">{value}</Mono>
-    </Frame>
   );
 }
 
@@ -134,11 +129,11 @@ function SignalSection({ title, signals, ctx }) {
       {signals.length === 0 ? (
         <EmptyState>No signals</EmptyState>
       ) : (
-        <div className="ke95-grid">
+        <Stack compact>
           {signals.map((signal) => (
             <SignalCard key={`${signal.direction}:${signal.name}`} signal={signal} ctx={ctx} />
           ))}
-        </div>
+        </Stack>
       )}
     </Panel>
   );
@@ -148,12 +143,12 @@ function SignalCard({ signal, ctx }) {
   const activeTone = signal.known ? (signal.active ? "ok" : "neutral") : "warn";
 
   return (
-    <Frame boxShadow="in" className="ke95-slave-panel__signal">
+    <Inset className="ke95-slave-panel__signal">
       <div className="ke95-toolbar">
-        <div className="ke95-grid">
+        <Stack compact>
           <Mono>{signal.name}</Mono>
           <Mono>{signal.domain} • {signal.bit_size} bit</Mono>
-        </div>
+        </Stack>
         {signal.kind === "bit" ? <StatusBadge tone={activeTone}>{signal.display}</StatusBadge> : null}
       </div>
 
@@ -168,6 +163,6 @@ function SignalCard({ signal, ctx }) {
       ) : signal.direction === "output" ? (
         <Mono as="div">Write this signal manually in the notebook.</Mono>
       ) : null}
-    </Frame>
+    </Inset>
   );
 }

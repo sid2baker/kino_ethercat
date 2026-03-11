@@ -5,17 +5,20 @@ import { createRoot } from "react-dom/client";
 
 import {
   Button,
+  Columns,
   ControlField,
   DataTable,
   Dropdown,
   EmptyState,
-  Frame,
+  Inset,
   InlineButtons,
   Input,
   MessageLine,
   Mono,
   Panel,
+  PropertyList,
   Shell,
+  Stack,
   StatusBadge,
   SummaryGrid,
 } from "../../ui/react95";
@@ -73,10 +76,6 @@ function RuntimePanel({ ctx, data }) {
   }, [ctx]);
 
   const status = <StatusBadge tone={statusTone(snapshot.status)}>{snapshot.status}</StatusBadge>;
-  const metaLayoutClass =
-    snapshot.meta_layout === "stacked"
-      ? "ke95-runtime-panel__meta ke95-runtime-panel__meta--stacked"
-      : "ke95-runtime-panel__meta ke95-runtime-panel__meta--split";
 
   return (
     <Shell
@@ -85,26 +84,24 @@ function RuntimePanel({ ctx, data }) {
       status={status}
     >
       {({ fullscreenActive }) => (
-        <div className={`ke95-runtime-panel${fullscreenActive ? " ke95-runtime-panel--fullscreen" : ""}`}>
+        <Stack className={`ke95-runtime-panel${fullscreenActive ? " ke95-runtime-panel--fullscreen" : ""}`}>
           <MessageLine tone={MESSAGE_TONES[snapshot.message?.level] ?? "info"}>
             {snapshot.message?.text ?? null}
           </MessageLine>
 
           <SummaryGrid items={snapshot.summary} />
 
-          <div className={metaLayoutClass}>
+          {snapshot.controls ? (
             <Panel title={snapshot.controls?.title ?? "Controls"} className="ke95-runtime-panel__controls">
               <Controls ctx={ctx} controls={snapshot.controls} />
             </Panel>
+          ) : null}
 
-            {snapshot.details.length > 0 ? (
-              <Panel title={snapshot.details_title ?? "Details"} className="ke95-runtime-panel__details">
-                <Details items={snapshot.details} />
-              </Panel>
-            ) : (
-              <EmptyState>No extra detail fields for this resource.</EmptyState>
-            )}
-          </div>
+          {snapshot.details.length > 0 ? (
+            <Panel title={snapshot.details_title ?? "Details"} className="ke95-runtime-panel__details">
+              <Details items={snapshot.details} />
+            </Panel>
+          ) : null}
 
           {snapshot.tables.map((table) => (
             <Panel key={table.title} title={table.title} className="ke95-runtime-panel__table">
@@ -115,7 +112,7 @@ function RuntimePanel({ ctx, data }) {
           <Panel title="Logs" className="ke95-runtime-panel__logs">
             <LogSection ctx={ctx} logs={snapshot.logs ?? []} controls={snapshot.log_controls} />
           </Panel>
-        </div>
+        </Stack>
       )}
     </Shell>
   );
@@ -138,7 +135,7 @@ function Controls({ ctx, controls }) {
   }
 
   return (
-    <div className="ke95-grid">
+    <Stack compact>
       {controls.buttons?.length > 0 ? (
         <InlineButtons>
           {controls.buttons.map((button) => (
@@ -164,7 +161,7 @@ function Controls({ ctx, controls }) {
       ) : null}
 
       {controls.input ? (
-        <div className="ke95-toolbar">
+        <Columns minWidth="14rem" className="ke95-runtime-panel__input-row">
           <ControlField label={controls.input.label} className="ke95-fill">
             <Input
               value={inputValue}
@@ -172,22 +169,24 @@ function Controls({ ctx, controls }) {
               onChange={(event) => setInputValue(event.target.value)}
             />
           </ControlField>
-          <Button
-            onClick={() =>
-              ctx.pushEvent("action", {
-                id: controls.submit?.id ?? controls.input.id,
-                value: inputValue,
-              })
-            }
-          >
-            {controls.submit?.label ?? "Apply"}
-          </Button>
-        </div>
+          <InlineButtons className="ke95-runtime-panel__input-actions">
+            <Button
+              onClick={() =>
+                ctx.pushEvent("action", {
+                  id: controls.submit?.id ?? controls.input.id,
+                  value: inputValue,
+                })
+              }
+            >
+              {controls.submit?.label ?? "Apply"}
+            </Button>
+          </InlineButtons>
+        </Columns>
       ) : null}
 
       {controls.summary?.length > 0 ? <SummaryGrid items={controls.summary} /> : null}
       {controls.help ? <MessageLine tone="info">{controls.help}</MessageLine> : null}
-    </div>
+    </Stack>
   );
 }
 
@@ -217,18 +216,7 @@ function selectControlOptionsKey(control) {
 }
 
 function Details({ items }) {
-  return (
-    <div className="ke95-detail-grid">
-      {items.map((item) => (
-        <Frame key={item.label} boxShadow="in" className="ke95-summary__item ke95-detail">
-          <div className="ke95-summary__label">{item.label}</div>
-          <Mono as="div" className="ke95-detail__value">
-            {item.value}
-          </Mono>
-        </Frame>
-      ))}
-    </div>
-  );
+  return <PropertyList items={items} className="ke95-runtime-panel__properties" minWidth="11rem" />;
 }
 
 function LogSection({ ctx, logs, controls }) {
@@ -242,7 +230,7 @@ function LogSection({ ctx, logs, controls }) {
   const filteredLogs = filterLogs(logs, searchValue);
 
   return (
-    <div className="ke95-grid">
+    <Stack compact>
       {controls ? (
         <div className="ke95-runtime-log__toolbar">
           {controls.select ? (
@@ -287,7 +275,7 @@ function LogSection({ ctx, logs, controls }) {
       ) : null}
 
       {filteredLogs.length ? (
-        <Frame boxShadow="in" className="ke95-runtime-log">
+        <Inset className="ke95-runtime-log">
           {filteredLogs.map((entry) => (
             <div key={entry.id} className="ke95-runtime-log__row">
               <Mono as="div" className="ke95-runtime-log__time">
@@ -299,13 +287,13 @@ function LogSection({ ctx, logs, controls }) {
               </Mono>
             </div>
           ))}
-        </Frame>
+        </Inset>
       ) : logs.length ? (
         <EmptyState>No log entries match the current filters.</EmptyState>
       ) : (
         <EmptyState>No logs captured for this resource yet.</EmptyState>
       )}
-    </div>
+    </Stack>
   );
 }
 

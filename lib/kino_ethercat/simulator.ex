@@ -1,10 +1,13 @@
 defmodule KinoEtherCAT.Simulator do
   @moduledoc """
-  Namespaced entrypoint for the EtherCAT simulator control panel.
+  Namespaced entrypoints for EtherCAT simulator renders.
   """
 
-  alias KinoEtherCAT.Simulator.Panel
+  alias KinoEtherCAT.Simulator.{FaultsPanel, Panel}
 
   @spec panel() :: Kino.JS.Live.t()
   def panel, do: Panel.new()
+
+  @spec faults_panel() :: Kino.JS.Live.t()
+  def faults_panel, do: FaultsPanel.new()
 end

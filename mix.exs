@@ -53,6 +53,7 @@ defmodule KinoEtherCAT.MixProject do
            lib/assets/value/build
            lib/assets/visualizer_cell/build
            lib/assets/diagnostics/build
+           lib/assets/simulator_faults_panel/build
            mix.exs README.md LICENSE CHANGELOG.md usage-rules.md)
     ]
   end

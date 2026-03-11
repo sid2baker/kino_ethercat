@@ -15,10 +15,7 @@ defmodule KinoEtherCAT.Driver.EL3202 do
   end
 
   @impl true
-  def simulator_definition(_config), do: nil
-
-  @impl true
-  def process_data_model(_config) do
+  def signal_model(_config) do
     [channel1: 0x1A00, channel2: 0x1A01]
   end
 

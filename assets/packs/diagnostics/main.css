@@ -4,7 +4,10 @@
 .ke95-diagnostics__event {
   display: grid;
   gap: 8px;
-  padding: 8px;
+}
+
+.ke95-diagnostics {
+  min-width: 0;
 }
 
 .ke95-diagnostics__chart-copy {
@@ -35,6 +38,19 @@
   min-height: 210px;
 }
 
+.ke95-diagnostics__feed {
+  min-width: 0;
+  max-height: 22rem;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  padding-right: 2px;
+}
+
+.ke95-diagnostics .ke95-table-wrap {
+  max-height: 24rem;
+  scrollbar-gutter: stable;
+}
+
 .ke95-diagnostics__event--info {
   background: #d9ecff;
 }
@@ -45,4 +61,14 @@
 
 .ke95-diagnostics__event--danger {
   background: #f8d4d4;
+}
+
+@media (min-width: 1200px) {
+  .ke95-diagnostics__feed {
+    max-height: 26rem;
+  }
+
+  .ke95-diagnostics .ke95-table-wrap {
+    max-height: min(34rem, 56vh);
+  }
 }
