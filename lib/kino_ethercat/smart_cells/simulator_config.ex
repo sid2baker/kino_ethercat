@@ -4,6 +4,7 @@ defmodule KinoEtherCAT.SmartCells.SimulatorConfig do
   alias KinoEtherCAT.Driver
 
   @default_simulator_ip "127.0.0.2"
+  @default_port 0x88A4
   @default_driver_modules [
     KinoEtherCAT.Driver.EK1100,
     KinoEtherCAT.Driver.EL1809,
@@ -17,6 +18,9 @@ defmodule KinoEtherCAT.SmartCells.SimulatorConfig do
 
   @spec default_simulator_ip() :: String.t()
   def default_simulator_ip, do: @default_simulator_ip
+
+  @spec default_port() :: pos_integer()
+  def default_port, do: @default_port
 
   @spec available_drivers() :: [map()]
   def available_drivers do
@@ -32,7 +36,7 @@ defmodule KinoEtherCAT.SmartCells.SimulatorConfig do
     end)
   end
 
-  @spec normalize(map()) :: %{simulator_ip: String.t(), selected: [map()]}
+  @spec normalize(map()) :: %{selected: [map()]}
   def normalize(attrs) when is_map(attrs) do
     available_modules =
       available_drivers()
@@ -46,13 +50,9 @@ defmodule KinoEtherCAT.SmartCells.SimulatorConfig do
       |> ensure_default_selected(available_modules)
 
     %{
-      simulator_ip: normalize_simulator_ip(Map.get(attrs, "simulator_ip")),
       selected: selected
     }
   end
-
-  @spec normalize_simulator_ip(term()) :: String.t()
-  def normalize_simulator_ip(value), do: string_attr(value, @default_simulator_ip)
 
   @spec valid_driver?(String.t()) :: boolean()
   def valid_driver?(driver) when is_binary(driver) do
@@ -140,13 +140,4 @@ defmodule KinoEtherCAT.SmartCells.SimulatorConfig do
     name = if occurrence == 1, do: base_name, else: "#{base_name}_#{occurrence}"
     {name, Map.put(counts, base_name, occurrence)}
   end
-
-  defp string_attr(value, default) when is_binary(value) do
-    case String.trim(value) do
-      "" -> default
-      trimmed -> trimmed
-    end
-  end
-
-  defp string_attr(_value, default), do: default
 end

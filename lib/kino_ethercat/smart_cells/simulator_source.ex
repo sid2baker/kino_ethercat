@@ -19,24 +19,20 @@ defmodule KinoEtherCAT.SmartCells.SimulatorSource do
       "alias EtherCAT.Simulator\n",
       "alias EtherCAT.Simulator.Slave\n\n",
       "simulator_ip = ",
-      ip_literal(config.simulator_ip),
+      ip_literal(@default_simulator_ip),
       "\n\n",
       "_ = Simulator.stop()\n\n",
       "devices = ",
       devices_literal(config.selected),
       "\n\n",
-      "{:ok, _supervisor} = Simulator.start(devices: devices, udp: [ip: simulator_ip, port: 0])\n\n",
+      "{:ok, _supervisor} = Simulator.start(devices: devices, udp: [ip: simulator_ip, port: #{SimulatorConfig.default_port()}])\n\n",
       "KinoEtherCAT.simulator()\n"
     ])
   end
 
   defp normalize(attrs) do
-    %{simulator_ip: simulator_ip, selected: selected} = SimulatorConfig.normalize(attrs)
-
-    %{
-      simulator_ip: parse_ip(simulator_ip, @default_simulator_ip),
-      selected: SimulatorConfig.selected_entries(selected)
-    }
+    %{selected: selected} = SimulatorConfig.normalize(attrs)
+    %{selected: SimulatorConfig.selected_entries(selected)}
   end
 
   defp devices_literal([]), do: "[]"
@@ -51,17 +47,5 @@ defmodule KinoEtherCAT.SmartCells.SimulatorSource do
     "[\n#{lines}\n]"
   end
 
-  defp parse_ip(value, default) when is_binary(value) do
-    value = String.trim(value)
-
-    case :inet.parse_address(String.to_charlist(value)) do
-      {:ok, ip} -> ip
-      _ -> default
-    end
-  end
-
-  defp parse_ip(_value, default), do: default
-
   defp ip_literal({a, b, c, d}), do: "{#{a}, #{b}, #{c}, #{d}}"
-  defp ip_literal(other), do: inspect(other)
 end

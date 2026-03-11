@@ -106,7 +106,6 @@ defmodule KinoEtherCAT.SmartCellsTest do
         "transport" => "udp",
         "host" => "127.0.0.2",
         "port" => 34_980,
-        "bind_ip" => "127.0.0.1",
         "dc_enabled" => false,
         "domains" => [
           %{"id" => "main", "cycle_time_ms" => 10, "miss_threshold" => 1_000}
@@ -122,11 +121,9 @@ defmodule KinoEtherCAT.SmartCellsTest do
       })
 
     assert source =~ "udp_host = {127, 0, 0, 2}"
-    assert source =~ "udp_bind_ip = {127, 0, 0, 1}"
     assert source =~ "transport: :udp"
     assert source =~ "host: udp_host"
     assert source =~ "port: 34980"
-    assert source =~ "bind_ip: udp_bind_ip"
     assert source =~ "driver: KinoEtherCAT.Driver.EL1809"
     assert source =~ ~s(process_data: {:all, :main})
     refute source =~ "EtherCAT.Simulator"
@@ -153,7 +150,6 @@ defmodule KinoEtherCAT.SmartCellsTest do
   test "simulator cell renders a simulator-only source with ordered devices" do
     source =
       Simulator.to_source(%{
-        "simulator_ip" => "127.0.0.2",
         "selected" => [
           %{"id" => "1", "driver" => "KinoEtherCAT.Driver.EK1100"},
           %{"id" => "2", "driver" => "KinoEtherCAT.Driver.EL2809"},
@@ -168,7 +164,7 @@ defmodule KinoEtherCAT.SmartCellsTest do
     assert source =~ "Slave.from_driver(KinoEtherCAT.Driver.EL1809, name: :inputs)"
     assert source =~ "Slave.from_driver(KinoEtherCAT.Driver.EL2809, name: :outputs_2)"
     assert source =~ "simulator_ip = {127, 0, 0, 2}"
-    assert source =~ "Simulator.start(devices: devices, udp: [ip: simulator_ip, port: 0])"
+    assert source =~ "Simulator.start(devices: devices, udp: [ip: simulator_ip, port: 34980])"
     assert source =~ "KinoEtherCAT.simulator()"
     refute source =~ "EtherCAT.start("
     refute source =~ "KinoEtherCAT.diagnostics()"

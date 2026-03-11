@@ -23,7 +23,6 @@ import {
   ControlField,
   Dropdown,
   EmptyState,
-  Input,
   Mono,
   Panel,
   Shell,
@@ -65,7 +64,6 @@ function DeviceRow({ entry, position, onRemove }) {
 
 function SimulatorCell({ ctx, data }) {
   const [snapshot, setSnapshot] = useState(data);
-  const [simulatorIp, setSimulatorIp] = useState(data.simulator_ip ?? "");
   const [selected, setSelected] = useState(data.selected ?? []);
   const [driverToAdd, setDriverToAdd] = useState(data.available_drivers?.[0]?.module ?? "");
 
@@ -73,7 +71,6 @@ function SimulatorCell({ ctx, data }) {
     ctx.handleEvent("snapshot", (next) => {
       startTransition(() => {
         setSnapshot(next);
-        setSimulatorIp(next.simulator_ip ?? "");
         setSelected(next.selected ?? []);
       });
     });
@@ -117,11 +114,6 @@ function SimulatorCell({ ctx, data }) {
     ctx.pushEvent("remove", { id });
   };
 
-  const commitSimulatorIp = (value) => {
-    setSimulatorIp(value);
-    ctx.pushEvent("update", { simulator_ip: value });
-  };
-
   return (
     <Shell
       title="EtherCAT Simulator"
@@ -129,17 +121,7 @@ function SimulatorCell({ ctx, data }) {
       status={<Mono>{selectedCountLabel}</Mono>}
     >
       <Panel title="UDP endpoint">
-        <div className="ke95-toolbar">
-          <ControlField label="Simulator IP" help="The UDP listener is started with `port: 0` and the actual port is shown in the simulator panel." className="ke95-fill">
-            <Input
-              className="ke95-fill"
-              value={simulatorIp}
-              onChange={(event) => setSimulatorIp(event.target.value)}
-              onBlur={(event) => commitSimulatorIp(event.target.value)}
-              onKeyDown={(event) => event.key === "Enter" && commitSimulatorIp(event.target.value)}
-            />
-          </ControlField>
-        </div>
+        <Mono>{`${snapshot.simulator_host}:${snapshot.simulator_port}`}</Mono>
       </Panel>
 
       <Panel title="Add device">

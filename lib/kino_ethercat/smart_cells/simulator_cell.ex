@@ -7,11 +7,10 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
 
   @impl true
   def init(attrs, ctx) do
-    %{simulator_ip: simulator_ip, selected: selected} = SimulatorConfig.normalize(attrs)
+    %{selected: selected} = SimulatorConfig.normalize(attrs)
 
     {:ok,
      assign(ctx,
-       simulator_ip: simulator_ip,
        selected: selected,
        next_id: next_id(selected)
      )}
@@ -23,17 +22,6 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
   end
 
   @impl true
-  def handle_event("update", params, ctx) do
-    simulator_ip =
-      params
-      |> Map.get("simulator_ip", ctx.assigns.simulator_ip)
-      |> SimulatorConfig.normalize_simulator_ip()
-
-    ctx = assign(ctx, simulator_ip: simulator_ip)
-    broadcast_event(ctx, "snapshot", payload(ctx.assigns))
-    {:noreply, ctx}
-  end
-
   def handle_event("add_device", %{"driver" => driver}, ctx) do
     if SimulatorConfig.valid_driver?(driver) do
       selected =
@@ -69,10 +57,7 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
 
   @impl true
   def to_attrs(ctx) do
-    %{
-      "simulator_ip" => ctx.assigns.simulator_ip,
-      "selected" => ctx.assigns.selected
-    }
+    %{"selected" => ctx.assigns.selected}
   end
 
   @impl true
@@ -84,8 +69,9 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
     %{
       title: "EtherCAT Simulator",
       description:
-        "Build an ordered simulator ring, start EtherCAT.Simulator over UDP, and render the simulator control panel.",
-      simulator_ip: assigns.simulator_ip,
+        "Build an ordered simulator ring, start EtherCAT.Simulator on 127.0.0.2:34980, and render the simulator control panel.",
+      simulator_host: SimulatorConfig.default_simulator_ip(),
+      simulator_port: SimulatorConfig.default_port(),
       available_drivers: SimulatorConfig.available_drivers(),
       selected: SimulatorConfig.selected_entries(assigns.selected)
     }

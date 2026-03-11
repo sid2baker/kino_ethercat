@@ -22,7 +22,6 @@ defmodule KinoEtherCAT.SmartCells.Setup do
        interface: config.interface,
        host: config.host,
        port: config.port,
-       bind_ip: config.bind_ip,
        slaves: config.slaves,
        domains: config.domains,
        dc_enabled: config.dc_enabled,
@@ -78,7 +77,6 @@ defmodule KinoEtherCAT.SmartCells.Setup do
         interface: config.interface,
         host: config.host,
         port: config.port,
-        bind_ip: config.bind_ip,
         slaves: config.slaves,
         domains: config.domains,
         dc_enabled: config.dc_enabled,
@@ -140,7 +138,6 @@ defmodule KinoEtherCAT.SmartCells.Setup do
       "interface" => ctx.assigns.interface,
       "host" => ctx.assigns.host,
       "port" => ctx.assigns.port,
-      "bind_ip" => ctx.assigns.bind_ip,
       "slaves" => ctx.assigns.slaves,
       "domains" => ctx.assigns.domains,
       "dc_enabled" => ctx.assigns.dc_enabled,
@@ -230,7 +227,6 @@ defmodule KinoEtherCAT.SmartCells.Setup do
       interface: assigns.interface,
       host: assigns.host,
       port: assigns.port,
-      bind_ip: assigns.bind_ip,
       transport_source: SetupTransport.summary_label(transport),
       available_interfaces: assigns.available_interfaces,
       status: to_string(assigns.status),
@@ -265,7 +261,6 @@ defmodule KinoEtherCAT.SmartCells.Setup do
       interface: transport.interface,
       host: transport.host,
       port: transport.port,
-      bind_ip: transport.bind_ip,
       domains: domains,
       slaves: attrs |> Map.get("slaves", []) |> normalize_slaves(domains),
       dc_enabled:
@@ -434,8 +429,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
       transport: assigns.transport,
       interface: assigns.interface,
       host: assigns.host,
-      port: assigns.port,
-      bind_ip: assigns.bind_ip
+      port: assigns.port
     }
   end
 

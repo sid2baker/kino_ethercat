@@ -38,7 +38,6 @@ function serialize(state) {
     interface: state.interface,
     host: state.host,
     port: state.port,
-    bind_ip: state.bind_ip,
     domains: state.domains,
     slaves: state.slaves,
     dc_enabled: state.dc_enabled,
@@ -153,6 +152,7 @@ function statusTone(status) {
 
 function SetupCell({ ctx, data }) {
   const [state, setState] = useState(data);
+  const [udpPortInput, setUdpPortInput] = useState(String(data.port ?? 34980));
   const stateRef = useRef(state);
   const interfaces = interfaceOptions(state);
 
@@ -177,6 +177,10 @@ function SetupCell({ ctx, data }) {
     });
   }, [ctx]);
 
+  useEffect(() => {
+    setUdpPortInput(String(state.port ?? 34980));
+  }, [state.transport, state.port]);
+
   const updateLocal = (recipe) => {
     setState((previous) => recipe(previous));
   };
@@ -197,6 +201,15 @@ function SetupCell({ ctx, data }) {
   };
 
   const hasDiscovery = state.slaves.length > 0;
+
+  const commitUdpPort = (rawValue) => {
+    const trimmed = String(rawValue ?? "").trim();
+    const parsed = Number.parseInt(trimmed, 10);
+    const port = Number.isInteger(parsed) && parsed > 0 ? parsed : 34980;
+
+    setUdpPortInput(String(port));
+    commit((previous) => ({ ...previous, port }));
+  };
 
   return (
     <Shell
@@ -264,19 +277,10 @@ function SetupCell({ ctx, data }) {
                   type="number"
                   min="1"
                   step="1"
-                  value={state.port}
-                  onChange={(event) => updateLocal((previous) => ({ ...previous, port: Number(event.target.value) || 34980 }))}
-                  onBlur={(event) => commit((previous) => ({ ...previous, port: Number(event.target.value) || 34980 }))}
-                />
-              </ControlField>
-
-              <ControlField label="Bind IP" help="Optional local UDP bind address. Leave empty to use the OS default route.">
-                <Input
-                  className="ke95-fill"
-                  placeholder="127.0.0.1"
-                  value={state.bind_ip}
-                  onChange={(event) => updateLocal((previous) => ({ ...previous, bind_ip: event.target.value }))}
-                  onBlur={(event) => commit((previous) => ({ ...previous, bind_ip: event.target.value }))}
+                  value={udpPortInput}
+                  onChange={(event) => setUdpPortInput(event.target.value)}
+                  onBlur={(event) => commitUdpPort(event.target.value)}
+                  onKeyDown={(event) => event.key === "Enter" && commitUdpPort(event.target.value)}
                 />
               </ControlField>
             </>

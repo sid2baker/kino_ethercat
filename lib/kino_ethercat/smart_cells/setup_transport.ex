@@ -8,8 +8,7 @@ defmodule KinoEtherCAT.SmartCells.SetupTransport do
           transport: :raw | :udp,
           interface: String.t(),
           host: String.t(),
-          port: pos_integer(),
-          bind_ip: String.t()
+          port: pos_integer()
         }
 
   @spec normalize(map()) :: t()
@@ -18,8 +17,7 @@ defmodule KinoEtherCAT.SmartCells.SetupTransport do
       transport: normalize_transport(attrs),
       interface: attrs |> Map.get("interface", @default_interface) |> normalize_interface(),
       host: attrs |> Map.get("host", "") |> normalize_string(),
-      port: attrs |> Map.get("port", @default_port) |> positive_integer(@default_port),
-      bind_ip: attrs |> Map.get("bind_ip", "") |> normalize_string()
+      port: attrs |> Map.get("port", @default_port) |> positive_integer(@default_port)
     }
   end
 
@@ -29,12 +27,9 @@ defmodule KinoEtherCAT.SmartCells.SetupTransport do
     {:ok, [interface: interface]}
   end
 
-  def runtime_start_opts(%{transport: :udp, host: host, port: port, bind_ip: bind_ip}) do
-    with {:ok, host_ip} <- parse_required_ip(host, "UDP host"),
-         {:ok, bind_ip} <- parse_optional_ip(bind_ip, "UDP bind IP") do
-      {:ok,
-       [transport: :udp, host: host_ip, port: port]
-       |> maybe_put_bind_ip(bind_ip)}
+  def runtime_start_opts(%{transport: :udp, host: host, port: port}) do
+    with {:ok, host_ip} <- parse_required_ip(host, "UDP host") do
+      {:ok, [transport: :udp, host: host_ip, port: port]}
     end
   end
 
@@ -46,18 +41,16 @@ defmodule KinoEtherCAT.SmartCells.SetupTransport do
              transport: :raw | :udp,
              interface: String.t(),
              host: :inet.ip_address() | nil,
-             port: pos_integer(),
-             bind_ip: :inet.ip_address() | nil
+             port: pos_integer()
            }}
           | {:error, :invalid_transport}
   def source_config(%{transport: :raw, interface: interface}) when byte_size(interface) > 0 do
-    {:ok, %{transport: :raw, interface: interface, host: nil, port: @default_port, bind_ip: nil}}
+    {:ok, %{transport: :raw, interface: interface, host: nil, port: @default_port}}
   end
 
-  def source_config(%{transport: :udp, host: host, port: port, bind_ip: bind_ip}) do
-    with {:ok, host_ip} <- parse_ip(host),
-         {:ok, bind_ip} <- parse_optional_ip(bind_ip) do
-      {:ok, %{transport: :udp, interface: "", host: host_ip, port: port, bind_ip: bind_ip}}
+  def source_config(%{transport: :udp, host: host, port: port}) do
+    with {:ok, host_ip} <- parse_ip(host) do
+      {:ok, %{transport: :udp, interface: "", host: host_ip, port: port}}
     else
       _ -> {:error, :invalid_transport}
     end
@@ -84,7 +77,7 @@ defmodule KinoEtherCAT.SmartCells.SetupTransport do
         :raw
 
       _ ->
-        if Enum.any?(~w(host port bind_ip), &Map.has_key?(attrs, &1)), do: :udp, else: :raw
+        if Enum.any?(~w(host port), &Map.has_key?(attrs, &1)), do: :udp, else: :raw
     end
   end
 
@@ -118,24 +111,6 @@ defmodule KinoEtherCAT.SmartCells.SetupTransport do
     end
   end
 
-  defp parse_optional_ip(value, label) do
-    case parse_optional_ip(value) do
-      {:ok, ip} -> {:ok, ip}
-      :error -> {:error, "Invalid #{label}."}
-    end
-  end
-
-  defp parse_optional_ip(value) when value in [nil, ""], do: {:ok, nil}
-
-  defp parse_optional_ip(value) when is_binary(value) do
-    case parse_ip(value) do
-      {:ok, ip} -> {:ok, ip}
-      :error -> :error
-    end
-  end
-
-  defp parse_optional_ip(_value), do: :error
-
   defp parse_ip(value) when is_binary(value) do
     value = String.trim(value)
 
@@ -150,7 +125,4 @@ defmodule KinoEtherCAT.SmartCells.SetupTransport do
   end
 
   defp parse_ip(_value), do: :error
-
-  defp maybe_put_bind_ip(opts, nil), do: opts
-  defp maybe_put_bind_ip(opts, bind_ip), do: Keyword.put(opts, :bind_ip, bind_ip)
 end
