@@ -11,7 +11,6 @@ defmodule KinoEtherCAT.SmartCells.Visualizer do
 
   @impl true
   def init(attrs, ctx) do
-    columns = normalize_columns(attrs["columns"])
     {status, available} = fetch_signals()
     auto_seed_selection? = not Map.has_key?(attrs, "selected")
     selected = normalize_selected(attrs["selected"], available, auto_seed_selection?)
@@ -22,7 +21,6 @@ defmodule KinoEtherCAT.SmartCells.Visualizer do
        selected: selected,
        available: available,
        status: status,
-       columns: columns,
        auto_seed_selection?: auto_seed_selection?
      )}
   end
@@ -51,50 +49,6 @@ defmodule KinoEtherCAT.SmartCells.Visualizer do
     {:noreply, broadcast_snapshot(ctx)}
   end
 
-  def handle_event("add_all", _params, ctx) do
-    selected =
-      ctx.assigns.available
-      |> Enum.reduce(ctx.assigns.selected, fn entry, acc ->
-        append_selected(acc, entry["key"], ctx.assigns.available)
-      end)
-
-    ctx = Context.assign(ctx, selected: selected, auto_seed_selection?: false)
-    {:noreply, broadcast_snapshot(ctx)}
-  end
-
-  def handle_event("update_widget", %{"key" => key, "widget" => widget}, ctx) do
-    selected =
-      Enum.map(ctx.assigns.selected, fn entry ->
-        if entry["key"] == key do
-          Map.put(entry, "widget", normalize_widget(widget, entry))
-        else
-          entry
-        end
-      end)
-
-    ctx = Context.assign(ctx, selected: selected)
-    {:noreply, broadcast_snapshot(ctx)}
-  end
-
-  def handle_event("update_label", %{"key" => key, "label" => label}, ctx) do
-    selected =
-      Enum.map(ctx.assigns.selected, fn entry ->
-        if entry["key"] == key do
-          Map.put(entry, "label", normalize_label(label))
-        else
-          entry
-        end
-      end)
-
-    ctx = Context.assign(ctx, selected: selected)
-    {:noreply, broadcast_snapshot(ctx)}
-  end
-
-  def handle_event("update_columns", %{"columns" => columns}, ctx) do
-    ctx = Context.assign(ctx, columns: normalize_columns(columns))
-    {:noreply, broadcast_snapshot(ctx)}
-  end
-
   @impl true
   def handle_info(:refresh_inventory, ctx) do
     schedule_refresh()
@@ -115,11 +69,13 @@ defmodule KinoEtherCAT.SmartCells.Visualizer do
 
   @impl true
   def to_attrs(ctx) do
-    %{"selected" => ctx.assigns.selected, "columns" => ctx.assigns.columns}
+    %{"selected" => ctx.assigns.selected}
   end
 
   @impl true
-  def to_source(%{"selected" => selected} = attrs) do
+  def to_source(attrs) when is_map(attrs) do
+    selected = Map.get(attrs, "selected", [])
+
     widgets =
       selected
       |> normalize_selected([], false)
@@ -131,12 +87,6 @@ defmodule KinoEtherCAT.SmartCells.Visualizer do
         ""
 
       _ ->
-        grid_call =
-          case normalize_columns(attrs["columns"]) do
-            nil -> "Kino.Layout.grid(widgets)"
-            value -> "Kino.Layout.grid(widgets, columns: #{value})"
-          end
-
         """
         widgets = [
         #{Enum.map_join(widgets, ",\n", &("  " <> &1))}
@@ -145,7 +95,7 @@ defmodule KinoEtherCAT.SmartCells.Visualizer do
         case widgets do
           [] -> Kino.nothing()
           [widget] -> widget
-          _ -> #{grid_call}
+          _ -> Kino.Layout.grid(widgets, columns: #{widget_columns(length(widgets))})
         end
         |> Kino.render()
 
@@ -167,29 +117,17 @@ defmodule KinoEtherCAT.SmartCells.Visualizer do
 
     %{
       title: "Signal visualizer",
-      description:
-        if(assigns.status == :ok,
-          do:
-            "Build a compact signal dashboard after Setup and Master. Pick only the inputs and outputs you care about.",
-          else:
-            "Evaluate the generated setup cell first, then use this smart cell to compose a focused signal dashboard."
-        ),
       status: to_string(assigns.status),
-      columns: assigns.columns,
       selected: selected,
-      available: available,
-      summary: [
-        %{label: "Selected", value: Integer.to_string(length(selected))},
-        %{label: "Available", value: Integer.to_string(length(available))},
-        %{label: "Columns", value: format_columns(assigns.columns)}
-      ]
+      available: available
     }
   end
 
   defp fetch_signals do
     signals =
       EtherCAT.slaves()
-      |> Enum.flat_map(&slave_signal_entries/1)
+      |> Enum.with_index()
+      |> Enum.flat_map(fn {slave, slave_index} -> slave_signal_entries(slave, slave_index) end)
       |> Enum.sort_by(&signal_sort_key/1)
 
     {:ok, signals}
@@ -197,12 +135,15 @@ defmodule KinoEtherCAT.SmartCells.Visualizer do
     _ -> {:not_running, []}
   end
 
-  defp slave_signal_entries(%{name: name}) when is_atom(name) do
+  defp slave_signal_entries(%{name: name}, slave_index) when is_atom(name) do
     case safe(fn -> EtherCAT.slave_info(name) end, {:error, :not_found}) do
       {:ok, info} ->
         info
         |> Map.get(:signals, [])
-        |> Enum.map(&signal_entry(name, &1))
+        |> Enum.with_index()
+        |> Enum.map(fn {signal, signal_index} ->
+          signal_entry(name, slave_index, signal, signal_index)
+        end)
         |> Enum.reject(&is_nil/1)
 
       _ ->
@@ -210,9 +151,9 @@ defmodule KinoEtherCAT.SmartCells.Visualizer do
     end
   end
 
-  defp slave_signal_entries(_slave), do: []
+  defp slave_signal_entries(_slave, _slave_index), do: []
 
-  defp signal_entry(slave_name, %{} = signal) do
+  defp signal_entry(slave_name, slave_index, %{} = signal, signal_index) do
     direction = normalize_direction(Map.get(signal, :direction))
     bit_size = normalize_bit_size(Map.get(signal, :bit_size))
     signal_name = signal_name(signal)
@@ -226,6 +167,8 @@ defmodule KinoEtherCAT.SmartCells.Visualizer do
         "direction" => direction,
         "bit_size" => bit_size,
         "domain" => normalize_domain(Map.get(signal, :domain)),
+        "slave_index" => slave_index,
+        "signal_index" => signal_index,
         "default_widget" => default_widget,
         "widget" => "auto",
         "label" => nil
@@ -233,7 +176,7 @@ defmodule KinoEtherCAT.SmartCells.Visualizer do
     end
   end
 
-  defp signal_entry(_slave_name, _signal), do: nil
+  defp signal_entry(_slave_name, _slave_index, _signal, _signal_index), do: nil
 
   defp schedule_refresh, do: Process.send_after(self(), :refresh_inventory, @refresh_interval_ms)
 
@@ -306,6 +249,8 @@ defmodule KinoEtherCAT.SmartCells.Visualizer do
         "direction" => normalize_direction(Map.get(entry, "direction")),
         "bit_size" => normalize_bit_size(Map.get(entry, "bit_size")),
         "domain" => normalize_domain(Map.get(entry, "domain")),
+        "slave_index" => normalize_index(Map.get(entry, "slave_index")),
+        "signal_index" => normalize_index(Map.get(entry, "signal_index")),
         "default_widget" => normalize_widget_name(Map.get(entry, "default_widget")),
         "widget" => Map.get(entry, "widget"),
         "label" => normalize_label(Map.get(entry, "label"))
@@ -332,7 +277,16 @@ defmodule KinoEtherCAT.SmartCells.Visualizer do
   defp merge_available_entry(selection, available) do
     selection
     |> Map.merge(
-      Map.take(available, ["slave", "signal", "direction", "bit_size", "domain", "default_widget"])
+      Map.take(available, [
+        "slave",
+        "signal",
+        "direction",
+        "bit_size",
+        "domain",
+        "slave_index",
+        "signal_index",
+        "default_widget"
+      ])
     )
     |> Map.put("key", available["key"])
     |> then(fn value ->
@@ -342,7 +296,17 @@ defmodule KinoEtherCAT.SmartCells.Visualizer do
 
   defp selection_from_available(available) do
     available
-    |> Map.take(["key", "slave", "signal", "direction", "bit_size", "domain", "default_widget"])
+    |> Map.take([
+      "key",
+      "slave",
+      "signal",
+      "direction",
+      "bit_size",
+      "domain",
+      "slave_index",
+      "signal_index",
+      "default_widget"
+    ])
     |> Map.put("widget", "auto")
     |> Map.put("label", nil)
   end
@@ -394,42 +358,16 @@ defmodule KinoEtherCAT.SmartCells.Visualizer do
     %{
       key: entry["key"],
       slave: entry["slave"],
+      slave_index: entry["slave_index"],
       signal: entry["signal"],
+      signal_index: entry["signal_index"],
       direction: entry["direction"],
       bit_size: entry["bit_size"],
       domain: entry["domain"],
-      label: entry["label"] || "",
-      widget: normalize_widget(Map.get(entry, "widget"), entry),
       resolved_widget: resolved_widget,
-      widget_options: widget_options(entry, resolved_widget),
-      display_name: "#{entry["slave"]}.#{entry["signal"]}",
-      meta: entry_meta(entry),
+      widget_label: widget_label(resolved_widget),
       available: available?
     }
-  end
-
-  defp entry_meta(entry) do
-    [
-      entry["slave"],
-      direction_label(entry["direction"]),
-      bit_size_label(entry["bit_size"]),
-      domain_label(entry["domain"])
-    ]
-    |> Enum.reject(&is_nil/1)
-    |> Enum.join(" · ")
-  end
-
-  defp widget_options(entry, resolved_widget) do
-    auto_label =
-      if is_binary(resolved_widget) do
-        "Auto (#{resolved_widget})"
-      else
-        "Auto"
-      end
-
-    [{auto_label, "auto"} | supported_widgets(entry)]
-    |> Enum.uniq_by(fn {_label, value} -> value end)
-    |> Enum.map(fn {label, value} -> %{label: label, value: value} end)
   end
 
   defp supported_widgets(entry) do
@@ -484,9 +422,11 @@ defmodule KinoEtherCAT.SmartCells.Visualizer do
 
   defp signal_sort_key(entry) do
     {
-      String.downcase(entry["slave"] || ""),
+      entry["slave_index"] || 9_999,
       natural_signal_key(entry["signal"]),
-      direction_rank(entry["direction"])
+      entry["signal_index"] || 9_999,
+      direction_rank(entry["direction"]),
+      String.downcase(entry["slave"] || "")
     }
   end
 
@@ -572,19 +512,25 @@ defmodule KinoEtherCAT.SmartCells.Visualizer do
 
   defp normalize_bit_size(_value), do: nil
 
+  defp normalize_index(value) when is_integer(value) and value >= 0, do: value
+
+  defp normalize_index(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {parsed, ""} when parsed >= 0 -> parsed
+      _ -> nil
+    end
+  end
+
+  defp normalize_index(_value), do: nil
+
   defp direction_rank("output"), do: 0
   defp direction_rank("input"), do: 1
   defp direction_rank(_direction), do: 2
 
-  defp direction_label("output"), do: "output"
-  defp direction_label("input"), do: "input"
-  defp direction_label(_direction), do: nil
-
-  defp bit_size_label(bit_size) when is_integer(bit_size), do: "#{bit_size}-bit"
-  defp bit_size_label(_bit_size), do: nil
-
-  defp domain_label(nil), do: nil
-  defp domain_label(domain), do: "domain #{domain}"
+  defp widget_label("switch"), do: "output"
+  defp widget_label("led"), do: "input"
+  defp widget_label("value"), do: "value"
+  defp widget_label(_widget), do: "signal"
 
   defp natural_signal_key(name) when is_binary(name) do
     case Regex.run(~r/^(.*?)(\d+)$/, name, capture: :all_but_first) do
@@ -593,19 +539,9 @@ defmodule KinoEtherCAT.SmartCells.Visualizer do
     end
   end
 
-  defp normalize_columns(value) when is_integer(value) and value > 0, do: min(value, 4)
-
-  defp normalize_columns(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {parsed, ""} when parsed > 0 -> min(parsed, 4)
-      _ -> nil
-    end
-  end
-
-  defp normalize_columns(_value), do: nil
-
-  defp format_columns(nil), do: "auto"
-  defp format_columns(value), do: Integer.to_string(value)
+  defp widget_columns(count) when count <= 4, do: 2
+  defp widget_columns(count) when count <= 9, do: 3
+  defp widget_columns(_count), do: 4
 
   defp safe(fun, default) do
     fun.()

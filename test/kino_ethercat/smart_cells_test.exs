@@ -139,7 +139,6 @@ defmodule KinoEtherCAT.SmartCellsTest do
   test "visualizer cell renders signal widget calls" do
     source =
       Visualizer.to_source(%{
-        "columns" => 2,
         "selected" => [
           %{
             "key" => "outputs.ch1",
@@ -182,6 +181,10 @@ defmodule KinoEtherCAT.SmartCellsTest do
     assert source =~ "Kino.nothing()"
     refute source =~ "KinoEtherCAT.Widgets.dashboard"
     refute source =~ "String.to_atom"
+  end
+
+  test "visualizer cell returns empty source without selected signals" do
+    assert Visualizer.to_source(%{}) == ""
   end
 
   test "simulator cell renders a simulator-only source with ordered devices" do

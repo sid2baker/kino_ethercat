@@ -75,7 +75,8 @@ Builds a small virtual ring for teaching and testing.
 Builds a compact signal dashboard from the running bus.
 
 - pick signals with checkboxes grouped by slave
-- reorder the selected signal list
+- keep the selected signal path short and reorder it directly
+- widget type is chosen automatically from the signal direction and bit size
 - generate focused signal widgets like `led/3`, `switch/3`, and `value/3`
 
 #### EtherCAT Slave Explorer

@@ -6,14 +6,38 @@
 .ke95-visualizer__selected-list {
   display: grid;
   gap: 8px;
+  max-height: 18rem;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.ke95-visualizer__groups {
+  max-height: 22rem;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  padding-right: 2px;
 }
 
 .ke95-visualizer__selected-row {
   display: grid;
-  grid-template-columns: auto auto 1fr auto auto;
+  grid-template-columns: auto 1fr auto;
   gap: 8px;
   align-items: center;
   padding: 6px 8px;
+}
+
+.ke95-visualizer__selected-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ke95-visualizer__selected-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
 }
 
 .ke95-visualizer__selected-row--dragging {
@@ -42,6 +66,6 @@
 
 @media (max-width: 720px) {
   .ke95-visualizer__selected-row {
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: auto 1fr;
   }
 }

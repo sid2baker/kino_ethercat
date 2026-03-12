@@ -52,8 +52,15 @@ function buildSignalGroups(selected, available) {
 
   return [...merged.values()]
     .sort((left, right) => {
-      const slaveOrder = naturalCompare(left.slave ?? "", right.slave ?? "");
+      const slaveOrder = (left.slave_index ?? Number.MAX_SAFE_INTEGER) - (right.slave_index ?? Number.MAX_SAFE_INTEGER);
       if (slaveOrder !== 0) return slaveOrder;
+
+      const signalOrder = (left.signal_index ?? Number.MAX_SAFE_INTEGER) - (right.signal_index ?? Number.MAX_SAFE_INTEGER);
+      if (signalOrder !== 0) return signalOrder;
+
+      const slaveNameOrder = naturalCompare(left.slave ?? "", right.slave ?? "");
+      if (slaveNameOrder !== 0) return slaveNameOrder;
+
       return naturalCompare(left.signal ?? "", right.signal ?? "");
     })
     .reduce((groups, entry) => {
@@ -68,7 +75,7 @@ function buildSignalGroups(selected, available) {
     }, []);
 }
 
-function SelectedRow({ entry, position, onRemove }) {
+function SelectedRow({ entry, onRemove }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: entry.key });
 
@@ -88,9 +95,16 @@ function SelectedRow({ entry, position, onRemove }) {
       <button className="ke95-visualizer__handle" title="Reorder" {...attributes} {...listeners}>
         ::
       </button>
-      <Mono>{String(position + 1).padStart(2, "0")}</Mono>
-      <Mono>{entry.display_name}</Mono>
-      {!entry.available ? <StatusBadge tone="warn">stale</StatusBadge> : null}
+      <div className="ke95-visualizer__selected-copy">
+        <div className="ke95-visualizer__selected-line">
+          <Mono>{entry.signal}</Mono>
+          <StatusBadge tone={entry.resolved_widget === "switch" ? "warn" : "ok"}>
+            {entry.widget_label}
+          </StatusBadge>
+          {!entry.available ? <StatusBadge tone="warn">stale</StatusBadge> : null}
+        </div>
+        <Mono>{entry.slave}</Mono>
+      </div>
       <Button onClick={() => onRemove(entry.key)}>Remove</Button>
     </li>
   );
@@ -147,9 +161,9 @@ function VisualizerCell({ ctx, data }) {
       }
     >
       <Stack className="ke95-visualizer">
-        <Panel title="Selected">
+        <Panel title="Selected signals">
           {selected.length === 0 ? (
-            <EmptyState>Select signals below.</EmptyState>
+            <EmptyState>Pick one output and one input.</EmptyState>
           ) : (
             <DndContext
               sensors={sensors}
@@ -166,7 +180,6 @@ function VisualizerCell({ ctx, data }) {
                     <SelectedRow
                       key={entry.key}
                       entry={entry}
-                      position={index}
                       onRemove={(key) => ctx.pushEvent("remove", { key })}
                     />
                   ))}
@@ -176,7 +189,7 @@ function VisualizerCell({ ctx, data }) {
           )}
         </Panel>
 
-        <Panel title="Signals">
+        <Panel title="Signals on bus">
           {groups.length === 0 ? (
             <EmptyState>
               {status === "not_running"
@@ -184,7 +197,7 @@ function VisualizerCell({ ctx, data }) {
                 : "No supported signals found."}
             </EmptyState>
           ) : (
-            <Stack>
+            <Stack className="ke95-visualizer__groups">
               {groups.map((group) => (
                 <Fieldset key={group.slave} legend={group.slave}>
                   <div className="ke95-visualizer__group">
