@@ -9,6 +9,8 @@ The objective is still the same: create an excellent introduction to EtherCAT fo
 
 - [Phases 1 and 2: EtherCAT Introduction](./01_ethercat_introduction.livemd)
 
+[![Run in Livebook](https://livebook.dev/badge/v1/blue.svg)](https://livebook.dev/run?url=https%3A%2F%2Fraw.githubusercontent.com%2Fsid2baker%2Fkino_ethercat%2Fmain%2Fexamples%2F01_ethercat_introduction.livemd)
+
 These two phases are also reflected in the generated `Introduction` tab from the `EtherCAT Simulator` smart cell.
 
 ## Current Teaching Workspace

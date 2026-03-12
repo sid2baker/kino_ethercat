@@ -14,6 +14,8 @@ If you want the shortest path to a first useful result, start with the example n
 
 - [EtherCAT Introduction](./examples/01_ethercat_introduction.livemd)
 
+[![Run in Livebook](https://livebook.dev/badge/v1/blue.svg)](https://livebook.dev/run?url=https%3A%2F%2Fraw.githubusercontent.com%2Fsid2baker%2Fkino_ethercat%2Fmain%2Fexamples%2F01_ethercat_introduction.livemd)
+
 That notebook uses the built-in simulator, walks through Setup and Master, and ends with a simple `outputs.ch1 -> inputs.ch1` interaction.
 
 The broader teaching direction lives in [examples/README.md](./examples/README.md).
