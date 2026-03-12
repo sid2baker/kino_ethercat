@@ -81,6 +81,20 @@ function formatNs(value) {
   return `${value.toLocaleString()} ns`;
 }
 
+function formatBytes(value) {
+  if (value == null) return "n/a";
+
+  if (Math.abs(value) >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(1)} MB`;
+  }
+
+  if (Math.abs(value) >= 1_000) {
+    return `${(value / 1_000).toFixed(1)} kB`;
+  }
+
+  return `${value.toLocaleString()} B`;
+}
+
 function formatHex(value, pad = 4) {
   if (value == null) return "n/a";
   return "0x" + (value >>> 0).toString(16).toUpperCase().padStart(pad, "0");
@@ -288,8 +302,52 @@ function ChartPanel({ title, subtitle, series, height = 210, yUnit = "", emptyLa
   );
 }
 
+function SectionCopy({ children }) {
+  if (!children) return null;
+  return <div className="ke95-diagnostics__copy">{children}</div>;
+}
+
+function domainAlertCount(domains) {
+  return domains.filter(
+    (domain) =>
+      domain.state !== "cycling" || domain.last_miss_reason || domain.stop_reason || domain.crash_reason
+  ).length;
+}
+
+function nonOperationalSlaveCount(slaves) {
+  return slaves.filter(
+    (slave) => slave.al_state !== "op" || slave.al_error != null || slave.configuration_error
+  ).length;
+}
+
+function slaveSummaryItems(slaves) {
+  const counts = slaves.reduce(
+    (acc, slave) => {
+      const state = slave.al_state ?? "unknown";
+      acc[state] = (acc[state] ?? 0) + 1;
+
+      if (slave.al_error != null) {
+        acc.al_errors += 1;
+      }
+
+      return acc;
+    },
+    { op: 0, safeop: 0, preop: 0, init: 0, unknown: 0, al_errors: 0 }
+  );
+
+  return [
+    { label: "OP", value: formatCount(counts.op) },
+    { label: "SAFEOP", value: formatCount(counts.safeop) },
+    { label: "PREOP", value: formatCount(counts.preop) },
+    { label: "INIT", value: formatCount(counts.init) },
+    { label: "AL errors", value: formatCount(counts.al_errors) },
+  ];
+}
+
 function Diagnostics({ ctx, data }) {
   const [snapshot, setSnapshot] = useState(data);
+  const runtimeAlerts = domainAlertCount(snapshot.domains);
+  const slaveAlerts = nonOperationalSlaveCount(snapshot.slaves);
 
   useEffect(() => {
     ctx.handleEvent("snapshot", (next) => {
@@ -316,23 +374,24 @@ function Diagnostics({ ctx, data }) {
             <SummaryGrid
               items={[
                 { label: "Slice window", value: sliceWindowLabel(snapshot.slice_ms) },
-                { label: "Expired RT", value: formatCount(snapshot.bus.expired_realtime) },
-                { label: "Bus exceptions", value: formatCount(snapshot.bus.exceptions) },
                 { label: "Slaves", value: String(snapshot.slaves.length) },
                 { label: "Domains", value: String(snapshot.domains.length) },
-                { label: "DC state", value: snapshot.dc?.lock_state ?? "disabled" },
+                { label: "Bus exceptions", value: formatCount(snapshot.bus.exceptions) },
+                { label: "Runtime alerts", value: formatCount(runtimeAlerts) },
+                { label: "Slave alerts", value: formatCount(slaveAlerts) },
+                { label: "Events", value: String(snapshot.timeline.length) },
               ]}
             />
 
-            <Tabs defaultActiveTab="Performance">
-              <Tab title="Performance">
-                <PerformanceSection bus={snapshot.bus} />
+            <Tabs defaultActiveTab="Overview">
+              <Tab title="Overview">
+                <OverviewSection snapshot={snapshot} runtimeAlerts={runtimeAlerts} slaveAlerts={slaveAlerts} />
               </Tab>
-              <Tab title="DC">
-                <DcSection dc={snapshot.dc} />
+              <Tab title="Bus">
+                <BusSection bus={snapshot.bus} />
               </Tab>
-              <Tab title="Domains">
-                <DomainsSection domains={snapshot.domains} />
+              <Tab title="Runtime">
+                <RuntimeSection dc={snapshot.dc} domains={snapshot.domains} />
               </Tab>
               <Tab title="Slaves">
                 <SlavesSection slaves={snapshot.slaves} />
@@ -348,7 +407,71 @@ function Diagnostics({ ctx, data }) {
   );
 }
 
-function PerformanceSection({ bus }) {
+function OverviewSection({ snapshot, runtimeAlerts, slaveAlerts }) {
+  const latestEvents = snapshot.timeline.slice(0, 6);
+  const unhealthyDomains = snapshot.domains.filter((domain) => domain.state !== "cycling").length;
+  const downLinks = snapshot.bus.links.filter((link) => link.status === "down").length;
+
+  return (
+    <Stack>
+      <Panel title="System overview">
+        <Stack compact>
+          <SectionCopy>Use this tab first. It keeps the current operating picture compact and readable.</SectionCopy>
+          <SummaryGrid
+            items={[
+              { label: "Master", value: snapshot.state },
+              { label: "DC lock", value: snapshot.dc?.lock_state ?? "disabled" },
+              { label: "Unhealthy domains", value: formatCount(unhealthyDomains) },
+              { label: "Slave alerts", value: formatCount(slaveAlerts) },
+              { label: "Links down", value: formatCount(downLinks) },
+              { label: "Last failure", value: snapshot.last_failure ?? "none" },
+            ]}
+          />
+          <Columns minWidth="18rem">
+            <PropertyList
+              minWidth="12rem"
+              items={[
+                { label: "Realtime latency", value: formatUs(snapshot.bus.transactions.realtime.last_latency_us) },
+                { label: "Reliable latency", value: formatUs(snapshot.bus.transactions.reliable.last_latency_us) },
+                { label: "Expired RT", value: formatCount(snapshot.bus.expired_realtime) },
+                { label: "Bus exceptions", value: formatCount(snapshot.bus.exceptions) },
+              ]}
+            />
+            <PropertyList
+              minWidth="12rem"
+              items={[
+                { label: "Domains", value: formatCount(snapshot.domains.length) },
+                { label: "Runtime alerts", value: formatCount(runtimeAlerts) },
+                { label: "Slaves", value: formatCount(snapshot.slaves.length) },
+                { label: "Events", value: formatCount(snapshot.timeline.length) },
+              ]}
+            />
+          </Columns>
+        </Stack>
+      </Panel>
+
+      <Panel title="Latest events">
+        {latestEvents.length === 0 ? (
+          <EmptyState>No fault or recovery events yet</EmptyState>
+        ) : (
+          <Stack compact className="ke95-diagnostics__feed ke95-diagnostics__feed--overview">
+            {latestEvents.map((event) => (
+              <Inset key={event.id} className={`ke95-diagnostics__event ke95-diagnostics__event--${event.level}`}>
+                <div className="ke95-toolbar">
+                  <div>{event.title}</div>
+                  <Mono>{formatTime(event.at_ms)}</Mono>
+                </div>
+                <Mono as="div">{event.detail}</Mono>
+              </Inset>
+            ))}
+          </Stack>
+        )}
+      </Panel>
+    </Stack>
+  );
+}
+
+function BusSection({ bus }) {
   return (
     <Stack>
       <TransactionCard
@@ -368,36 +491,45 @@ function PerformanceSection({ bus }) {
   );
 }
 
+function RuntimeSection({ dc, domains }) {
+  return (
+    <Stack>
+      <DcSection dc={dc} />
+      <DomainsSection domains={domains} />
+    </Stack>
+  );
+}
+
 function TransactionCard({ title, accent, transaction, queue }) {
   return (
     <Panel title={title}>
       <Stack compact>
-      <Mono as="div">
-        latency last {formatUs(transaction.last_latency_us)} • avg {formatUs(transaction.avg_latency_us)}
-      </Mono>
-      <Columns minWidth="22rem">
-        <ChartPanel
-          title="Latency"
-          subtitle={`dispatches ${formatCount(transaction.dispatches)} • wkc ${formatCount(transaction.last_wkc)}`}
-          series={[{ label: "Latency", slices: transaction.latency_slices, stroke: accent, fill: `${accent}26` }]}
-          yUnit="us"
-          emptyLabel="No bus latency samples yet"
+        <Mono as="div">
+          latency last {formatUs(transaction.last_latency_us)} • avg {formatUs(transaction.avg_latency_us)}
+        </Mono>
+        <Columns minWidth="22rem">
+          <ChartPanel
+            title="Latency"
+            subtitle={`dispatches ${formatCount(transaction.dispatches)} • wkc ${formatCount(transaction.last_wkc)}`}
+            series={[{ label: "Latency", slices: transaction.latency_slices, stroke: accent, fill: `${accent}26` }]}
+            yUnit="us"
+            emptyLabel="No bus latency samples yet"
+          />
+          <ChartPanel
+            title="Queue depth"
+            subtitle={`last ${formatCount(queue.last_depth)} • avg ${formatCount(queue.avg_depth)} • peak ${formatCount(queue.peak_depth)}`}
+            series={[{ label: "Queue", slices: queue.slices, stroke: "#475569", fill: "#47556926" }]}
+            emptyLabel="No queue samples yet"
+          />
+        </Columns>
+        <SummaryGrid
+          items={[
+            { label: "Transactions", value: formatCount(transaction.transactions) },
+            { label: "Datagrams", value: formatCount(transaction.datagrams) },
+            { label: "Submissions", value: formatCount(transaction.count) },
+            { label: "Queue peak", value: formatCount(queue.peak_depth) },
+          ]}
         />
-        <ChartPanel
-          title="Queue depth"
-          subtitle={`last ${formatCount(queue.last_depth)} • avg ${formatCount(queue.avg_depth)} • peak ${formatCount(queue.peak_depth)}`}
-          series={[{ label: "Queue", slices: queue.slices, stroke: "#475569", fill: "#47556926" }]}
-          emptyLabel="No queue samples yet"
-        />
-      </Columns>
-      <SummaryGrid
-        items={[
-          { label: "Transactions", value: formatCount(transaction.transactions) },
-          { label: "Datagrams", value: formatCount(transaction.datagrams) },
-          { label: "Submissions", value: formatCount(transaction.count) },
-          { label: "Queue peak", value: formatCount(queue.peak_depth) },
-        ]}
-      />
       </Stack>
     </Panel>
   );
@@ -409,16 +541,29 @@ function FrameSection({ frames, links }) {
       <Panel title="Bus frames">
         <Stack compact>
           <Mono as="div">RTT last {formatNs(frames.last_rtt_ns)} • peak {formatNs(frames.peak_rtt_ns)}</Mono>
-          <ChartPanel
-            title="Traffic"
-            subtitle={`sent ${formatCount(frames.sent)} • received ${formatCount(frames.received)} • dropped ${formatCount(frames.dropped)}`}
-            series={[
-              { label: "Sent", slices: frames.sent_slices, stroke: "#0f766e", fill: "#0f766e20" },
-              { label: "Received", slices: frames.received_slices, stroke: "#2563eb", fill: "#2563eb20" },
-              { label: "Dropped", slices: frames.dropped_slices, stroke: "#be123c", fill: "#be123c20" },
-            ]}
-            emptyLabel="No frame traffic yet"
-          />
+          <Columns minWidth="22rem">
+            <ChartPanel
+              title="Traffic"
+              subtitle={`sent ${formatCount(frames.sent)} • received ${formatCount(frames.received)} • dropped ${formatCount(frames.dropped)}`}
+              series={[
+                { label: "Sent", slices: frames.sent_slices, stroke: "#0f766e", fill: "#0f766e20" },
+                { label: "Received", slices: frames.received_slices, stroke: "#2563eb", fill: "#2563eb20" },
+                { label: "Dropped", slices: frames.dropped_slices, stroke: "#be123c", fill: "#be123c20" },
+              ]}
+              emptyLabel="No frame traffic yet"
+            />
+            <ChartPanel
+              title="Payload throughput"
+              subtitle={`sent ${formatBytes(frames.sent_bytes)} • received ${formatBytes(frames.received_bytes)} • dropped ${formatBytes(frames.dropped_bytes)}`}
+              series={[
+                { label: "Sent", slices: frames.sent_bandwidth_slices, stroke: "#0f766e", fill: "#0f766e20" },
+                { label: "Received", slices: frames.received_bandwidth_slices, stroke: "#2563eb", fill: "#2563eb20" },
+                { label: "Dropped", slices: frames.dropped_bandwidth_slices, stroke: "#be123c", fill: "#be123c20" },
+              ]}
+              yUnit="B/s"
+              emptyLabel="No payload throughput yet"
+            />
+          </Columns>
           <Columns minWidth="22rem">
             <ChartPanel
               title="Round trip"
@@ -438,6 +583,14 @@ function FrameSection({ frames, links }) {
               emptyLabel="No bus faults recorded"
             />
           </Columns>
+          <SummaryGrid
+            items={[
+              { label: "Sent payload", value: formatBytes(frames.sent_bytes) },
+              { label: "Received payload", value: formatBytes(frames.received_bytes) },
+              { label: "Dropped payload", value: formatBytes(frames.dropped_bytes) },
+              { label: "Ignored frames", value: formatCount(frames.ignored) },
+            ]}
+          />
           {frames.dropped_reasons?.length ? (
             <PropertyList
               minWidth="12rem"
@@ -478,6 +631,7 @@ function DcSection({ dc }) {
   return (
     <Panel title="Distributed clocks">
       <Stack compact>
+        <SectionCopy>Clock lock matters when you want deterministic cycle timing and stable synchronization.</SectionCopy>
         <div className="ke95-toolbar">
           <StatusBadge tone={badgeTone(LOCK_TONES, dc.lock_state)}>{dc.lock_state}</StatusBadge>
         </div>
@@ -526,6 +680,7 @@ function DomainsSection({ domains }) {
         <EmptyState>No domains running</EmptyState>
       ) : (
         <Stack>
+          <SectionCopy>Domains show whether cyclic exchange is healthy and whether misses are accumulating.</SectionCopy>
           {domains.map((domain) => (
             <Inset key={domain.id} className="ke95-diagnostics__domain">
               <div className="ke95-toolbar">
@@ -582,18 +737,22 @@ function SlavesSection({ slaves }) {
       {slaves.length === 0 ? (
         <EmptyState>No slaves running</EmptyState>
       ) : (
-        <DataTable headers={["Name", "Station", "State", "AL", "Config", "Event"]}>
-          {slaves.map((slave) => (
-            <tr key={slave.name}>
-              <td><Mono>{slave.name}</Mono></td>
-              <td><Mono>{slave.station != null ? formatHex(slave.station) : "n/a"}</Mono></td>
-              <td><StatusBadge tone={badgeTone(SLAVE_TONES, slave.al_state)}>{slave.al_state}</StatusBadge></td>
-              <td><Mono>{slave.al_error != null ? formatHex(slave.al_error) : "n/a"}</Mono></td>
-              <td><Mono>{slave.configuration_error ?? "n/a"}</Mono></td>
-              <td><Mono>{slave.last_event ? `${slave.last_event.title} • ${formatTime(slave.last_event.at_ms)}` : "n/a"}</Mono></td>
-            </tr>
-          ))}
-        </DataTable>
+        <Stack compact>
+          <SectionCopy>Use this table to spot non-OP slaves, latched AL errors, and per-slave configuration issues.</SectionCopy>
+          <SummaryGrid items={slaveSummaryItems(slaves)} />
+          <DataTable headers={["Name", "Station", "State", "AL", "Config", "Event"]}>
+            {slaves.map((slave) => (
+              <tr key={slave.name}>
+                <td><Mono>{slave.name}</Mono></td>
+                <td><Mono>{slave.station != null ? formatHex(slave.station) : "n/a"}</Mono></td>
+                <td><StatusBadge tone={badgeTone(SLAVE_TONES, slave.al_state)}>{slave.al_state}</StatusBadge></td>
+                <td><Mono>{slave.al_error != null ? formatHex(slave.al_error) : "n/a"}</Mono></td>
+                <td><Mono>{slave.configuration_error ?? "n/a"}</Mono></td>
+                <td><Mono>{slave.last_event ? `${slave.last_event.title} • ${formatTime(slave.last_event.at_ms)}` : "n/a"}</Mono></td>
+              </tr>
+            ))}
+          </DataTable>
+        </Stack>
       )}
     </Panel>
   );
@@ -605,16 +764,19 @@ function TimelineSection({ timeline }) {
       {timeline.length === 0 ? (
         <EmptyState>No fault or recovery events yet</EmptyState>
       ) : (
-        <Stack compact className="ke95-scroll ke95-diagnostics__feed">
-          {timeline.map((event) => (
-            <Inset key={event.id} className={`ke95-diagnostics__event ke95-diagnostics__event--${event.level}`}>
-              <div className="ke95-toolbar">
-                <div>{event.title}</div>
-                <Mono>{formatTime(event.at_ms)}</Mono>
-              </div>
-              <Mono as="div">{event.detail}</Mono>
-            </Inset>
-          ))}
+        <Stack compact>
+          <SectionCopy>Keep this tab open when you want the full recovery story in time order.</SectionCopy>
+          <Stack compact className="ke95-scroll ke95-diagnostics__feed">
+            {timeline.map((event) => (
+              <Inset key={event.id} className={`ke95-diagnostics__event ke95-diagnostics__event--${event.level}`}>
+                <div className="ke95-toolbar">
+                  <div>{event.title}</div>
+                  <Mono>{formatTime(event.at_ms)}</Mono>
+                </div>
+                <Mono as="div">{event.detail}</Mono>
+              </Inset>
+            ))}
+          </Stack>
         </Stack>
       )}
     </Panel>

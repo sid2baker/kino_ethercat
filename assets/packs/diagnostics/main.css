@@ -10,6 +10,11 @@
   min-width: 0;
 }
 
+.ke95-diagnostics__copy {
+  line-height: 1.45;
+  color: #444;
+}
+
 .ke95-diagnostics__chart-copy {
   display: grid;
   gap: 4px;
@@ -44,6 +49,10 @@
   overflow: auto;
   scrollbar-gutter: stable;
   padding-right: 2px;
+}
+
+.ke95-diagnostics__feed--overview {
+  max-height: 16rem;
 }
 
 .ke95-diagnostics .ke95-table-wrap {

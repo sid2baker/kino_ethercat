@@ -100,4 +100,33 @@ defmodule KinoEtherCAT.DiagnosticsStateTest do
     assert [%{title: "Slave fault"} | _] = payload.timeline
     assert [%{name: "rack", last_event: %{title: "fault"}}] = payload.slaves
   end
+
+  test "tracks payload throughput from frame sizes" do
+    state =
+      State.new(history_limit: 4)
+      |> State.apply_telemetry(
+        [:ethercat, :bus, :frame, :sent],
+        %{size: 128, tx_timestamp: nil},
+        %{link: "eth0", port: :primary}
+      )
+      |> State.apply_telemetry(
+        [:ethercat, :bus, :frame, :received],
+        %{size: 96, rx_timestamp: nil},
+        %{link: "eth0", port: :primary}
+      )
+      |> State.apply_telemetry(
+        [:ethercat, :bus, :frame, :dropped],
+        %{size: 32},
+        %{link: "eth0", reason: :idx_mismatch}
+      )
+
+    payload = State.payload(state)
+
+    assert payload.bus.frames.sent_bytes == 128
+    assert payload.bus.frames.received_bytes == 96
+    assert payload.bus.frames.dropped_bytes == 32
+    assert List.last(payload.bus.frames.sent_bandwidth_slices).value == 128.0
+    assert List.last(payload.bus.frames.received_bandwidth_slices).value == 96.0
+    assert List.last(payload.bus.frames.dropped_bandwidth_slices).value == 32.0
+  end
 end

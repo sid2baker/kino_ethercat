@@ -38,13 +38,19 @@ defmodule KinoEtherCAT.Diagnostics.State do
         expired_realtime: 0,
         exceptions: 0,
         sent_frames: 0,
+        sent_bytes: 0,
         received_frames: 0,
+        received_bytes: 0,
         dropped_frames: 0,
+        dropped_bytes: 0,
         ignored_frames: 0,
         rtt_ns_history: [],
         sent_slices: [],
+        sent_byte_slices: [],
         received_slices: [],
+        received_byte_slices: [],
         dropped_slices: [],
+        dropped_byte_slices: [],
         ignored_slices: [],
         expired_realtime_slices: [],
         exception_slices: [],
@@ -152,21 +158,42 @@ defmodule KinoEtherCAT.Diagnostics.State do
   def apply_telemetry(state, [:ethercat, :bus, :frame, :sent], measurements, metadata) do
     state
     |> update_in([:bus, :sent_frames], &(&1 + 1))
+    |> update_in([:bus, :sent_bytes], &(&1 + Map.get(measurements, :size, 0)))
     |> update_count_series([:bus, :sent_slices], 1, state.history_limit, state.slice_ms)
+    |> update_count_series(
+      [:bus, :sent_byte_slices],
+      Map.get(measurements, :size, 0),
+      state.history_limit,
+      state.slice_ms
+    )
     |> maybe_track_tx_timestamp(metadata.link, metadata.port, measurements.tx_timestamp)
   end
 
   def apply_telemetry(state, [:ethercat, :bus, :frame, :received], measurements, metadata) do
     state
     |> update_in([:bus, :received_frames], &(&1 + 1))
+    |> update_in([:bus, :received_bytes], &(&1 + Map.get(measurements, :size, 0)))
     |> update_count_series([:bus, :received_slices], 1, state.history_limit, state.slice_ms)
+    |> update_count_series(
+      [:bus, :received_byte_slices],
+      Map.get(measurements, :size, 0),
+      state.history_limit,
+      state.slice_ms
+    )
     |> maybe_track_rtt(metadata.link, metadata.port, measurements.rx_timestamp)
   end
 
-  def apply_telemetry(state, [:ethercat, :bus, :frame, :dropped], _measurements, metadata) do
+  def apply_telemetry(state, [:ethercat, :bus, :frame, :dropped], measurements, metadata) do
     state
     |> update_in([:bus, :dropped_frames], &(&1 + 1))
+    |> update_in([:bus, :dropped_bytes], &(&1 + Map.get(measurements, :size, 0)))
     |> update_count_series([:bus, :dropped_slices], 1, state.history_limit, state.slice_ms)
+    |> update_count_series(
+      [:bus, :dropped_byte_slices],
+      Map.get(measurements, :size, 0),
+      state.history_limit,
+      state.slice_ms
+    )
     |> update_in([:bus, :dropped_reasons], fn reasons ->
       Map.update(reasons, to_string(metadata.reason), 1, fn count -> count + 1 end)
     end)
@@ -463,8 +490,11 @@ defmodule KinoEtherCAT.Diagnostics.State do
       },
       frames: %{
         sent: state.bus.sent_frames,
+        sent_bytes: state.bus.sent_bytes,
         received: state.bus.received_frames,
+        received_bytes: state.bus.received_bytes,
         dropped: state.bus.dropped_frames,
+        dropped_bytes: state.bus.dropped_bytes,
         ignored: state.bus.ignored_frames,
         last_rtt_ns: List.last(state.bus.rtt_ns_history),
         peak_rtt_ns: Enum.max(state.bus.rtt_ns_history, fn -> nil end),
@@ -473,10 +503,16 @@ defmodule KinoEtherCAT.Diagnostics.State do
           payload_sample_slices(state.bus.rtt_ns_slices, state.history_limit, state.slice_ms),
         sent_slices:
           payload_count_slices(state.bus.sent_slices, state.history_limit, state.slice_ms),
+        sent_bandwidth_slices:
+          payload_rate_slices(state.bus.sent_byte_slices, state.history_limit, state.slice_ms),
         received_slices:
           payload_count_slices(state.bus.received_slices, state.history_limit, state.slice_ms),
+        received_bandwidth_slices:
+          payload_rate_slices(state.bus.received_byte_slices, state.history_limit, state.slice_ms),
         dropped_slices:
           payload_count_slices(state.bus.dropped_slices, state.history_limit, state.slice_ms),
+        dropped_bandwidth_slices:
+          payload_rate_slices(state.bus.dropped_byte_slices, state.history_limit, state.slice_ms),
         ignored_slices:
           payload_count_slices(state.bus.ignored_slices, state.history_limit, state.slice_ms),
         expired_slices:
@@ -727,6 +763,20 @@ defmodule KinoEtherCAT.Diagnostics.State do
         at_ms: slice.at_ms,
         label: slice_label(slice.at_ms),
         value: slice.count
+      }
+    end)
+  end
+
+  defp payload_rate_slices(slices, limit, slice_ms) do
+    scale = if slice_ms > 0, do: 1_000 / slice_ms, else: 1
+
+    slices
+    |> fill_slice_window(limit, slice_ms, %{count: 0})
+    |> Enum.map(fn slice ->
+      %{
+        at_ms: slice.at_ms,
+        label: slice_label(slice.at_ms),
+        value: Float.round(slice.count * scale, 1)
       }
     end)
   end
