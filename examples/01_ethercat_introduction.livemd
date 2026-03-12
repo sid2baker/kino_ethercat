@@ -3,7 +3,7 @@
 ```elixir
 Mix.install([
   {:kino_ethercat, "~> 0.3.0"}
-], force: true)
+])
 ```
 
 ## The Ring
