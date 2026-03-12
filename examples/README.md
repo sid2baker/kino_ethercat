@@ -17,9 +17,8 @@ The main entrypoint is now the `EtherCAT Simulator` smart cell plus the generate
 
 1. Add the `EtherCAT Simulator` smart cell.
 2. Keep or rename the default `coupler -> inputs -> outputs` ring.
-3. Click `Auto-wire matching signals`.
-4. Evaluate the generated code.
-5. Start in the `Introduction` tab.
+3. Evaluate the generated code.
+4. Start in the `Introduction` tab.
 
 That workspace now gives you:
 
@@ -27,6 +26,8 @@ That workspace now gives you:
 - a reduced teaching-mode UI instead of the full operator layout
 - short explanations next to master state and domain/WKC health
 - a clear handoff from the simulator ring to setup/discovery and OP activation
+
+The default simulator already includes the first loopback path, `outputs.ch1 -> inputs.ch1`, so the first lesson works without any expert-mode editing.
 
 Use the `EtherCAT Setup` smart cell against the same simulator when you want to move from the virtual ring into discovery, PREOP readiness, and OP activation.
 

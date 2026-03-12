@@ -2,8 +2,7 @@
 
 ```elixir
 Mix.install([
-  {:ethercat, github: "sid2baker/ethercat", override: true},
-  {:kino_ethercat, path: "/home/n0gg1n/Development/Work/opencode/kino_ethercat"}
+  {:kino_ethercat, "~> 0.3.0"}
 ], force: true)
 ```
 
@@ -12,6 +11,7 @@ Mix.install([
 One master. Three slaves.
 
 ```mermaid
+%%{init: {'deterministicIds': true, 'deterministicIDSeed': 'ethercat-intro-ring'}}%%
 flowchart LR
   M[Master] --> C
 
@@ -29,6 +29,7 @@ flowchart LR
 The master uses cyclic EtherCAT frames.
 
 ```mermaid
+%%{init: {'deterministicIds': true, 'deterministicIDSeed': 'ethercat-intro-cycle'}}%%
 sequenceDiagram
   participant M as Master
   participant R as EtherCAT ring
@@ -69,6 +70,7 @@ Kino.Layout.tabs(
 ```
 
 ```mermaid
+%%{init: {'deterministicIds': true, 'deterministicIDSeed': 'ethercat-intro-loopback'}}%%
 flowchart LR
   O[outputs.ch1] --> I[inputs.ch1]
 ```
@@ -151,6 +153,7 @@ Now change `outputs.ch1` through the normal EtherCAT path.
 When you toggle the output, `inputs.ch1` should change too.
 
 ```mermaid
+%%{init: {'deterministicIds': true, 'deterministicIDSeed': 'ethercat-intro-ch1-sequence'}}%%
 sequenceDiagram
   participant M as Master
   participant O as outputs.ch1

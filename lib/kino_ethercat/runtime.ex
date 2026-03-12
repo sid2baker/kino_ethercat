@@ -13,6 +13,8 @@ defmodule KinoEtherCAT.Runtime do
   alias EtherCAT.{Bus, Domain, Master, Slave}
   alias KinoEtherCAT.{StartConfig, WidgetLogs}
 
+  @type log_scope :: :master | :bus | :dc | {:slave, atom()} | {:domain, atom()}
+
   @spec master() :: %Master{}
   def master do
     case fetch_master_state() do
@@ -104,7 +106,7 @@ defmodule KinoEtherCAT.Runtime do
     WidgetLogs.subscribe(pid, resource)
   end
 
-  @spec log_scope(struct()) :: WidgetLogs.scope() | nil
+  @spec log_scope(struct()) :: log_scope() | nil
   def log_scope(resource) do
     case WidgetLogs.scope(resource) do
       {:ok, scope} -> scope

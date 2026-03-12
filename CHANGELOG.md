@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-03-12
+
+### Added
+
+- A simulator-first teaching surface with `KinoEtherCAT.introduction/0` and the `examples/01_ethercat_introduction.livemd` notebook
+- `EtherCAT Simulator` and `EtherCAT Visualizer` smart cells oriented around a small loopback teaching workflow
+- Dedicated simulator overview and simulator fault-injection panels
+- Widget-scoped log routing so EtherCAT logs stay inside the corresponding Livebook renders
+- Per-resource runtime controls for master, slaves, domains, bus, and distributed clocks
+
+### Changed
+
+- The setup smart cell now auto-discovers the current bus or simulator when added to a notebook
+- Simulator-backed setup defaults to UDP transport, `127.0.0.2:34980`, and a more reliable `frame_timeout_ms: 10`
+- The master render is now a reduced session-overview surface instead of duplicating the diagnostics page
+- The visualizer smart cell is now signal-centric and generates focused `led/3`, `switch/3`, and `value/3` layouts
+- The library is aligned to the `ethercat` `0.3.0` lifecycle model, including master deactivation targets
+
+### Fixed
+
+- Setup discovery now inherits simulator device names and re-scan restarts discovery so simulator edits are picked up
+- Domain WKC display now shows actual mismatch values during invalid cycles
+- Simulator introduction diagrams now use deterministic Mermaid ids to avoid duplicate DOM id warnings in Livebook
+- Generated setup source reports startup failures without crashing the notebook cell
+
 ## [0.2.0] - 2026-03-09
 
 ### Added

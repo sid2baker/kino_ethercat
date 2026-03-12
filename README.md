@@ -1,20 +1,34 @@
 # KinoEtherCAT
 
-[Livebook](https://livebook.dev) and [Kino](https://github.com/livebook-dev/kino) tools for [EtherCAT](https://github.com/sid2baker/ethercat) discovery, runtime inspection, diagnostics, hardware bring-up, and simulator-first examples.
+[Livebook](https://livebook.dev) and [Kino](https://github.com/livebook-dev/kino) tools for [EtherCAT](https://github.com/sid2baker/ethercat).
 
-The current teaching direction is documented in [examples/README.md](./examples/README.md). Phase 1 and 2 are currently merged into [EtherCAT Introduction](./examples/01_ethercat_introduction.livemd), while the rest of the curriculum is rebuilt around a simulator-first introduction path.
+`kino_ethercat` is built around three use cases:
+
+- discover and configure an EtherCAT bus from Livebook
+- inspect and control a running master with focused runtime renders
+- teach EtherCAT with a simulator-first workflow and low setup friction
+
+## Quick Start
+
+If you want the shortest path to a first useful result, start with the example notebook:
+
+- [EtherCAT Introduction](./examples/01_ethercat_introduction.livemd)
+
+That notebook uses the built-in simulator, walks through Setup and Master, and ends with a simple `outputs.ch1 -> inputs.ch1` interaction.
+
+The broader teaching direction lives in [examples/README.md](./examples/README.md).
 
 ## Installation
 
-Add to your Livebook notebook:
+Add `kino_ethercat` to a Livebook notebook:
 
 ```elixir
 Mix.install([
-  {:kino_ethercat, "~> 0.2"}
+  {:kino_ethercat, "~> 0.3.0"}
 ])
 ```
 
-Or during development from a local path:
+For local development against this repo:
 
 ```elixir
 Mix.install([
@@ -22,185 +36,154 @@ Mix.install([
 ])
 ```
 
----
+When developing this repo itself against a sibling `../ethercat` checkout, set:
 
-## Smart Cells
+```bash
+export KINO_ETHERCAT_USE_LOCAL_ETHERCAT=1
+```
 
-KinoEtherCAT registers multiple Smart Cells in Livebook (available via **+ Smart** in the cell menu).
+## Main Surfaces
 
-### EtherCAT Setup
+### Smart Cells
 
-Scans the bus, discovers connected slaves, lets you assign names and drivers, and generates a static `EtherCAT.start/1` call that ends with master and diagnostics tabs.
+KinoEtherCAT registers Smart Cells in Livebook under **+ Smart**.
 
-- Set the network interface and click **Scan Bus**
-- Assign a human-readable name to each slave
-- Pick a built-in driver from the dropdown (auto-detected by vendor/product ID) or type a custom module name
-- Configure multiple domains and assign each slave to a domain
-- Tune grouped DC settings without leaving the cell
-- The master state badge (top-right) shows the live EtherCAT lifecycle state
+#### EtherCAT Setup
 
-### EtherCAT Simulator
+Discovers the current bus or simulator and generates a static `EtherCAT.start/1` cell.
 
-Build a small virtual ring, auto-wire loopback connections, and render a teaching workspace with `Introduction`, `Simulator`, and `Faults` tabs.
+- auto-scans when added
+- supports raw socket or UDP transport
+- lets you name slaves, choose drivers, assign domains, and tune DC
+- generates a notebook cell that ends with Master and diagnostics tabs
 
-- Start with the default `coupler -> inputs -> outputs` ring
-- Rename devices to match the story you want to teach
-- Auto-wire matching signals for an immediate process-data playground
-- Use the generated `Introduction` tab for the simplified lesson surface
+#### EtherCAT Simulator
 
-### EtherCAT Visualizer
+Builds a small virtual ring for teaching and testing.
 
-Picks running slaves and generates `KinoEtherCAT.Widgets.dashboard/2` calls for focused operator panels.
+- starts with `coupler -> inputs -> outputs`
+- defaults to one loopback path: `outputs.ch1 -> inputs.ch1`
+- simple mode keeps the workflow minimal
+- `Expert mode` exposes device ordering and connection editing
+- simple mode generates `Introduction`, `Simulator`, and `Faults` tabs
+- expert mode keeps the simulator workspace focused on `Simulator` and `Faults`
 
-- Click **Refresh** to load the current slave list
-- Drag rows to reorder render output
-- Click the trash icon to exclude a slave
-- Set **columns** to control dashboard layout
+#### EtherCAT Visualizer
 
-### EtherCAT Slave Explorer
+Builds a compact signal dashboard from the running bus.
 
-Combines CoE SDO, ESC register, and SII EEPROM tooling in a single Smart Cell.
+- pick signals with checkboxes grouped by slave
+- reorder the selected signal list
+- generate focused signal widgets like `led/3`, `switch/3`, and `value/3`
 
-- Switch between `ESC Registers`, `CoE SDO`, and `SII EEPROM`
-- Refresh the active bus inventory without leaving the cell
-- Reuse the same selected slave while moving between low-level diagnostics
-- Generate repeatable code for mailbox transfers, raw register access, and EEPROM inspection/update
+#### EtherCAT Slave Explorer
 
-## Programmatic API
+Combines low-level workflows for a selected slave:
 
-### Runtime Resources
+- ESC registers
+- CoE SDO
+- SII EEPROM
 
-The preferred runtime API returns renderable EtherCAT structs:
+### Runtime Renders
+
+The main runtime API returns renderable EtherCAT resources:
 
 ```elixir
 KinoEtherCAT.master()
 KinoEtherCAT.slave(:io_1)
 KinoEtherCAT.domain(:main)
-KinoEtherCAT.dc()
 KinoEtherCAT.bus()
+KinoEtherCAT.dc()
 ```
 
-In Livebook these render as interactive resource views via `Kino.Render`.
+In Livebook, these render as interactive views through `Kino.Render`.
 
-### Diagnostics
+Use them when you want a resource-oriented runtime surface instead of a generated Smart Cell workflow.
+
+### Diagnostics And Simulator Panels
 
 ```elixir
 KinoEtherCAT.diagnostics()
-KinoEtherCAT.Diagnostics.panel()
-```
-
-### Introduction
-
-```elixir
 KinoEtherCAT.introduction()
+KinoEtherCAT.simulator()
+KinoEtherCAT.simulator_faults()
 ```
 
-This is the reduced teaching surface: a short learning path, clear next-step instructions, current state explanation, and a small process-data playground.
+- `diagnostics/0` is the broad Task Manager style overview
+- `introduction/0` is the reduced teaching surface
+- `simulator/0` is the simulator topology and status view
+- `simulator_faults/0` is the fault injection console
 
-### Widgets
+## Widgets
 
 Signal-level and slave-panel widgets live under `KinoEtherCAT.Widgets`.
 
-#### LED
-
-Read-only indicator driven by a 1-bit EtherCAT input signal. Lights up when the value is `1`.
+### Signal Widgets
 
 ```elixir
-KinoEtherCAT.Widgets.led(:my_slave, :ch1)
-KinoEtherCAT.Widgets.led(:my_slave, :ch2, label: "Fault", color: "red")
+KinoEtherCAT.Widgets.led(:inputs, :ch1, label: "Input 1")
+KinoEtherCAT.Widgets.switch(:outputs, :ch1, label: "Output 1")
+KinoEtherCAT.Widgets.value(:analog, :temperature, label: "Temperature")
 ```
 
-**Options:** `:label` (default: signal name), `:color` — `"green"` | `"red"` | `"yellow"` | `"blue"` (default: `"green"`)
+- `led/3` is a read-only 1-bit input indicator
+- `switch/3` writes a 1-bit output
+- `value/3` displays multi-bit values
 
-#### Switch
-
-Toggle switch that writes a 1-bit EtherCAT output signal.
-
-```elixir
-KinoEtherCAT.Widgets.switch(:my_slave, :ch1)
-KinoEtherCAT.Widgets.switch(:my_slave, :ch1, label: "Pump EN", initial: 0)
-```
-
-**Options:** `:label` (default: signal name), `:initial` — `0` or `1` (default: `0`)
-
-#### Value
-
-Live display for multi-bit input signals (e.g. temperature readings, analog inputs).
+### Slave Panels
 
 ```elixir
-KinoEtherCAT.Widgets.value(:rtd, :channel1)
-KinoEtherCAT.Widgets.value(:rtd, :channel1, label: "PT100 CH1")
-```
-
-**Options:** `:label` (default: signal name)
-
-#### Slave Panels
-
-Aggregate one or more configured slaves into focused dashboard panels.
-
-```elixir
-KinoEtherCAT.Widgets.panel(:my_slave)
+KinoEtherCAT.Widgets.panel(:inputs)
 KinoEtherCAT.Widgets.dashboard([:left_io, :right_io], columns: 2)
 ```
 
-**Options:**
-- `:columns` — max panels per row on `dashboard/2`
-- `:batch_ms` — signal update batching interval on `panel/2`
-- `:show_identity?` — whether `panel/2` shows slave identity details
-- `:show_domains?` — whether `panel/2` shows domain health badges
-
----
+Use these when you want a compact operator-facing view without the full runtime panels.
 
 ## Built-in Drivers
 
-KinoEtherCAT ships drivers for common Beckhoff EL terminals. These are automatically selected in the **EtherCAT Setup** SmartCell when a matching slave is detected.
+KinoEtherCAT ships built-in drivers for a small Beckhoff-focused teaching and bring-up set:
 
 | Module | Device | Description |
 |---|---|---|
-| `KinoEtherCAT.Driver.EL1809` | EL1809 | 16-channel digital input, 24 V DC |
-| `KinoEtherCAT.Driver.EL2809` | EL2809 | 16-channel digital output, 24 V DC |
-| `KinoEtherCAT.Driver.EL3202` | EL3202 | 2-channel PT100 RTD temperature input |
+| `KinoEtherCAT.Driver.EK1100` | EK1100 | EtherCAT coupler |
+| `KinoEtherCAT.Driver.EL1809` | EL1809 | 16-channel digital input |
+| `KinoEtherCAT.Driver.EL2809` | EL2809 | 16-channel digital output |
+| `KinoEtherCAT.Driver.EL3202` | EL3202 | 2-channel PT100 RTD input |
 
-### Driver Registry
-
-Look up or enumerate registered drivers:
+Driver lookup:
 
 ```elixir
-# All registered drivers (for UI or tooling)
 KinoEtherCAT.Driver.all()
-#=> [%{module: KinoEtherCAT.Driver.EL1809, name: "EL1809",
-#      vendor_id: 2, product_code: 0x07113052}, ...]
-
-# Resolve a slave identity to its driver module
 KinoEtherCAT.Driver.lookup(%{vendor_id: 2, product_code: 0x07113052})
-#=> {:ok, %{module: KinoEtherCAT.Driver.EL1809, name: "EL1809", ...}}
-
-KinoEtherCAT.Driver.lookup(%{vendor_id: 2, product_code: 0x044C2C52})
-#=> :error
 ```
 
-### Custom Drivers
+Drivers that should work with the simulator also need a companion `MyDriver.Simulator` module implementing `EtherCAT.Simulator.DriverAdapter`.
 
-Implement `EtherCAT.Slave.Driver` and pass the module to `EtherCAT.start/1`:
+## Custom Drivers
+
+At minimum, a custom driver needs to implement `EtherCAT.Slave.Driver` and provide identity, signal layout, and signal encoding/decoding:
 
 ```elixir
 defmodule MyApp.MyDriver do
   @behaviour EtherCAT.Slave.Driver
 
   @impl true
-  def process_data_model(_config), do: [ch1: 0x1A00]
+  def identity do
+    %{vendor_id: 0x0000_0002, product_code: 0x1234_5678}
+  end
 
   @impl true
-  def encode_signal(_pdo, _config, _value), do: <<>>
+  def signal_model(_config), do: [ch1: 0x1A00]
 
   @impl true
-  def decode_signal(_ch, _config, <<_::7, bit::1>>), do: bit
-  def decode_signal(_pdo, _config, _), do: 0
+  def encode_signal(_signal, _config, _value), do: <<>>
+
+  @impl true
+  def decode_signal(_signal, _config, <<_::7, bit::1>>), do: bit
+  def decode_signal(_signal, _config, _raw), do: 0
 end
 ```
 
----
-
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE).
+Apache 2.0. See [LICENSE](LICENSE).
