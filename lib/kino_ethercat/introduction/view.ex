@@ -86,28 +86,29 @@ defmodule KinoEtherCAT.Introduction.View do
     ]
   end
 
-  defp first_contact_steps(info, _master) do
+  defp first_contact_steps(info, master) do
     loopback = loopback_text(Map.get(info, :connections, []))
     connected? = Map.get(info, :connections, []) != []
+    setup_stage = setup_stage(master)
 
     [
       %{
-        title: "1. Evaluate the simulator smart cell",
-        state: "done",
-        body:
-          "The simulator is already running. You now have a small EtherCAT ring you can inspect without any hardware: #{ring_label(info)}."
-      },
-      %{
-        title: "2. Stay with one signal path",
+        title: "1. Stay with one signal path",
         state: if(connected?, do: "done", else: "current"),
         body:
           "#{loopback} Keep the topology small so the process image feels concrete instead of abstract."
       },
       %{
-        title: "3. Add the EtherCAT Visualizer smart cell",
-        state: if(connected?, do: "current", else: "next"),
+        title: "2. Add the EtherCAT Setup smart cell",
+        state: setup_step_state(setup_stage),
         body:
-          "Select just `outputs.ch1` and `inputs.ch1`. That gives you the cleanest first contact: one output, one input, one visible relationship."
+          "Use Setup to turn the simulator ring #{ring_label(info)} into a real EtherCAT master configuration."
+      },
+      %{
+        title: "3. Evaluate the generated setup cell",
+        state: setup_eval_step_state(setup_stage),
+        body:
+          "That starts the master session and makes the Master render the main place to watch PREOP, OP, WKC, and domain health."
       }
     ]
   end
@@ -115,7 +116,7 @@ defmodule KinoEtherCAT.Introduction.View do
   defp offline_first_contact_steps do
     [
       %{
-        title: "1. Evaluate the simulator smart cell",
+        title: "1. Start the simulator smart cell",
         state: "current",
         body:
           "Start with the default `coupler -> inputs -> outputs` ring. The simulator is the teaching environment for the first lessons."
@@ -127,10 +128,10 @@ defmodule KinoEtherCAT.Introduction.View do
           "The intended first path is `outputs.ch1 -> inputs.ch1`, because it makes the process image easy to predict."
       },
       %{
-        title: "3. Add the EtherCAT Visualizer smart cell",
+        title: "3. Add the EtherCAT Setup smart cell",
         state: "next",
         body:
-          "Render just the first output and first input so one cause-and-effect path stays visible."
+          "Setup is the bridge from the teaching ring into a real EtherCAT master session."
       }
     ]
   end
@@ -283,6 +284,13 @@ defmodule KinoEtherCAT.Introduction.View do
   defp setup_stage(%{configured_session?: true}), do: :configured_session
   defp setup_stage(%{state: :idle}), do: :waiting_for_setup
   defp setup_stage(_master), do: :waiting_for_generated_setup
+
+  defp setup_step_state(:waiting_for_setup), do: "current"
+  defp setup_step_state(_stage), do: "done"
+
+  defp setup_eval_step_state(:waiting_for_setup), do: "next"
+  defp setup_eval_step_state(:waiting_for_generated_setup), do: "current"
+  defp setup_eval_step_state(_stage), do: "done"
 
   defp first_domain_snapshot do
     case safe(fn -> EtherCAT.domains() end, []) do
