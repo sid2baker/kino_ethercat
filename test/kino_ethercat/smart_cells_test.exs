@@ -47,22 +47,25 @@ defmodule KinoEtherCAT.SmartCellsTest do
 
     assert source =~ ~s(interface: "eth0")
 
-    assert source =~ ~s(%DomainConfig{id: :fast, cycle_time_us: 1000, miss_threshold: 1000})
+    assert source =~
+             ~s(%EtherCAT.Domain.Config{id: :fast, cycle_time_us: 1000, miss_threshold: 1000})
 
-    assert source =~ ~s(%DomainConfig{id: :slow, cycle_time_us: 4000, miss_threshold: 250})
+    assert source =~
+             ~s(%EtherCAT.Domain.Config{id: :slow, cycle_time_us: 4000, miss_threshold: 250})
 
     assert source =~ "slaves: ["
-    assert source =~ ~s(%SlaveConfig{name: :coupler, target_state: :op})
+    assert source =~ ~s(%EtherCAT.Slave.Config{name: :coupler, target_state: :op})
     assert source =~ ~s(driver: KinoEtherCAT.Driver.EL1809)
     assert source =~ ~s(process_data: {:all, :fast})
     assert source =~ ~s(process_data: {:all, :slow})
     assert source =~ ~s(warmup_cycles: 8)
+    assert source =~ "start_opts = ["
     assert source =~ "setup_result ="
-    assert source =~ "start_master = fn ->"
-    assert source =~ "with :ok <- start_master.(),"
+    assert source =~ "with :ok <- EtherCAT.start(start_opts),"
     assert source =~ "Kino.Markdown.new"
     assert source =~ "## EtherCAT setup failed"
     refute source =~ "transport: :udp"
+    refute source =~ "start_master = fn"
     refute source =~ ":eaddrinuse"
     refute source =~ ":ok = EtherCAT.await_running()"
     refute source =~ ":ok = EtherCAT.await_operational()"
@@ -94,9 +97,10 @@ defmodule KinoEtherCAT.SmartCellsTest do
 
     assert source =~ ~s(dc: nil)
 
-    assert source =~ ~s(%DomainConfig{id: :main, cycle_time_us: 1000, miss_threshold: 1000})
+    assert source =~
+             ~s(%EtherCAT.Domain.Config{id: :main, cycle_time_us: 1000, miss_threshold: 1000})
 
-    assert source =~ "%SlaveConfig{"
+    assert source =~ "%EtherCAT.Slave.Config{"
     assert source =~ "name: :sensor_a"
     assert source =~ "driver: KinoEtherCAT.Driver.EL1809"
     assert source =~ "process_data: {:all, :main}"
@@ -126,17 +130,16 @@ defmodule KinoEtherCAT.SmartCellsTest do
         ]
       })
 
-    assert source =~ "udp_host = {127, 0, 0, 2}"
-    assert source =~ "udp_bind_ip = {127, 0, 0, 1}"
-    assert source =~ "start_master = fn start_master, attempts_left ->"
+    assert source =~ "start_opts = ["
     assert source =~ "transport: :udp"
-    assert source =~ "host: udp_host"
+    assert source =~ "host: {127, 0, 0, 2}"
     assert source =~ "port: 34980"
-    assert source =~ "bind_ip: udp_bind_ip"
+    assert source =~ "bind_ip: {127, 0, 0, 1}"
     assert source =~ "frame_timeout_ms: 10"
-    assert source =~ "{:error, :eaddrinuse} when attempts_left > 1"
-    assert source =~ "Process.sleep(20)"
-    assert source =~ "start_master.(start_master, 3)"
+    assert source =~ "with :ok <- EtherCAT.start(start_opts),"
+    refute source =~ "Enum.reduce_while"
+    refute source =~ "Process.sleep(20)"
+    refute source =~ "start_master = fn"
     assert source =~ "driver: KinoEtherCAT.Driver.EL1809"
     assert source =~ ~s(process_data: {:all, :main})
     refute source =~ "EtherCAT.Simulator"

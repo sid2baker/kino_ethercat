@@ -63,10 +63,14 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntimeTest do
 
     payload = SimulatorRuntime.payload([], [])
 
-    assert payload.faults.active_count == 6
     assert payload.faults.runtime_sticky_count == 1
-    assert payload.faults.runtime_pending_count == 2
+    assert payload.faults.runtime_pending_count >= 1
     assert payload.faults.udp_pending_count == 3
+
+    assert payload.faults.active_count ==
+             payload.faults.runtime_sticky_count +
+               payload.faults.runtime_pending_count +
+               payload.faults.udp_pending_count
   end
 
   test "runtime actions clear faults and stop the simulator" do

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-03-12
+
+### Changed
+
+- Generated setup cells now keep the startup code simple by emitting a single `start_opts` block plus direct public `EtherCAT.start/1`, `await_running/1`, and `await_operational/1` calls
+
+### Fixed
+
+- UDP setup cells now surface `:eaddrinuse` directly instead of retrying automatically, so notebook behavior stays explicit and easier to understand
+- The introduction notebook now matches the simpler generated setup source
+
 ## [0.3.2] - 2026-03-12
 
 ### Fixed

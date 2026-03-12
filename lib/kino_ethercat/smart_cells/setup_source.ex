@@ -3,9 +3,6 @@ defmodule KinoEtherCAT.SmartCells.SetupSource do
 
   alias KinoEtherCAT.SmartCells.{SetupTransport, Source}
 
-  @udp_start_retry_attempts 3
-  @udp_start_retry_delay_ms 20
-
   @spec render(map()) :: String.t()
   def render(attrs) when is_map(attrs) do
     config = normalize(attrs)
@@ -22,20 +19,18 @@ defmodule KinoEtherCAT.SmartCells.SetupSource do
 
   defp static_start_source(config, transport) do
     Source.multiline([
-      aliases(config),
-      transport_prelude(transport),
-      "# Persisted from live bus discovery.\n",
-      "# The notebook now boots the master from a single static EtherCAT.start/1 call.\n",
+      "start_opts = [\n",
+      indent_lines(
+        keyword_entries(
+          start_entries(config, transport) ++ [slaves: slave_literals(config.slaves)]
+        ),
+        2
+      ),
+      "\n]\n\n",
       "_ = EtherCAT.stop()\n\n",
-      start_prelude(config, transport),
       "setup_result =\n",
-      "  with :ok <- ",
-      start_call(transport),
-      ",\n",
-      "       :ok <- EtherCAT.await_running(),\n",
-      "       :ok <- EtherCAT.await_operational() do\n",
-      "    :ok\n",
-      "  end\n\n",
+      setup_result_source(),
+      "\n\n",
       "case setup_result do\n",
       "  :ok ->\n",
       "    Kino.Layout.tabs(\n",
@@ -54,72 +49,13 @@ defmodule KinoEtherCAT.SmartCells.SetupSource do
     ])
   end
 
-  defp start_prelude(config, %{transport: :udp} = transport) do
+  defp setup_result_source do
     Source.multiline([
-      "start_master = fn start_master, attempts_left ->\n",
-      "  result =\n",
-      "    EtherCAT.start(\n",
-      indent_lines(
-        keyword_entries(
-          start_entries(config, transport) ++ [slaves: slave_literals(config.slaves)]
-        ),
-        6
-      ),
-      "\n",
-      "    )\n\n",
-      "  case result do\n",
-      "    {:error, :eaddrinuse} when attempts_left > 1 ->\n",
-      "      Process.sleep(#{@udp_start_retry_delay_ms})\n",
-      "      start_master.(start_master, attempts_left - 1)\n\n",
-      "    {:error, {:open_failed, :eaddrinuse}} when attempts_left > 1 ->\n",
-      "      Process.sleep(#{@udp_start_retry_delay_ms})\n",
-      "      start_master.(start_master, attempts_left - 1)\n\n",
-      "    other ->\n",
-      "      other\n",
-      "  end\n",
-      "end\n\n"
-    ])
-  end
-
-  defp start_prelude(config, transport) do
-    Source.multiline([
-      "start_master = fn ->\n",
-      "  EtherCAT.start(\n",
-      indent_lines(
-        keyword_entries(
-          start_entries(config, transport) ++ [slaves: slave_literals(config.slaves)]
-        ),
-        4
-      ),
-      "\n",
-      "  )\n",
-      "end\n\n"
-    ])
-  end
-
-  defp start_call(%{transport: :udp}),
-    do: "start_master.(start_master, #{@udp_start_retry_attempts})"
-
-  defp start_call(_transport), do: "start_master.()"
-
-  defp aliases(config) do
-    Source.multiline([
-      "alias EtherCAT.Slave.Config, as: SlaveConfig\n",
-      "alias EtherCAT.Domain.Config, as: DomainConfig\n",
-      if(config.dc_enabled, do: "alias EtherCAT.DC.Config, as: DCConfig\n", else: ""),
-      "\n"
-    ])
-  end
-
-  defp transport_prelude(%{transport: :raw}), do: ""
-
-  defp transport_prelude(%{transport: :udp, host: host, bind_ip: bind_ip}) do
-    Source.multiline([
-      "udp_host = ",
-      ip_literal(host),
-      "\n",
-      if(bind_ip, do: ["udp_bind_ip = ", ip_literal(bind_ip), "\n"], else: ""),
-      "\n"
+      "  with :ok <- EtherCAT.start(start_opts),\n",
+      "       :ok <- EtherCAT.await_running(),\n",
+      "       :ok <- EtherCAT.await_operational() do\n",
+      "    :ok\n",
+      "  end"
     ])
   end
 
@@ -144,9 +80,9 @@ defmodule KinoEtherCAT.SmartCells.SetupSource do
     [interface: inspect(interface)]
   end
 
-  defp transport_entries(%{transport: :udp, port: port, bind_ip: bind_ip}) do
-    [transport: ":udp", host: "udp_host", port: Source.integer_literal(port)] ++
-      if(bind_ip, do: [bind_ip: "udp_bind_ip"], else: [])
+  defp transport_entries(%{transport: :udp, host: host, port: port, bind_ip: bind_ip}) do
+    [transport: ":udp", host: ip_literal(host), port: Source.integer_literal(port)] ++
+      if(bind_ip, do: [bind_ip: ip_literal(bind_ip)], else: [])
   end
 
   defp startup_tuning_entries(%{transport: :udp}) do
@@ -160,7 +96,7 @@ defmodule KinoEtherCAT.SmartCells.SetupSource do
   defp domain_literals(domains) do
     "[" <>
       Enum.map_join(domains, ", ", fn domain ->
-        "%DomainConfig{" <>
+        "%EtherCAT.Domain.Config{" <>
           Enum.map_join(
             [
               {"id", Source.atom_literal(domain.id)},
@@ -176,7 +112,7 @@ defmodule KinoEtherCAT.SmartCells.SetupSource do
   defp dc_literal(%{dc_enabled: false}), do: "nil"
 
   defp dc_literal(config) do
-    "%DCConfig{" <>
+    "%EtherCAT.DC.Config{" <>
       Enum.map_join(
         [
           {"cycle_ns", Source.integer_literal(config.dc_cycle_ns)},
@@ -287,7 +223,7 @@ defmodule KinoEtherCAT.SmartCells.SetupSource do
           base_fields ++ [{"target_state", ":op"}]
       end
 
-    "%SlaveConfig{" <>
+    "%EtherCAT.Slave.Config{" <>
       Enum.map_join(fields, ", ", fn {key, value} -> "#{key}: #{value}" end) <> "}"
   end
 
