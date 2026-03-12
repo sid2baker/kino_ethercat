@@ -153,6 +153,11 @@ function ScheduledFaultTable({ faults }) {
   );
 }
 
+function SectionCopy({ children }) {
+  if (!children) return null;
+  return <div className="ke95-simulator-faults-panel__copy">{children}</div>;
+}
+
 function SimulatorFaultsPanel({ ctx, data }) {
   const [snapshot, setSnapshot] = useState(data);
   const [selectedSlave, setSelectedSlave] = useState(data.slave_options?.[0] ?? "");
@@ -238,6 +243,11 @@ function SimulatorFaultsPanel({ ctx, data }) {
     { label: "Captured", value: udpFaults.last_response_captured ? "yes" : "no" },
   ];
 
+  const selectedSlaveDisabled = disabled || !selectedSlave;
+  const runtimeApplyLabel = runtimePlan === "immediate" ? "Apply runtime fault" : "Queue runtime fault";
+  const udpApplyLabel = udpPlan === "next" ? "Queue UDP fault" : "Apply UDP fault";
+  const pushAction = (id, params = {}) => ctx.pushEvent("action", { id, ...params });
+
   return (
     <Shell title="Simulator faults" subtitle={snapshot.kind} status={status}>
       <Stack className="ke95-simulator-faults-panel">
@@ -248,18 +258,24 @@ function SimulatorFaultsPanel({ ctx, data }) {
         <SummaryGrid items={snapshot.summary ?? []} />
 
         <Panel
-          title="Runtime faults"
+          title="Quick faults"
           actions={
             <InlineButtons>
               <Button
                 disabled={disabled || runtimeFaults.active_count === 0}
-                onClick={() => ctx.pushEvent("action", { id: "clear_runtime_faults" })}
+                onClick={() => pushAction("clear_runtime_faults")}
               >
                 Clear runtime
               </Button>
               <Button
+                disabled={udpDisabled || udpFaults.active_count === 0}
+                onClick={() => pushAction("clear_udp_faults")}
+              >
+                Clear UDP
+              </Button>
+              <Button
                 disabled={disabled || (runtimeFaults.active_count === 0 && udpFaults.active_count === 0)}
-                onClick={() => ctx.pushEvent("action", { id: "clear_faults" })}
+                onClick={() => pushAction("clear_faults")}
               >
                 Clear all
               </Button>
@@ -267,7 +283,180 @@ function SimulatorFaultsPanel({ ctx, data }) {
           }
         >
           <Stack compact>
-            <PropertyList items={runtimeProperties} />
+            <SectionCopy>
+              Start here. These drills cover the common recovery cases without making you build a fault by hand.
+            </SectionCopy>
+
+            <Columns minWidth="18rem">
+              <Stack compact className="ke95-simulator-faults-panel__quick-group">
+                <div className="ke95-kicker">Runtime</div>
+                <SectionCopy>Use these when you want to disturb the EtherCAT cycle itself.</SectionCopy>
+                <ControlField label="Target slave">
+                  <Dropdown
+                    disabled={!snapshot.slave_options?.length}
+                    value={selectedSlave}
+                    onChange={(event) => setSelectedSlave(event.target.value)}
+                  >
+                    {(snapshot.slave_options ?? []).map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </Dropdown>
+                </ControlField>
+                <InlineButtons>
+                  <Button
+                    disabled={disabled}
+                    onClick={() =>
+                      pushAction("apply_runtime_fault", {
+                        kind: "drop_responses",
+                        plan: "next",
+                      })
+                    }
+                  >
+                    Drop next exchange
+                  </Button>
+                  <Button
+                    disabled={disabled}
+                    onClick={() =>
+                      pushAction("apply_runtime_fault", {
+                        kind: "wkc_offset",
+                        plan: "count",
+                        value: "-1",
+                        count: "3",
+                      })
+                    }
+                  >
+                    WKC -1 for 3 cycles
+                  </Button>
+                  <Button
+                    disabled={selectedSlaveDisabled}
+                    onClick={() => pushAction("inject_disconnect", { slave: selectedSlave })}
+                  >
+                    Disconnect slave
+                  </Button>
+                  <Button
+                    disabled={selectedSlaveDisabled}
+                    onClick={() => pushAction("retreat_to_safeop", { slave: selectedSlave })}
+                  >
+                    Send slave to SAFEOP
+                  </Button>
+                  <Button
+                    disabled={selectedSlaveDisabled}
+                    onClick={() =>
+                      pushAction("inject_al_error", {
+                        slave: selectedSlave,
+                        code: "0x001B",
+                      })
+                    }
+                  >
+                    Latch AL error
+                  </Button>
+                </InlineButtons>
+              </Stack>
+
+              <Stack compact className="ke95-simulator-faults-panel__quick-group">
+                <div className="ke95-kicker">UDP</div>
+                <SectionCopy>Use these when you only want to disturb the transport replies.</SectionCopy>
+                <InlineButtons>
+                  <Button
+                    disabled={udpDisabled}
+                    onClick={() =>
+                      pushAction("apply_udp_fault", {
+                        mode: "truncate",
+                        plan: "next",
+                      })
+                    }
+                  >
+                    Truncate next reply
+                  </Button>
+                  <Button
+                    disabled={udpDisabled}
+                    onClick={() =>
+                      pushAction("apply_udp_fault", {
+                        mode: "wrong_idx",
+                        plan: "count",
+                        count: "3",
+                      })
+                    }
+                  >
+                    Wrong index for 3 replies
+                  </Button>
+                  <Button
+                    disabled={udpDisabled}
+                    onClick={() =>
+                      pushAction("apply_udp_fault", {
+                        mode: "replay_previous",
+                        plan: "next",
+                      })
+                    }
+                  >
+                    Replay previous reply
+                  </Button>
+                </InlineButtons>
+              </Stack>
+            </Columns>
+          </Stack>
+        </Panel>
+
+        <Panel title="Current fault state">
+          <Stack compact>
+            <Columns minWidth="18rem">
+              <Stack compact>
+                <div className="ke95-kicker">Runtime</div>
+                <SectionCopy>{runtimeFaults.summary ?? "No runtime faults."}</SectionCopy>
+                <PropertyList items={runtimeProperties} />
+              </Stack>
+
+              <Stack compact>
+                <div className="ke95-kicker">UDP</div>
+                <SectionCopy>{udpFaults.summary ?? "UDP disabled."}</SectionCopy>
+                <PropertyList items={udpProperties} />
+              </Stack>
+            </Columns>
+
+            <Stack compact className="ke95-simulator-faults-panel__tables">
+              <div className="ke95-simulator-faults-panel__table-section">
+                <div className="ke95-kicker">Sticky runtime faults</div>
+                <SectionCopy>These are active now and stay active until you clear them.</SectionCopy>
+                <FaultTable
+                  labels={runtimeFaults.sticky_labels}
+                  emptyText="No sticky runtime faults are active."
+                />
+              </div>
+
+              <div className="ke95-simulator-faults-panel__table-section">
+                <div className="ke95-kicker">Queued exchange faults</div>
+                <SectionCopy>These will run on the next exchanges that match your plan.</SectionCopy>
+                <FaultTable
+                  labels={runtimeFaults.pending_labels}
+                  emptyText="No runtime exchange faults are queued."
+                />
+              </div>
+
+              <div className="ke95-simulator-faults-panel__table-section">
+                <div className="ke95-kicker">Scheduled runtime faults</div>
+                <SectionCopy>These are waiting for a delay or milestone before they become active.</SectionCopy>
+                <ScheduledFaultTable faults={runtimeFaults.scheduled_faults} />
+              </div>
+
+              <div className="ke95-simulator-faults-panel__table-section">
+                <div className="ke95-kicker">Queued UDP reply faults</div>
+                <SectionCopy>These affect future UDP replies without changing simulator state directly.</SectionCopy>
+                <FaultTable
+                  labels={udpFaults.pending_labels}
+                  emptyText="No UDP reply faults are queued."
+                />
+              </div>
+            </Stack>
+          </Stack>
+        </Panel>
+
+        <Panel title="Advanced runtime builder">
+          <Stack compact>
+            <SectionCopy>
+              Use this when the quick drills are not enough. It maps closely to the simulator fault API.
+            </SectionCopy>
 
             <Columns minWidth="12rem">
               <ControlField label="Fault">
@@ -452,8 +641,7 @@ function SimulatorFaultsPanel({ ctx, data }) {
                 <Button
                   disabled={disabled}
                   onClick={() =>
-                    ctx.pushEvent("action", {
-                      id: "apply_runtime_fault",
+                    pushAction("apply_runtime_fault", {
                       kind: runtimeKind,
                       plan: runtimePlan,
                       command: runtimeCommand,
@@ -475,40 +663,18 @@ function SimulatorFaultsPanel({ ctx, data }) {
                     })
                   }
                 >
-                  Apply runtime fault
+                  {runtimeApplyLabel}
                 </Button>
               </InlineButtons>
             </Columns>
-
-            <Stack compact className="ke95-simulator-faults-panel__tables">
-              <FaultTable
-                labels={runtimeFaults.sticky_labels}
-                emptyText="No sticky runtime faults are active."
-              />
-              <FaultTable
-                labels={runtimeFaults.pending_labels}
-                emptyText="No runtime exchange faults are queued."
-              />
-              <ScheduledFaultTable faults={runtimeFaults.scheduled_faults} />
-            </Stack>
           </Stack>
         </Panel>
 
-        <Panel
-          title="UDP reply faults"
-          actions={
-            <InlineButtons>
-              <Button
-                disabled={udpDisabled || udpFaults.active_count === 0}
-                onClick={() => ctx.pushEvent("action", { id: "clear_udp_faults" })}
-              >
-                Clear UDP faults
-              </Button>
-            </InlineButtons>
-          }
-        >
+        <Panel title="Advanced UDP builder">
           <Stack compact>
-            <PropertyList items={udpProperties} />
+            <SectionCopy>
+              Keep this for transport-specific cases like scripts, truncation, and wrong datagram indexes.
+            </SectionCopy>
 
             <Columns minWidth="12rem">
               <ControlField label="Reply fault">
@@ -550,8 +716,7 @@ function SimulatorFaultsPanel({ ctx, data }) {
                 <Button
                   disabled={udpDisabled}
                   onClick={() =>
-                    ctx.pushEvent("action", {
-                      id: "apply_udp_fault",
+                    pushAction("apply_udp_fault", {
                       mode: udpMode,
                       plan: udpPlan,
                       count: udpCount,
@@ -559,15 +724,10 @@ function SimulatorFaultsPanel({ ctx, data }) {
                     })
                   }
                 >
-                  Apply UDP fault
+                  {udpApplyLabel}
                 </Button>
               </InlineButtons>
             </Columns>
-
-            <FaultTable
-              labels={udpFaults.pending_labels}
-              emptyText="No UDP reply faults are queued."
-            />
           </Stack>
         </Panel>
       </Stack>

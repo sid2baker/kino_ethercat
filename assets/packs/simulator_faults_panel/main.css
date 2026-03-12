@@ -8,6 +8,22 @@
   align-self: end;
 }
 
+.ke95-simulator-faults-panel__copy {
+  line-height: 1.4;
+  color: #444;
+}
+
+.ke95-simulator-faults-panel__quick-group,
+.ke95-simulator-faults-panel__table-section {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.ke95-simulator-faults-panel__quick-group {
+  padding: 0.5rem;
+  outline: 1px solid var(--r95-color-borderDark);
+}
+
 .ke95-simulator-faults-panel__tables {
   display: grid;
   gap: 0.5rem;
