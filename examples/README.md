@@ -1,8 +1,15 @@
 # EtherCAT Introduction
 
-This folder describes the simulator-first teaching path that is now implemented in the library. The previous `.livemd` examples were removed on purpose so the introduction could be rebuilt around a smaller number of clearer steps.
+This folder now holds the Livebook teaching material for the simulator-first introduction path.
+The first two phases are now merged into one story notebook: visual first, little text, one idea per scene.
 
 The objective is still the same: create an excellent introduction to EtherCAT for newcomers with as little setup friction as possible. The simulator should be the default environment, real hardware should be optional, and the material should teach EtherCAT itself before it teaches this library or Elixir.
+
+## Implemented Now
+
+- [Phases 1 and 2: Meet The Tiny EtherCAT Machine](./01_mental_model.livemd)
+
+These two phases are also reflected in the generated `Introduction` tab from the `EtherCAT Simulator` smart cell.
 
 ## Current Teaching Workspace
 
@@ -95,6 +102,9 @@ The material should be structured as a ladder, not a catalog. Each step should f
 Purpose:
 - build intuition for EtherCAT without implementation noise
 
+Status:
+- implemented in [01_mental_model.livemd](./01_mental_model.livemd)
+
 Target concepts:
 - master
 - slave
@@ -109,6 +119,9 @@ Desired reader feeling:
 
 Purpose:
 - let the reader use the simulator to make EtherCAT behavior tangible
+
+Status:
+- currently merged into [01_mental_model.livemd](./01_mental_model.livemd)
 
 Target concepts:
 - fixed ring

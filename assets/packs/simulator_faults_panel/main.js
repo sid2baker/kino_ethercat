@@ -20,19 +20,79 @@ import {
   Stack,
   StatusBadge,
   SummaryGrid,
+  TextArea,
 } from "../../ui/react95";
+
+const RUNTIME_FAULTS = [
+  { value: "drop_responses", label: "Drop responses" },
+  { value: "wkc_offset", label: "WKC offset" },
+  { value: "command_wkc_offset", label: "Command WKC offset" },
+  { value: "logical_wkc_offset", label: "Logical WKC offset" },
+  { value: "disconnect", label: "Disconnect slave" },
+  { value: "retreat_to_safeop", label: "Retreat to SAFEOP" },
+  { value: "latch_al_error", label: "Latch AL error" },
+  { value: "mailbox_abort", label: "Mailbox abort" },
+  { value: "mailbox_protocol_fault", label: "Mailbox protocol fault" },
+];
+
+const EXCHANGE_FAULTS = new Set([
+  "drop_responses",
+  "wkc_offset",
+  "command_wkc_offset",
+  "logical_wkc_offset",
+  "disconnect",
+]);
+
+const EXCHANGE_COMMANDS = [
+  "aprd",
+  "apwr",
+  "aprw",
+  "fprd",
+  "fpwr",
+  "fprw",
+  "brd",
+  "bwr",
+  "brw",
+  "lrd",
+  "lwr",
+  "lrw",
+  "armw",
+  "frmw",
+];
+
+const MAILBOX_STAGES = [
+  "request",
+  "upload_init",
+  "upload_segment",
+  "download_init",
+  "download_segment",
+];
+
+const MAILBOX_ABORT_STAGES = ["", "request", "upload_segment", "download_segment"];
+
+const MAILBOX_PROTOCOL_FAULTS = [
+  { value: "drop_response", label: "Drop response" },
+  { value: "counter_mismatch", label: "Counter mismatch" },
+  { value: "toggle_mismatch", label: "Toggle mismatch" },
+  { value: "invalid_coe_payload", label: "Invalid CoE payload" },
+  { value: "invalid_segment_padding", label: "Invalid segment padding" },
+  { value: "mailbox_type", label: "Mailbox type" },
+  { value: "coe_service", label: "CoE service" },
+  { value: "sdo_command", label: "SDO command" },
+  { value: "segment_command", label: "Segment command" },
+];
+
+const MILESTONE_KINDS = [
+  { value: "healthy_exchanges", label: "Healthy exchanges" },
+  { value: "healthy_polls", label: "Healthy polls" },
+  { value: "mailbox_step", label: "Mailbox step" },
+];
 
 const UDP_MODES = [
   { value: "truncate", label: "Truncate reply" },
   { value: "unsupported_type", label: "Unsupported reply type" },
   { value: "wrong_idx", label: "Wrong datagram index" },
   { value: "replay_previous", label: "Replay previous reply" },
-];
-
-const RUNTIME_QUEUE_KINDS = [
-  { value: "drop_responses", label: "Drop responses" },
-  { value: "wkc_offset", label: "WKC offset" },
-  { value: "disconnect", label: "Disconnect slave" },
 ];
 
 export async function init(ctx, data) {
@@ -66,21 +126,57 @@ function FaultTable({ labels, emptyText }) {
   );
 }
 
+function ScheduledFaultTable({ faults }) {
+  if (!faults?.length) {
+    return <EmptyState>No scheduled runtime faults.</EmptyState>;
+  }
+
+  return (
+    <DataTable headers={["#", "Fault", "Schedule", "Remaining"]}>
+      {faults.map((fault, index) => (
+        <tr key={fault.key ?? `${fault.label}-${index}`}>
+          <td>
+            <Mono>{index + 1}</Mono>
+          </td>
+          <td>
+            <Mono>{fault.label}</Mono>
+          </td>
+          <td>
+            <Mono>{fault.schedule}</Mono>
+          </td>
+          <td>
+            <Mono>{fault.remaining}</Mono>
+          </td>
+        </tr>
+      ))}
+    </DataTable>
+  );
+}
+
 function SimulatorFaultsPanel({ ctx, data }) {
   const [snapshot, setSnapshot] = useState(data);
   const [selectedSlave, setSelectedSlave] = useState(data.slave_options?.[0] ?? "");
-  const [wkcOffset, setWkcOffset] = useState(String(data.runtime_faults?.wkc_offset ?? 0));
+  const [runtimeKind, setRuntimeKind] = useState("drop_responses");
+  const [runtimePlan, setRuntimePlan] = useState("immediate");
+  const [runtimeValue, setRuntimeValue] = useState("0");
+  const [runtimeCount, setRuntimeCount] = useState("3");
+  const [runtimeDelay, setRuntimeDelay] = useState("250");
+  const [runtimeCommand, setRuntimeCommand] = useState("lrw");
   const [alErrorCode, setAlErrorCode] = useState("0x001B");
   const [mailboxIndex, setMailboxIndex] = useState("0x1600");
   const [mailboxSubindex, setMailboxSubindex] = useState("0x00");
   const [mailboxAbortCode, setMailboxAbortCode] = useState("0x06010002");
-  const [runtimeQueueKind, setRuntimeQueueKind] = useState("drop_responses");
-  const [runtimeQueuePlan, setRuntimeQueuePlan] = useState("next");
-  const [runtimeQueueCount, setRuntimeQueueCount] = useState("3");
-  const [runtimeQueueValue, setRuntimeQueueValue] = useState("0");
-  const [udpFaultMode, setUdpFaultMode] = useState("truncate");
-  const [udpFaultPlan, setUdpFaultPlan] = useState("next");
-  const [udpFaultCount, setUdpFaultCount] = useState("3");
+  const [mailboxStage, setMailboxStage] = useState("request");
+  const [mailboxAbortStage, setMailboxAbortStage] = useState("");
+  const [mailboxFaultKind, setMailboxFaultKind] = useState("drop_response");
+  const [mailboxFaultValue, setMailboxFaultValue] = useState("0x00");
+  const [milestoneKind, setMilestoneKind] = useState("healthy_exchanges");
+  const [milestoneCount, setMilestoneCount] = useState("5");
+  const [milestoneStage, setMilestoneStage] = useState("request");
+  const [udpMode, setUdpMode] = useState("truncate");
+  const [udpPlan, setUdpPlan] = useState("next");
+  const [udpCount, setUdpCount] = useState("3");
+  const [udpScript, setUdpScript] = useState("truncate, wrong_idx");
 
   useEffect(() => {
     ctx.handleEvent("snapshot", (next) => {
@@ -98,19 +194,49 @@ function SimulatorFaultsPanel({ ctx, data }) {
     setSelectedSlave((current) => (options.includes(current) ? current : options[0] ?? ""));
   }, [slaveOptionsKey, snapshot.slave_options]);
 
+  const runtimePlanOptions = useMemo(() => {
+    if (EXCHANGE_FAULTS.has(runtimeKind)) {
+      return [
+        { value: "immediate", label: "Immediate" },
+        { value: "next", label: "Next exchange" },
+        { value: "count", label: "Next N exchanges" },
+        { value: "after_ms", label: "After delay" },
+        { value: "after_milestone", label: "After milestone" },
+      ];
+    }
+
+    return [
+      { value: "immediate", label: "Immediate" },
+      { value: "after_ms", label: "After delay" },
+      { value: "after_milestone", label: "After milestone" },
+    ];
+  }, [runtimeKind]);
+
   useEffect(() => {
-    setWkcOffset(String(snapshot.runtime_faults?.wkc_offset ?? 0));
-  }, [snapshot.runtime_faults?.wkc_offset]);
+    if (!runtimePlanOptions.some((option) => option.value === runtimePlan)) {
+      setRuntimePlan(runtimePlanOptions[0]?.value ?? "immediate");
+    }
+  }, [runtimePlan, runtimePlanOptions]);
 
   const disabled = snapshot.status !== "running";
   const udpDisabled = disabled || !snapshot.udp_faults?.enabled;
   const runtimeFaults = snapshot.runtime_faults ?? {};
   const udpFaults = snapshot.udp_faults ?? {};
-  const disconnected = runtimeFaults.disconnected ?? [];
-  const runtimeStickySummary = runtimeFaults.sticky_labels?.length
-    ? runtimeFaults.sticky_labels.join(" | ")
-    : "none";
   const status = <StatusBadge tone={statusTone(snapshot.status)}>{snapshot.status}</StatusBadge>;
+
+  const runtimeProperties = [
+    { label: "Next exchange", value: runtimeFaults.next_label ?? "none" },
+    { label: "Sticky", value: String(runtimeFaults.sticky_count ?? 0) },
+    { label: "Queued", value: String(runtimeFaults.pending_count ?? 0) },
+    { label: "Scheduled", value: String(runtimeFaults.scheduled_count ?? 0) },
+  ];
+
+  const udpProperties = [
+    { label: "Endpoint", value: udpFaults.endpoint ?? "disabled" },
+    { label: "Next reply", value: udpFaults.next_label ?? "none" },
+    { label: "Queued replies", value: String(udpFaults.active_count ?? 0) },
+    { label: "Captured", value: udpFaults.last_response_captured ? "yes" : "no" },
+  ];
 
   return (
     <Shell title="Simulator faults" subtitle={snapshot.kind} status={status}>
@@ -125,12 +251,6 @@ function SimulatorFaultsPanel({ ctx, data }) {
           title="Runtime faults"
           actions={
             <InlineButtons>
-              <Button
-                disabled={disabled}
-                onClick={() => ctx.pushEvent("action", { id: "inject_drop_responses" })}
-              >
-                Drop responses
-              </Button>
               <Button
                 disabled={disabled || runtimeFaults.active_count === 0}
                 onClick={() => ctx.pushEvent("action", { id: "clear_runtime_faults" })}
@@ -147,56 +267,49 @@ function SimulatorFaultsPanel({ ctx, data }) {
           }
         >
           <Stack compact>
-            <PropertyList
-              items={[
-                { label: "Sticky faults", value: runtimeStickySummary },
-                { label: "Next exchange", value: runtimeFaults.next_label ?? "none" },
-                { label: "Queued exchanges", value: String(runtimeFaults.pending_count ?? 0) },
-                { label: "Disconnected", value: disconnected.length ? disconnected.join(", ") : "none" },
-              ]}
-            />
-
-            <Columns minWidth="14rem">
-              <ControlField label="WKC offset">
-                <Input value={wkcOffset} onChange={(event) => setWkcOffset(event.target.value)} />
-              </ControlField>
-              <InlineButtons className="ke95-simulator-faults-panel__row-actions">
-                <Button
-                  disabled={disabled}
-                  onClick={() => ctx.pushEvent("action", { id: "set_wkc_offset", value: wkcOffset })}
-                >
-                  Apply WKC offset
-                </Button>
-              </InlineButtons>
-            </Columns>
+            <PropertyList items={runtimeProperties} />
 
             <Columns minWidth="12rem">
-              <ControlField label="Queue fault">
-                <Dropdown value={runtimeQueueKind} onChange={(event) => setRuntimeQueueKind(event.target.value)}>
-                  {RUNTIME_QUEUE_KINDS.map((option) => (
+              <ControlField label="Fault">
+                <Dropdown value={runtimeKind} onChange={(event) => setRuntimeKind(event.target.value)}>
+                  {RUNTIME_FAULTS.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
                   ))}
                 </Dropdown>
               </ControlField>
+
               <ControlField label="Plan">
-                <Dropdown value={runtimeQueuePlan} onChange={(event) => setRuntimeQueuePlan(event.target.value)}>
-                  <option value="next">Next exchange</option>
-                  <option value="count">Next N exchanges</option>
+                <Dropdown value={runtimePlan} onChange={(event) => setRuntimePlan(event.target.value)}>
+                  {runtimePlanOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </Dropdown>
               </ControlField>
-              {runtimeQueuePlan === "count" ? (
-                <ControlField label="Count">
-                  <Input value={runtimeQueueCount} onChange={(event) => setRuntimeQueueCount(event.target.value)} />
+
+              {runtimeKind === "command_wkc_offset" ? (
+                <ControlField label="Command">
+                  <Dropdown value={runtimeCommand} onChange={(event) => setRuntimeCommand(event.target.value)}>
+                    {EXCHANGE_COMMANDS.map((command) => (
+                      <option key={command} value={command}>
+                        {command}
+                      </option>
+                    ))}
+                  </Dropdown>
                 </ControlField>
               ) : null}
-              {runtimeQueueKind === "wkc_offset" ? (
-                <ControlField label="Offset">
-                  <Input value={runtimeQueueValue} onChange={(event) => setRuntimeQueueValue(event.target.value)} />
-                </ControlField>
-              ) : null}
-              {runtimeQueueKind === "disconnect" ? (
+
+              {[
+                "logical_wkc_offset",
+                "disconnect",
+                "retreat_to_safeop",
+                "latch_al_error",
+                "mailbox_abort",
+                "mailbox_protocol_fault",
+              ].includes(runtimeKind) ? (
                 <ControlField label="Slave">
                   <Dropdown value={selectedSlave} onChange={(event) => setSelectedSlave(event.target.value)}>
                     {(snapshot.slave_options ?? []).map((name) => (
@@ -207,29 +320,177 @@ function SimulatorFaultsPanel({ ctx, data }) {
                   </Dropdown>
                 </ControlField>
               ) : null}
+
+              {["wkc_offset", "command_wkc_offset", "logical_wkc_offset"].includes(runtimeKind) ? (
+                <ControlField label="Offset">
+                  <Input value={runtimeValue} onChange={(event) => setRuntimeValue(event.target.value)} />
+                </ControlField>
+              ) : null}
+
+              {runtimeKind === "latch_al_error" ? (
+                <ControlField label="AL error code">
+                  <Input value={alErrorCode} onChange={(event) => setAlErrorCode(event.target.value)} />
+                </ControlField>
+              ) : null}
+
+              {["mailbox_abort", "mailbox_protocol_fault"].includes(runtimeKind) ? (
+                <ControlField label="Mailbox index">
+                  <Input value={mailboxIndex} onChange={(event) => setMailboxIndex(event.target.value)} />
+                </ControlField>
+              ) : null}
+
+              {["mailbox_abort", "mailbox_protocol_fault"].includes(runtimeKind) ? (
+                <ControlField label="Subindex">
+                  <Input value={mailboxSubindex} onChange={(event) => setMailboxSubindex(event.target.value)} />
+                </ControlField>
+              ) : null}
+
+              {runtimeKind === "mailbox_abort" ? (
+                <ControlField label="Abort code">
+                  <Input value={mailboxAbortCode} onChange={(event) => setMailboxAbortCode(event.target.value)} />
+                </ControlField>
+              ) : null}
+
+              {runtimeKind === "mailbox_abort" ? (
+                <ControlField label="Abort stage">
+                  <Dropdown value={mailboxAbortStage} onChange={(event) => setMailboxAbortStage(event.target.value)}>
+                    {MAILBOX_ABORT_STAGES.map((stage) => (
+                      <option key={stage || "any"} value={stage}>
+                        {stage || "any"}
+                      </option>
+                    ))}
+                  </Dropdown>
+                </ControlField>
+              ) : null}
+
+              {runtimeKind === "mailbox_protocol_fault" ? (
+                <ControlField label="Mailbox stage">
+                  <Dropdown value={mailboxStage} onChange={(event) => setMailboxStage(event.target.value)}>
+                    {MAILBOX_STAGES.map((stage) => (
+                      <option key={stage} value={stage}>
+                        {stage}
+                      </option>
+                    ))}
+                  </Dropdown>
+                </ControlField>
+              ) : null}
+
+              {runtimeKind === "mailbox_protocol_fault" ? (
+                <ControlField label="Protocol fault">
+                  <Dropdown value={mailboxFaultKind} onChange={(event) => setMailboxFaultKind(event.target.value)}>
+                    {MAILBOX_PROTOCOL_FAULTS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Dropdown>
+                </ControlField>
+              ) : null}
+
+              {runtimeKind === "mailbox_protocol_fault" &&
+              ["mailbox_type", "coe_service", "sdo_command", "segment_command"].includes(mailboxFaultKind) ? (
+                <ControlField label="Protocol value">
+                  <Input value={mailboxFaultValue} onChange={(event) => setMailboxFaultValue(event.target.value)} />
+                </ControlField>
+              ) : null}
+
+              {runtimePlan === "count" ? (
+                <ControlField label="Count">
+                  <Input value={runtimeCount} onChange={(event) => setRuntimeCount(event.target.value)} />
+                </ControlField>
+              ) : null}
+
+              {runtimePlan === "after_ms" ? (
+                <ControlField label="Delay ms">
+                  <Input value={runtimeDelay} onChange={(event) => setRuntimeDelay(event.target.value)} />
+                </ControlField>
+              ) : null}
+
+              {runtimePlan === "after_milestone" ? (
+                <ControlField label="Milestone">
+                  <Dropdown value={milestoneKind} onChange={(event) => setMilestoneKind(event.target.value)}>
+                    {MILESTONE_KINDS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Dropdown>
+                </ControlField>
+              ) : null}
+
+              {runtimePlan === "after_milestone" ? (
+                <ControlField label="Milestone count">
+                  <Input value={milestoneCount} onChange={(event) => setMilestoneCount(event.target.value)} />
+                </ControlField>
+              ) : null}
+
+              {runtimePlan === "after_milestone" && milestoneKind !== "healthy_exchanges" ? (
+                <ControlField label="Milestone slave">
+                  <Dropdown value={selectedSlave} onChange={(event) => setSelectedSlave(event.target.value)}>
+                    {(snapshot.slave_options ?? []).map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </Dropdown>
+                </ControlField>
+              ) : null}
+
+              {runtimePlan === "after_milestone" && milestoneKind === "mailbox_step" ? (
+                <ControlField label="Milestone stage">
+                  <Dropdown value={milestoneStage} onChange={(event) => setMilestoneStage(event.target.value)}>
+                    {MAILBOX_STAGES.map((stage) => (
+                      <option key={stage} value={stage}>
+                        {stage}
+                      </option>
+                    ))}
+                  </Dropdown>
+                </ControlField>
+              ) : null}
+
               <InlineButtons className="ke95-simulator-faults-panel__row-actions">
                 <Button
                   disabled={disabled}
                   onClick={() =>
                     ctx.pushEvent("action", {
-                      id: "queue_runtime_fault",
-                      kind: runtimeQueueKind,
-                      plan: runtimeQueuePlan,
-                      count: runtimeQueueCount,
-                      value: runtimeQueueValue,
+                      id: "apply_runtime_fault",
+                      kind: runtimeKind,
+                      plan: runtimePlan,
+                      command: runtimeCommand,
                       slave: selectedSlave,
+                      value: runtimeValue,
+                      count: runtimeCount,
+                      delay_ms: runtimeDelay,
+                      code: alErrorCode,
+                      index: mailboxIndex,
+                      subindex: mailboxSubindex,
+                      abort_code: mailboxAbortCode,
+                      stage: runtimeKind === "mailbox_abort" ? mailboxAbortStage : mailboxStage,
+                      mailbox_fault_kind: mailboxFaultKind,
+                      mailbox_fault_value: mailboxFaultValue,
+                      milestone_kind: milestoneKind,
+                      milestone_count: milestoneCount,
+                      milestone_slave: selectedSlave,
+                      milestone_stage: milestoneStage,
                     })
                   }
                 >
-                  Queue runtime fault
+                  Apply runtime fault
                 </Button>
               </InlineButtons>
             </Columns>
 
-            <FaultTable
-              labels={runtimeFaults.pending_labels}
-              emptyText="No runtime exchange faults are queued."
-            />
+            <Stack compact className="ke95-simulator-faults-panel__tables">
+              <FaultTable
+                labels={runtimeFaults.sticky_labels}
+                emptyText="No sticky runtime faults are active."
+              />
+              <FaultTable
+                labels={runtimeFaults.pending_labels}
+                emptyText="No runtime exchange faults are queued."
+              />
+              <ScheduledFaultTable faults={runtimeFaults.scheduled_faults} />
+            </Stack>
           </Stack>
         </Panel>
 
@@ -247,21 +508,11 @@ function SimulatorFaultsPanel({ ctx, data }) {
           }
         >
           <Stack compact>
-            <PropertyList
-              items={[
-                { label: "Endpoint", value: udpFaults.endpoint ?? "disabled" },
-                { label: "Next reply", value: udpFaults.next_label ?? "none" },
-                { label: "Queued replies", value: String(udpFaults.active_count ?? 0) },
-                {
-                  label: "Last response captured",
-                  value: udpFaults.last_response_captured ? "yes" : "no",
-                },
-              ]}
-            />
+            <PropertyList items={udpProperties} />
 
             <Columns minWidth="12rem">
               <ControlField label="Reply fault">
-                <Dropdown value={udpFaultMode} onChange={(event) => setUdpFaultMode(event.target.value)}>
+                <Dropdown value={udpMode} onChange={(event) => setUdpMode(event.target.value)}>
                   {UDP_MODES.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
@@ -269,30 +520,46 @@ function SimulatorFaultsPanel({ ctx, data }) {
                   ))}
                 </Dropdown>
               </ControlField>
+
               <ControlField label="Plan">
-                <Dropdown value={udpFaultPlan} onChange={(event) => setUdpFaultPlan(event.target.value)}>
+                <Dropdown value={udpPlan} onChange={(event) => setUdpPlan(event.target.value)}>
                   <option value="next">Next reply</option>
                   <option value="count">Next N replies</option>
+                  <option value="script">Script</option>
                 </Dropdown>
               </ControlField>
-              {udpFaultPlan === "count" ? (
+
+              {udpPlan === "count" ? (
                 <ControlField label="Count">
-                  <Input value={udpFaultCount} onChange={(event) => setUdpFaultCount(event.target.value)} />
+                  <Input value={udpCount} onChange={(event) => setUdpCount(event.target.value)} />
                 </ControlField>
               ) : null}
+
+              {udpPlan === "script" ? (
+                <ControlField label="Script">
+                  <TextArea
+                    rows={3}
+                    className="ke95-simulator-faults-panel__script"
+                    value={udpScript}
+                    onChange={(event) => setUdpScript(event.target.value)}
+                  />
+                </ControlField>
+              ) : null}
+
               <InlineButtons className="ke95-simulator-faults-panel__row-actions">
                 <Button
                   disabled={udpDisabled}
                   onClick={() =>
                     ctx.pushEvent("action", {
-                      id: "queue_udp_fault",
-                      mode: udpFaultMode,
-                      plan: udpFaultPlan,
-                      count: udpFaultCount,
+                      id: "apply_udp_fault",
+                      mode: udpMode,
+                      plan: udpPlan,
+                      count: udpCount,
+                      script: udpScript,
                     })
                   }
                 >
-                  Queue UDP fault
+                  Apply UDP fault
                 </Button>
               </InlineButtons>
             </Columns>
@@ -301,84 +568,6 @@ function SimulatorFaultsPanel({ ctx, data }) {
               labels={udpFaults.pending_labels}
               emptyText="No UDP reply faults are queued."
             />
-          </Stack>
-        </Panel>
-
-        <Panel title="Slave-local faults">
-          <Stack compact>
-            <Columns minWidth="12rem">
-              <ControlField label="Slave">
-                <Dropdown value={selectedSlave} onChange={(event) => setSelectedSlave(event.target.value)}>
-                  {(snapshot.slave_options ?? []).map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </Dropdown>
-              </ControlField>
-              <InlineButtons className="ke95-simulator-faults-panel__row-actions">
-                <Button
-                  disabled={disabled || !selectedSlave}
-                  onClick={() => ctx.pushEvent("action", { id: "inject_disconnect", slave: selectedSlave })}
-                >
-                  Disconnect
-                </Button>
-                <Button
-                  disabled={disabled || !selectedSlave}
-                  onClick={() => ctx.pushEvent("action", { id: "retreat_to_safeop", slave: selectedSlave })}
-                >
-                  SAFEOP
-                </Button>
-              </InlineButtons>
-            </Columns>
-
-            <Columns minWidth="14rem">
-              <ControlField label="AL error code">
-                <Input value={alErrorCode} onChange={(event) => setAlErrorCode(event.target.value)} />
-              </ControlField>
-              <InlineButtons className="ke95-simulator-faults-panel__row-actions">
-                <Button
-                  disabled={disabled || !selectedSlave}
-                  onClick={() =>
-                    ctx.pushEvent("action", {
-                      id: "inject_al_error",
-                      slave: selectedSlave,
-                      code: alErrorCode,
-                    })
-                  }
-                >
-                  Latch AL error
-                </Button>
-              </InlineButtons>
-            </Columns>
-
-            <Columns minWidth="10rem">
-              <ControlField label="Mailbox index">
-                <Input value={mailboxIndex} onChange={(event) => setMailboxIndex(event.target.value)} />
-              </ControlField>
-              <ControlField label="Subindex">
-                <Input value={mailboxSubindex} onChange={(event) => setMailboxSubindex(event.target.value)} />
-              </ControlField>
-              <ControlField label="Abort code">
-                <Input value={mailboxAbortCode} onChange={(event) => setMailboxAbortCode(event.target.value)} />
-              </ControlField>
-              <InlineButtons className="ke95-simulator-faults-panel__row-actions">
-                <Button
-                  disabled={disabled || !selectedSlave}
-                  onClick={() =>
-                    ctx.pushEvent("action", {
-                      id: "inject_mailbox_abort",
-                      slave: selectedSlave,
-                      index: mailboxIndex,
-                      subindex: mailboxSubindex,
-                      abort_code: mailboxAbortCode,
-                    })
-                  }
-                >
-                  Mailbox abort
-                </Button>
-              </InlineButtons>
-            </Columns>
           </Stack>
         </Panel>
       </Stack>

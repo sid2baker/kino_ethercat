@@ -50,17 +50,23 @@ function IntroductionPanel({ ctx, data }) {
 
         <SummaryGrid items={snapshot.summary ?? []} />
 
-        <Panel title="Use Setup and Master">
+        <Panel title="Phase 1: Mental model">
           <Stack compact>
-            <PropertyList items={snapshot.setup_workflow ?? []} minWidth="14rem" />
+            <PropertyList items={snapshot.mental_model ?? []} minWidth="14rem" />
           </Stack>
         </Panel>
 
-        <Panel title="Learning path">
-          <LearningPath steps={snapshot.path ?? []} />
+        <Panel title="Phase 2: First interactive contact">
+          <LearningPath steps={snapshot.first_contact ?? []} />
         </Panel>
 
-        <Panel title="State and health">
+        <Panel title="Next after phase 2">
+          <Stack compact>
+            <PropertyList items={snapshot.next_after_intro ?? []} minWidth="14rem" />
+          </Stack>
+        </Panel>
+
+        <Panel title="Current state and health">
           <Stack compact>
             <PropertyList items={snapshot.state_overview ?? []} minWidth="14rem" />
           </Stack>

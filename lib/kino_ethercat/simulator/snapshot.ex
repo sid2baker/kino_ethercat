@@ -73,41 +73,61 @@ defmodule KinoEtherCAT.Simulator.Snapshot do
   end
 
   defp runtime_faults_payload(info) do
+    drop_responses? = Map.get(info, :drop_responses?, false)
+    wkc_offset = Map.get(info, :wkc_offset, 0)
+
     disconnected =
       info
       |> Map.get(:disconnected, [])
       |> Enum.map(&Atom.to_string/1)
       |> Enum.sort()
 
+    command_offsets = command_offset_payloads(Map.get(info, :command_wkc_offsets, %{}))
+    logical_offsets = logical_offset_payloads(Map.get(info, :logical_wkc_offsets, %{}))
+
     sticky_labels =
-      []
-      |> maybe_prepend(Map.get(info, :drop_responses?, false), "Drop responses")
-      |> maybe_prepend(
-        Map.get(info, :wkc_offset, 0) != 0,
-        "WKC offset #{Map.get(info, :wkc_offset, 0)}"
-      )
-      |> maybe_prepend(disconnected != [], "Disconnected: #{Enum.join(disconnected, ", ")}")
-      |> Enum.reverse()
+      [
+        if(drop_responses?, do: "Drop responses"),
+        if(wkc_offset != 0, do: "WKC offset #{wkc_offset}"),
+        Enum.map(command_offsets, & &1.label),
+        Enum.map(logical_offsets, & &1.label),
+        if(disconnected != [], do: "Disconnected: #{Enum.join(disconnected, ", ")}")
+      ]
+      |> List.flatten()
+      |> Enum.reject(&is_nil/1)
 
     pending_faults = Map.get(info, :pending_faults, [])
     pending_labels = Enum.map(pending_faults, &Fault.describe/1)
+    scheduled_faults = scheduled_fault_payloads(Map.get(info, :scheduled_faults, []))
 
     sticky_count =
-      if(Map.get(info, :drop_responses?, false), do: 1, else: 0) +
-        if(Map.get(info, :wkc_offset, 0) != 0, do: 1, else: 0) +
+      if(drop_responses?, do: 1, else: 0) +
+        if(wkc_offset != 0, do: 1, else: 0) +
+        length(command_offsets) +
+        length(logical_offsets) +
         length(disconnected)
 
     %{
-      drop_responses: Map.get(info, :drop_responses?, false),
-      wkc_offset: Map.get(info, :wkc_offset, 0),
+      drop_responses: drop_responses?,
+      wkc_offset: wkc_offset,
+      command_offsets: command_offsets,
+      logical_offsets: logical_offsets,
       disconnected: disconnected,
       sticky_labels: sticky_labels,
       sticky_count: sticky_count,
       next_label: runtime_wrapper_label(Map.get(info, :next_fault)),
       pending_labels: pending_labels,
       pending_count: length(pending_labels),
-      active_count: sticky_count + length(pending_labels),
-      summary: runtime_fault_summary(sticky_labels, pending_labels, Map.get(info, :next_fault))
+      scheduled_faults: scheduled_faults,
+      scheduled_count: length(scheduled_faults),
+      active_count: sticky_count + length(pending_labels) + length(scheduled_faults),
+      summary:
+        runtime_fault_summary(
+          sticky_labels,
+          length(pending_labels),
+          length(scheduled_faults),
+          Map.get(info, :next_fault)
+        )
     }
   end
 
@@ -115,12 +135,16 @@ defmodule KinoEtherCAT.Simulator.Snapshot do
     %{
       drop_responses: false,
       wkc_offset: 0,
+      command_offsets: [],
+      logical_offsets: [],
       disconnected: [],
       sticky_labels: [],
       sticky_count: 0,
       next_label: nil,
       pending_labels: [],
       pending_count: 0,
+      scheduled_faults: [],
+      scheduled_count: 0,
       active_count: 0,
       summary: "No runtime faults."
     }
@@ -212,19 +236,20 @@ defmodule KinoEtherCAT.Simulator.Snapshot do
     end
   end
 
-  defp runtime_fault_summary([], [], _next_fault), do: "No runtime faults."
+  defp runtime_fault_summary([], 0, 0, _next_fault), do: "No runtime faults."
 
-  defp runtime_fault_summary(sticky_labels, pending_labels, next_fault) do
+  defp runtime_fault_summary(sticky_labels, pending_count, scheduled_count, next_fault) do
     []
     |> maybe_prepend(sticky_labels != [], Enum.join(sticky_labels, " | "))
     |> maybe_prepend(
-      pending_labels != [],
-      "#{length(pending_labels)} queued exchange fault(s)" <>
+      pending_count > 0,
+      "#{pending_count} queued exchange fault(s)" <>
         case runtime_wrapper_label(next_fault) do
           nil -> ""
           next_label -> " (next: #{next_label})"
         end
     )
+    |> maybe_prepend(scheduled_count > 0, "#{scheduled_count} scheduled runtime fault(s)")
     |> Enum.reverse()
     |> Enum.join(" | ")
   end
@@ -260,6 +285,77 @@ defmodule KinoEtherCAT.Simulator.Snapshot do
 
   defp yes_no(true), do: "yes"
   defp yes_no(false), do: "no"
+
+  defp command_offset_payloads(offsets) when map_size(offsets) == 0, do: []
+
+  defp command_offset_payloads(offsets) do
+    offsets
+    |> Enum.sort_by(fn {command_name, _delta} -> Atom.to_string(command_name) end)
+    |> Enum.map(fn {command_name, delta} ->
+      %{
+        command: Atom.to_string(command_name),
+        delta: delta,
+        label: Fault.describe({:command_wkc_offset, command_name, delta})
+      }
+    end)
+  end
+
+  defp logical_offset_payloads(offsets) when map_size(offsets) == 0, do: []
+
+  defp logical_offset_payloads(offsets) do
+    offsets
+    |> Enum.sort_by(fn {slave_name, _delta} -> Atom.to_string(slave_name) end)
+    |> Enum.map(fn {slave_name, delta} ->
+      %{
+        slave: Atom.to_string(slave_name),
+        delta: delta,
+        label: Fault.describe({:logical_wkc_offset, slave_name, delta})
+      }
+    end)
+  end
+
+  defp scheduled_fault_payloads(entries) when entries == [], do: []
+
+  defp scheduled_fault_payloads(entries) do
+    entries
+    |> Enum.with_index()
+    |> Enum.map(fn {entry, index} -> scheduled_fault_payload(entry, index) end)
+  end
+
+  defp scheduled_fault_payload(%{fault: fault} = entry, index) do
+    %{
+      key: "scheduled-#{index}",
+      label: Fault.describe(fault),
+      schedule: scheduled_fault_schedule(entry),
+      remaining: scheduled_fault_remaining(entry)
+    }
+  end
+
+  defp scheduled_fault_schedule(%{due_in_ms: due_in_ms}) when is_integer(due_in_ms),
+    do: "in #{due_in_ms} ms"
+
+  defp scheduled_fault_schedule(%{waiting_on: milestone}),
+    do: "after #{milestone_label(milestone)}"
+
+  defp scheduled_fault_schedule(_entry), do: "scheduled"
+
+  defp scheduled_fault_remaining(%{remaining: remaining}) when is_integer(remaining),
+    do: Integer.to_string(remaining)
+
+  defp scheduled_fault_remaining(_entry), do: "-"
+
+  defp milestone_label({:healthy_exchanges, count}), do: "#{count} healthy exchanges"
+
+  defp milestone_label({:healthy_polls, slave_name, count}),
+    do: "#{count} healthy polls for #{slave_name}"
+
+  defp milestone_label({:mailbox_step, slave_name, step, count}),
+    do: "#{count} mailbox #{step} steps for #{slave_name}"
+
+  defp milestone_label({:queued_exchange_steps, count}),
+    do: "#{count} queued exchange steps"
+
+  defp milestone_label(other), do: inspect(other)
 
   defp offline_message(_reason, %{level: "error"} = message), do: message
   defp offline_message(reason, _message), do: error_message("Simulator unavailable: #{reason}.")

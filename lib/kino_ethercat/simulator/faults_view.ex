@@ -11,15 +11,105 @@ defmodule KinoEtherCAT.Simulator.FaultsView do
   @default_mailbox_index 0x1600
   @default_mailbox_subindex 0x00
   @default_mailbox_abort_code 0x0601_0002
+  @default_mailbox_fault_value 0x00
+
+  @exchange_commands [
+    :aprd,
+    :apwr,
+    :aprw,
+    :fprd,
+    :fpwr,
+    :fprw,
+    :brd,
+    :bwr,
+    :brw,
+    :lrd,
+    :lwr,
+    :lrw,
+    :armw,
+    :frmw
+  ]
+
+  @mailbox_steps [:request, :upload_init, :upload_segment, :download_init, :download_segment]
+  @mailbox_abort_steps [:request, :upload_segment, :download_segment]
 
   @spec payload(map() | nil) :: map()
   def payload(message \\ nil), do: Snapshot.payload(message)
 
   @spec perform(String.t(), map()) :: map()
+  def perform("apply_runtime_fault", params) do
+    with {:ok, fault} <- build_runtime_fault(params) do
+      invoke(
+        fn -> Simulator.inject_fault(fault) end,
+        info_message("Applied #{Fault.describe(fault)}.")
+      )
+    else
+      {:error, reason} -> error_message(runtime_error(reason))
+    end
+  end
+
+  def perform("apply_udp_fault", params) do
+    with {:ok, fault} <- build_udp_fault(params) do
+      invoke(
+        fn -> Udp.inject_fault(fault) end,
+        info_message("Applied #{UdpFault.describe(fault)}.")
+      )
+    else
+      {:error, reason} -> error_message(udp_error(reason))
+    end
+  end
+
   def perform("inject_drop_responses", _params) do
-    invoke(
-      fn -> Simulator.inject_fault(Fault.drop_responses()) end,
-      info_message("Dropped responses enabled.")
+    perform("apply_runtime_fault", %{"kind" => "drop_responses", "plan" => "immediate"})
+  end
+
+  def perform("set_wkc_offset", %{"value" => value}) do
+    perform("apply_runtime_fault", %{
+      "kind" => "wkc_offset",
+      "plan" => "immediate",
+      "value" => value
+    })
+  end
+
+  def perform("inject_disconnect", %{"slave" => slave}) do
+    perform("apply_runtime_fault", %{
+      "kind" => "disconnect",
+      "plan" => "immediate",
+      "slave" => slave
+    })
+  end
+
+  def perform("queue_runtime_fault", params) do
+    perform("apply_runtime_fault", Map.put_new(params, "plan", "next"))
+  end
+
+  def perform("queue_udp_fault", params) do
+    perform("apply_udp_fault", params)
+  end
+
+  def perform("retreat_to_safeop", %{"slave" => slave}) do
+    perform("apply_runtime_fault", %{
+      "kind" => "retreat_to_safeop",
+      "plan" => "immediate",
+      "slave" => slave
+    })
+  end
+
+  def perform("inject_al_error", %{"slave" => slave, "code" => code}) do
+    perform("apply_runtime_fault", %{
+      "kind" => "latch_al_error",
+      "plan" => "immediate",
+      "slave" => slave,
+      "code" => code
+    })
+  end
+
+  def perform("inject_mailbox_abort", params) do
+    perform(
+      "apply_runtime_fault",
+      params
+      |> Map.put("kind", "mailbox_abort")
+      |> Map.put_new("plan", "immediate")
     )
   end
 
@@ -41,192 +131,323 @@ defmodule KinoEtherCAT.Simulator.FaultsView do
     invoke(fn -> Udp.clear_faults() end, info_message("UDP faults cleared."))
   end
 
-  def perform("set_wkc_offset", %{"value" => raw_value}) do
-    with {:ok, delta} <- parse_integer(raw_value) do
-      invoke(
-        fn -> Simulator.inject_fault(Fault.wkc_offset(delta)) end,
-        info_message("WKC offset set to #{delta}.")
-      )
-    else
-      {:error, :invalid_integer} ->
-        error_message("WKC offset must be a signed integer.")
-    end
-  end
-
-  def perform("inject_disconnect", %{"slave" => raw_slave}) do
-    with {:ok, slave_name} <- resolve_slave_name(raw_slave) do
-      invoke(
-        fn -> Simulator.inject_fault(Fault.disconnect(slave_name)) end,
-        info_message("Disconnected #{raw_slave}.")
-      )
-    else
-      {:error, :invalid_slave} ->
-        error_message("Select a known simulator slave.")
-    end
-  end
-
-  def perform("queue_runtime_fault", params) do
-    with {:ok, fault} <- build_runtime_fault_plan(params) do
-      invoke(
-        fn -> Simulator.inject_fault(fault) end,
-        info_message("Queued #{Fault.describe(fault)}.")
-      )
-    else
-      {:error, :invalid_fault_type} ->
-        error_message("Select a runtime fault to queue.")
-
-      {:error, :invalid_slave} ->
-        error_message("Select a known simulator slave.")
-
-      {:error, :invalid_integer} ->
-        error_message("Runtime fault values must be valid integers.")
-
-      {:error, :invalid_count} ->
-        error_message("Queued runtime fault count must be a positive integer.")
-    end
-  end
-
-  def perform("queue_udp_fault", params) do
-    with {:ok, fault} <- build_udp_fault_plan(params) do
-      invoke(
-        fn -> Udp.inject_fault(fault) end,
-        info_message("Queued #{UdpFault.describe(fault)}.")
-      )
-    else
-      {:error, :invalid_fault_type} ->
-        error_message("Select a UDP reply fault to queue.")
-
-      {:error, :invalid_count} ->
-        error_message("Queued UDP fault count must be a positive integer.")
-    end
-  end
-
-  def perform("retreat_to_safeop", %{"slave" => raw_slave}) do
-    with {:ok, slave_name} <- resolve_slave_name(raw_slave) do
-      invoke(
-        fn -> Simulator.inject_fault(Fault.retreat_to_safeop(slave_name)) end,
-        info_message("#{raw_slave} forced back to SAFEOP.")
-      )
-    else
-      {:error, :invalid_slave} ->
-        error_message("Select a known simulator slave.")
-    end
-  end
-
-  def perform("inject_al_error", %{"slave" => raw_slave, "code" => raw_code}) do
-    with {:ok, slave_name} <- resolve_slave_name(raw_slave),
-         {:ok, code} <- parse_non_neg_integer(raw_code, @default_al_error_code) do
-      invoke(
-        fn -> Simulator.inject_fault(Fault.latch_al_error(slave_name, code)) end,
-        info_message("Latched AL error #{hex(code)} on #{raw_slave}.")
-      )
-    else
-      {:error, :invalid_slave} ->
-        error_message("Select a known simulator slave.")
-
-      {:error, :invalid_integer} ->
-        error_message("AL error code must be decimal or 0x-prefixed hex.")
-    end
-  end
-
-  def perform("inject_mailbox_abort", %{
-        "slave" => raw_slave,
-        "index" => raw_index,
-        "subindex" => raw_subindex,
-        "abort_code" => raw_abort_code
-      }) do
-    with {:ok, slave_name} <- resolve_slave_name(raw_slave),
-         {:ok, index} <- parse_non_neg_integer(raw_index, @default_mailbox_index),
-         {:ok, subindex} <- parse_non_neg_integer(raw_subindex, @default_mailbox_subindex),
-         {:ok, abort_code} <- parse_non_neg_integer(raw_abort_code, @default_mailbox_abort_code) do
-      invoke(
-        fn ->
-          Simulator.inject_fault(Fault.mailbox_abort(slave_name, index, subindex, abort_code))
-        end,
-        info_message(
-          "Injected mailbox abort #{hex(abort_code)} on #{raw_slave} for #{hex(index)}:#{hex_byte(subindex)}."
-        )
-      )
-    else
-      {:error, :invalid_slave} ->
-        error_message("Select a known simulator slave.")
-
-      {:error, :invalid_integer} ->
-        error_message("Mailbox values must be decimal or 0x-prefixed hex.")
-    end
-  end
-
   def perform(_action, _params), do: error_message("Unknown simulator action.")
 
-  defp build_runtime_fault_plan(params) do
-    with {:ok, fault} <- build_runtime_fault(params),
-         {:ok, plan} <- parse_queue_plan(Map.get(params, "plan"), Map.get(params, "count")) do
-      case plan do
-        :next -> {:ok, Fault.next(fault)}
-        {:count, count} -> {:ok, Fault.next(fault, count)}
-      end
+  defp build_runtime_fault(params) do
+    with {:ok, kind} <- parse_runtime_kind(Map.get(params, "kind")),
+         {:ok, fault} <- build_runtime_effect(kind, params),
+         {:ok, scheduled_fault} <- apply_runtime_plan(kind, fault, params) do
+      {:ok, scheduled_fault}
     end
   end
 
-  defp build_runtime_fault(%{"kind" => "drop_responses"}), do: {:ok, Fault.drop_responses()}
+  defp parse_runtime_kind(kind)
+       when kind in [
+              "drop_responses",
+              "wkc_offset",
+              "command_wkc_offset",
+              "logical_wkc_offset",
+              "disconnect",
+              "retreat_to_safeop",
+              "latch_al_error",
+              "mailbox_abort",
+              "mailbox_protocol_fault"
+            ],
+       do: {:ok, kind}
 
-  defp build_runtime_fault(%{"kind" => "wkc_offset", "value" => raw_value}) do
-    with {:ok, delta} <- parse_integer(raw_value) do
+  defp parse_runtime_kind(_kind), do: {:error, :invalid_fault_type}
+
+  defp build_runtime_effect("drop_responses", _params), do: {:ok, Fault.drop_responses()}
+
+  defp build_runtime_effect("wkc_offset", params) do
+    with {:ok, delta} <- parse_integer(Map.get(params, "value")) do
       {:ok, Fault.wkc_offset(delta)}
     end
   end
 
-  defp build_runtime_fault(%{"kind" => "disconnect", "slave" => raw_slave}) do
-    with {:ok, slave_name} <- resolve_slave_name(raw_slave) do
+  defp build_runtime_effect("command_wkc_offset", params) do
+    with {:ok, command_name} <- parse_exchange_command(Map.get(params, "command")),
+         {:ok, delta} <- parse_integer(Map.get(params, "value")) do
+      {:ok, Fault.command_wkc_offset(command_name, delta)}
+    end
+  end
+
+  defp build_runtime_effect("logical_wkc_offset", params) do
+    with {:ok, slave_name} <- resolve_slave_name(Map.get(params, "slave")),
+         {:ok, delta} <- parse_integer(Map.get(params, "value")) do
+      {:ok, Fault.logical_wkc_offset(slave_name, delta)}
+    end
+  end
+
+  defp build_runtime_effect("disconnect", params) do
+    with {:ok, slave_name} <- resolve_slave_name(Map.get(params, "slave")) do
       {:ok, Fault.disconnect(slave_name)}
     end
   end
 
-  defp build_runtime_fault(_params), do: {:error, :invalid_fault_type}
-
-  defp build_udp_fault_plan(params) do
-    with {:ok, fault} <- parse_udp_fault_mode(Map.get(params, "mode")),
-         {:ok, plan} <- parse_queue_plan(Map.get(params, "plan"), Map.get(params, "count")) do
-      case plan do
-        :next -> {:ok, UdpFault.next(fault)}
-        {:count, count} -> {:ok, UdpFault.next(fault, count)}
-      end
+  defp build_runtime_effect("retreat_to_safeop", params) do
+    with {:ok, slave_name} <- resolve_slave_name(Map.get(params, "slave")) do
+      {:ok, Fault.retreat_to_safeop(slave_name)}
     end
   end
 
-  defp parse_queue_plan("count", raw_count) do
+  defp build_runtime_effect("latch_al_error", params) do
+    with {:ok, slave_name} <- resolve_slave_name(Map.get(params, "slave")),
+         {:ok, code} <- parse_non_neg_integer(Map.get(params, "code"), @default_al_error_code) do
+      {:ok, Fault.latch_al_error(slave_name, code)}
+    end
+  end
+
+  defp build_runtime_effect("mailbox_abort", params) do
+    with {:ok, slave_name} <- resolve_slave_name(Map.get(params, "slave")),
+         {:ok, index} <- parse_non_neg_integer(Map.get(params, "index"), @default_mailbox_index),
+         {:ok, subindex} <-
+           parse_non_neg_integer(Map.get(params, "subindex"), @default_mailbox_subindex),
+         {:ok, abort_code} <-
+           parse_non_neg_integer(Map.get(params, "abort_code"), @default_mailbox_abort_code),
+         {:ok, stage} <- parse_optional_mailbox_abort_stage(Map.get(params, "stage")) do
+      opts = if is_nil(stage), do: [], else: [stage: stage]
+      {:ok, Fault.mailbox_abort(slave_name, index, subindex, abort_code, opts)}
+    end
+  end
+
+  defp build_runtime_effect("mailbox_protocol_fault", params) do
+    with {:ok, slave_name} <- resolve_slave_name(Map.get(params, "slave")),
+         {:ok, index} <- parse_non_neg_integer(Map.get(params, "index"), @default_mailbox_index),
+         {:ok, subindex} <-
+           parse_non_neg_integer(Map.get(params, "subindex"), @default_mailbox_subindex),
+         {:ok, stage} <- parse_mailbox_stage(Map.get(params, "stage")),
+         {:ok, fault_kind} <- parse_mailbox_fault_kind(params) do
+      {:ok, Fault.mailbox_protocol_fault(slave_name, index, subindex, stage, fault_kind)}
+    end
+  end
+
+  defp apply_runtime_plan(kind, fault, %{"plan" => "next"}) do
+    if exchange_fault_kind?(kind) do
+      {:ok, Fault.next(fault)}
+    else
+      {:error, :unsupported_plan}
+    end
+  end
+
+  defp apply_runtime_plan(kind, fault, %{"plan" => "count", "count" => raw_count}) do
+    if exchange_fault_kind?(kind) do
+      with {:ok, count} <- parse_positive_integer(raw_count) do
+        {:ok, Fault.next(fault, count)}
+      else
+        {:error, :invalid_integer} -> {:error, :invalid_count}
+      end
+    else
+      {:error, :unsupported_plan}
+    end
+  end
+
+  defp apply_runtime_plan(_kind, fault, %{"plan" => "after_ms", "delay_ms" => raw_delay}) do
+    with {:ok, delay_ms} <- parse_non_neg_integer(raw_delay, 0) do
+      {:ok, Fault.after_ms(fault, delay_ms)}
+    end
+  end
+
+  defp apply_runtime_plan(_kind, fault, %{"plan" => "after_milestone"} = params) do
+    with {:ok, milestone} <- parse_milestone(params) do
+      {:ok, Fault.after_milestone(fault, milestone)}
+    end
+  end
+
+  defp apply_runtime_plan(_kind, fault, %{"plan" => "immediate"}), do: {:ok, fault}
+  defp apply_runtime_plan(_kind, fault, %{}), do: {:ok, fault}
+
+  defp apply_runtime_plan(_kind, _fault, _params), do: {:error, :invalid_plan}
+
+  defp exchange_fault_kind?(kind)
+       when kind in [
+              "drop_responses",
+              "wkc_offset",
+              "command_wkc_offset",
+              "logical_wkc_offset",
+              "disconnect"
+            ],
+       do: true
+
+  defp exchange_fault_kind?(_kind), do: false
+
+  defp build_udp_fault(params) do
+    with {:ok, mode} <- parse_udp_mode(Map.get(params, "mode")) do
+      apply_udp_plan(mode, params)
+    end
+  end
+
+  defp apply_udp_plan(mode, %{"plan" => "count", "count" => raw_count}) do
     with {:ok, count} <- parse_positive_integer(raw_count) do
-      {:ok, {:count, count}}
+      {:ok, UdpFault.next(mode, count)}
     else
       {:error, :invalid_integer} -> {:error, :invalid_count}
     end
   end
 
-  defp parse_queue_plan(_plan, _raw_count), do: {:ok, :next}
-
-  defp parse_udp_fault_mode(raw_mode) when is_binary(raw_mode) do
-    fault =
-      raw_mode
-      |> String.trim()
-      |> String.to_existing_atom()
-      |> build_udp_fault()
-
-    if fault == :error do
-      {:error, :invalid_fault_type}
-    else
-      {:ok, fault}
+  defp apply_udp_plan(_mode, %{"plan" => "script", "script" => raw_script}) do
+    with {:ok, steps} <- parse_udp_script(raw_script) do
+      {:ok, UdpFault.script(steps)}
     end
-  rescue
-    ArgumentError -> {:error, :invalid_fault_type}
   end
 
-  defp parse_udp_fault_mode(_raw_mode), do: {:error, :invalid_fault_type}
+  defp apply_udp_plan(mode, %{"plan" => "next"}), do: {:ok, UdpFault.next(mode)}
+  defp apply_udp_plan(mode, %{}), do: {:ok, UdpFault.next(mode)}
+  defp apply_udp_plan(_mode, _params), do: {:error, :invalid_plan}
 
-  defp build_udp_fault(:truncate), do: UdpFault.truncate()
-  defp build_udp_fault(:unsupported_type), do: UdpFault.unsupported_type()
-  defp build_udp_fault(:wrong_idx), do: UdpFault.wrong_idx()
-  defp build_udp_fault(:replay_previous), do: UdpFault.replay_previous()
-  defp build_udp_fault(_mode), do: :error
+  defp parse_exchange_command(raw_command) when is_binary(raw_command) do
+    command =
+      raw_command
+      |> String.trim()
+      |> String.downcase()
+
+    case Enum.find(@exchange_commands, &(Atom.to_string(&1) == command)) do
+      nil -> {:error, :invalid_command}
+      command_name -> {:ok, command_name}
+    end
+  end
+
+  defp parse_exchange_command(_raw_command), do: {:error, :invalid_command}
+
+  defp parse_optional_mailbox_abort_stage(nil), do: {:ok, nil}
+  defp parse_optional_mailbox_abort_stage(""), do: {:ok, nil}
+
+  defp parse_optional_mailbox_abort_stage(raw_stage) when is_binary(raw_stage) do
+    with {:ok, stage} <- parse_mailbox_stage(raw_stage) do
+      if stage in @mailbox_abort_steps, do: {:ok, stage}, else: {:error, :invalid_stage}
+    end
+  end
+
+  defp parse_optional_mailbox_abort_stage(_raw_stage), do: {:error, :invalid_stage}
+
+  defp parse_mailbox_stage(raw_stage) when is_binary(raw_stage) do
+    stage =
+      raw_stage
+      |> String.trim()
+      |> String.downcase()
+
+    case Enum.find(@mailbox_steps, &(Atom.to_string(&1) == stage)) do
+      nil -> {:error, :invalid_stage}
+      stage_atom -> {:ok, stage_atom}
+    end
+  end
+
+  defp parse_mailbox_stage(_raw_stage), do: {:error, :invalid_stage}
+
+  defp parse_mailbox_fault_kind(%{"mailbox_fault_kind" => raw_kind} = params)
+       when is_binary(raw_kind) do
+    case String.trim(raw_kind) do
+      "drop_response" ->
+        {:ok, :drop_response}
+
+      "counter_mismatch" ->
+        {:ok, :counter_mismatch}
+
+      "toggle_mismatch" ->
+        {:ok, :toggle_mismatch}
+
+      "invalid_coe_payload" ->
+        {:ok, :invalid_coe_payload}
+
+      "invalid_segment_padding" ->
+        {:ok, :invalid_segment_padding}
+
+      "mailbox_type" ->
+        parse_mailbox_fault_value(params, :mailbox_type)
+
+      "coe_service" ->
+        parse_mailbox_fault_value(params, :coe_service)
+
+      "sdo_command" ->
+        parse_mailbox_fault_value(params, :sdo_command)
+
+      "segment_command" ->
+        parse_mailbox_fault_value(params, :segment_command)
+
+      _other ->
+        {:error, :invalid_mailbox_fault}
+    end
+  end
+
+  defp parse_mailbox_fault_kind(_params), do: {:error, :invalid_mailbox_fault}
+
+  defp parse_mailbox_fault_value(params, kind) do
+    with {:ok, value} <-
+           parse_non_neg_integer(
+             Map.get(params, "mailbox_fault_value"),
+             @default_mailbox_fault_value
+           ) do
+      {:ok, {kind, value}}
+    end
+  end
+
+  defp parse_milestone(%{"milestone_kind" => "healthy_exchanges", "milestone_count" => raw_count}) do
+    with {:ok, count} <- parse_positive_integer(raw_count) do
+      {:ok, Fault.healthy_exchanges(count)}
+    end
+  end
+
+  defp parse_milestone(%{
+         "milestone_kind" => "healthy_polls",
+         "milestone_count" => raw_count,
+         "milestone_slave" => raw_slave
+       }) do
+    with {:ok, count} <- parse_positive_integer(raw_count),
+         {:ok, slave_name} <- resolve_slave_name(raw_slave) do
+      {:ok, Fault.healthy_polls(slave_name, count)}
+    end
+  end
+
+  defp parse_milestone(%{
+         "milestone_kind" => "mailbox_step",
+         "milestone_count" => raw_count,
+         "milestone_slave" => raw_slave,
+         "milestone_stage" => raw_stage
+       }) do
+    with {:ok, count} <- parse_positive_integer(raw_count),
+         {:ok, slave_name} <- resolve_slave_name(raw_slave),
+         {:ok, stage} <- parse_mailbox_stage(raw_stage) do
+      {:ok, Fault.mailbox_step(slave_name, stage, count)}
+    end
+  end
+
+  defp parse_milestone(_params), do: {:error, :invalid_milestone}
+
+  defp parse_udp_mode(raw_mode) when is_binary(raw_mode) do
+    case String.trim(raw_mode) do
+      "truncate" -> {:ok, UdpFault.truncate()}
+      "unsupported_type" -> {:ok, UdpFault.unsupported_type()}
+      "wrong_idx" -> {:ok, UdpFault.wrong_idx()}
+      "replay_previous" -> {:ok, UdpFault.replay_previous()}
+      _other -> {:error, :invalid_fault_type}
+    end
+  end
+
+  defp parse_udp_mode(_raw_mode), do: {:error, :invalid_fault_type}
+
+  defp parse_udp_script(raw_script) when is_binary(raw_script) do
+    modes =
+      raw_script
+      |> String.split(~r/[\s,]+/, trim: true)
+      |> Enum.map(&parse_udp_script_mode/1)
+
+    if modes == [] do
+      {:error, :invalid_script}
+    else
+      case Enum.find(modes, &match?({:error, _}, &1)) do
+        nil -> {:ok, Enum.map(modes, fn {:ok, mode} -> mode end)}
+        {:error, reason} -> {:error, reason}
+      end
+    end
+  end
+
+  defp parse_udp_script(_raw_script), do: {:error, :invalid_script}
+
+  defp parse_udp_script_mode("truncate"), do: {:ok, UdpFault.truncate()}
+  defp parse_udp_script_mode("unsupported_type"), do: {:ok, UdpFault.unsupported_type()}
+  defp parse_udp_script_mode("wrong_idx"), do: {:ok, UdpFault.wrong_idx()}
+  defp parse_udp_script_mode("replay_previous"), do: {:ok, UdpFault.replay_previous()}
+  defp parse_udp_script_mode(_mode), do: {:error, :invalid_script}
 
   defp resolve_slave_name(raw_slave) when is_binary(raw_slave) do
     with {:ok, info} <- Simulator.info(),
@@ -332,24 +553,30 @@ defmodule KinoEtherCAT.Simulator.FaultsView do
 
   defp parse_non_neg_integer(_value, _default), do: {:error, :invalid_integer}
 
+  defp runtime_error(:invalid_command), do: "Select a valid EtherCAT command."
+  defp runtime_error(:invalid_count), do: "Counts must be positive integers."
+  defp runtime_error(:invalid_fault_type), do: "Select a runtime fault."
+  defp runtime_error(:invalid_integer), do: "Fault values must be decimal or 0x-prefixed hex."
+  defp runtime_error(:invalid_mailbox_fault), do: "Select a valid mailbox protocol fault."
+  defp runtime_error(:invalid_milestone), do: "Select a valid milestone trigger."
+  defp runtime_error(:invalid_plan), do: "Select a valid runtime fault plan."
+  defp runtime_error(:invalid_slave), do: "Select a known simulator slave."
+  defp runtime_error(:invalid_stage), do: "Select a valid mailbox stage."
+
+  defp runtime_error(:unsupported_plan),
+    do: "Next-exchange plans only work for exchange faults."
+
+  defp runtime_error(other), do: "Runtime fault build failed: #{inspect(other)}"
+
+  defp udp_error(:invalid_count), do: "UDP fault counts must be positive integers."
+  defp udp_error(:invalid_fault_type), do: "Select a UDP reply fault."
+  defp udp_error(:invalid_plan), do: "Select a valid UDP fault plan."
+
+  defp udp_error(:invalid_script),
+    do: "UDP scripts must be a comma or space separated list of valid reply modes."
+
+  defp udp_error(other), do: "UDP fault build failed: #{inspect(other)}"
+
   defp info_message(text), do: %{level: "info", text: text}
   defp error_message(text), do: %{level: "error", text: text}
-
-  defp hex(value) do
-    digits =
-      value
-      |> Integer.to_string(16)
-      |> String.upcase()
-      |> String.pad_leading(4, "0")
-
-    "0x" <> digits
-  end
-
-  defp hex_byte(value) do
-    value
-    |> Integer.to_string(16)
-    |> String.upcase()
-    |> String.pad_leading(2, "0")
-    |> then(&("0x" <> &1))
-  end
 end

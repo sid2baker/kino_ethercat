@@ -1,0 +1,148 @@
+# Meet The Tiny EtherCAT Machine
+
+```elixir
+Mix.install([
+  {:ethercat, github: "sid2baker/ethercat", override: true},
+  {:kino_ethercat, github: "sid2baker/kino_ethercat"}
+])
+```
+
+## Scene 1: The Whole World
+
+One master. Three slaves. That is enough for the first story.
+
+```mermaid
+flowchart LR
+  M[Master] --> C
+
+  subgraph S[Slaves]
+    C[Coupler]
+    I[Inputs]
+    O[Outputs]
+    C --> I
+    I --> O
+  end
+```
+
+## Scene 2: What The Master Does
+
+The master uses cyclic EtherCAT frames.
+
+```mermaid
+sequenceDiagram
+  participant M as Master
+  participant R as EtherCAT ring
+  M->>R: cyclic EtherCAT frame
+  R-->>M: inputs + working counter
+  M->>M: check the cycle
+```
+
+## Scene 3: Bring It To Life
+
+Evaluate the simulator cell, then follow the instructions shown by the simulator workspace.
+
+<!-- livebook:{"attrs":"eyJjb25uZWN0aW9ucyI6W3sic291cmNlX2lkIjoiMyIsInNvdXJjZV9zaWduYWwiOiJjaDEiLCJ0YXJnZXRfaWQiOiIyIiwidGFyZ2V0X3NpZ25hbCI6ImNoMSJ9XSwiZXhwZXJ0X21vZGUiOmZhbHNlLCJzZWxlY3RlZCI6W3siZHJpdmVyIjoiS2lub0V0aGVyQ0FULkRyaXZlci5FSzExMDAiLCJpZCI6IjEiLCJuYW1lIjoiY291cGxlciJ9LHsiZHJpdmVyIjoiS2lub0V0aGVyQ0FULkRyaXZlci5FTDE4MDkiLCJpZCI6IjIiLCJuYW1lIjoiaW5wdXRzIn0seyJkcml2ZXIiOiJLaW5vRXRoZXJDQVQuRHJpdmVyLkVMMjgwOSIsImlkIjoiMyIsIm5hbWUiOiJvdXRwdXRzIn1dfQ","chunks":null,"kind":"Elixir.KinoEtherCAT.SmartCells.Simulator","livebook_object":"smart_cell"} -->
+
+```elixir
+alias EtherCAT.Simulator
+alias EtherCAT.Simulator.Slave
+
+simulator_ip = {127, 0, 0, 2}
+
+_ = Simulator.stop()
+
+devices = [
+  Slave.from_driver(KinoEtherCAT.Driver.EK1100, name: :coupler),
+  Slave.from_driver(KinoEtherCAT.Driver.EL1809, name: :inputs),
+  Slave.from_driver(KinoEtherCAT.Driver.EL2809, name: :outputs)
+]
+
+{:ok, _supervisor} = Simulator.start(devices: devices, udp: [ip: simulator_ip, port: 34980])
+
+:ok = Slave.connect({:outputs, :ch1}, {:inputs, :ch1})
+
+Kino.Layout.tabs(
+  Introduction: KinoEtherCAT.introduction(),
+  Simulator: KinoEtherCAT.simulator(),
+  Faults: KinoEtherCAT.simulator_faults()
+)
+```
+
+```mermaid
+flowchart LR
+  O[outputs.ch1] --> I[inputs.ch1]
+```
+
+From here on, let the setup flow create the master session and let the Master render own state and outputs.
+
+## Keep This Picture
+
+* EtherCAT is a coordinated cycle, not isolated device calls.
+* The master owns the session.
+* One tiny signal path is enough to make the process image feel real.
+
+## Next
+
+Add the `EtherCAT Setup` smart cell, evaluate its generated code, and continue with the `Master` render.
+
+<!-- livebook:{"attrs":"eyJhd2FpdF9sb2NrIjpmYWxzZSwiZGNfY3ljbGVfbnMiOjEwMDAwMDAwLCJkY19lbmFibGVkIjpmYWxzZSwiZG9tYWlucyI6W3siY3ljbGVfdGltZV9tcyI6MTAsImN5Y2xlX3RpbWVfdXMiOjEwMDAwLCJpZCI6Im1haW4iLCJtaXNzX3RocmVzaG9sZCI6MTAwMH1dLCJob3N0IjoiMTI3LjAuMC4yIiwiaW50ZXJmYWNlIjoiZXRoMCIsImxvY2tfdGhyZXNob2xkX25zIjoxMDAsImxvY2tfdGltZW91dF9tcyI6NTAwMCwicG9ydCI6MzQ5ODAsInNsYXZlcyI6W3siZGlzY292ZXJlZF9uYW1lIjoiY291cGxlciIsImRvbWFpbl9pZCI6IiIsImRyaXZlciI6IiIsIm5hbWUiOiJjb3VwbGVyIiwicHJvZHVjdF9jb2RlIjo3MjEwMDk0Niwic3RhdGlvbiI6NDA5NiwidmVuZG9yX2lkIjoyfSx7ImRpc2NvdmVyZWRfbmFtZSI6ImlucHV0cyIsImRvbWFpbl9pZCI6Im1haW4iLCJkcml2ZXIiOiJLaW5vRXRoZXJDQVQuRHJpdmVyLkVMMTgwOSIsIm5hbWUiOiJpbnB1dHMiLCJwcm9kdWN0X2NvZGUiOjExODU2Njk5NCwic3RhdGlvbiI6NDA5NywidmVuZG9yX2lkIjoyfSx7ImRpc2NvdmVyZWRfbmFtZSI6Im91dHB1dHMiLCJkb21haW5faWQiOiJtYWluIiwiZHJpdmVyIjoiS2lub0V0aGVyQ0FULkRyaXZlci5FTDI4MDkiLCJuYW1lIjoib3V0cHV0cyIsInByb2R1Y3RfY29kZSI6MTg0MTAyOTk0LCJzdGF0aW9uIjo0MDk4LCJ2ZW5kb3JfaWQiOjJ9XSwidHJhbnNwb3J0IjoidWRwIiwidHJhbnNwb3J0X21vZGUiOiJhdXRvIiwid2FybXVwX2N5Y2xlcyI6MH0","chunks":null,"kind":"Elixir.KinoEtherCAT.SmartCells.Setup","livebook_object":"smart_cell"} -->
+
+```elixir
+alias EtherCAT.Slave.Config, as: SlaveConfig
+alias EtherCAT.Domain.Config, as: DomainConfig
+udp_host = {127, 0, 0, 2}
+udp_bind_ip = {127, 0, 0, 1}
+# Persisted from live bus discovery.
+# The notebook now boots the master from a single static EtherCAT.start/1 call.
+_ = EtherCAT.stop()
+
+setup_result =
+  with :ok <-
+         EtherCAT.start(
+           transport: :udp,
+           host: udp_host,
+           port: 34980,
+           bind_ip: udp_bind_ip,
+           domains: [%DomainConfig{id: :main, cycle_time_us: 10000, miss_threshold: 1000}],
+           dc: nil,
+           slaves: [
+             %SlaveConfig{name: :coupler, target_state: :op},
+             %SlaveConfig{
+               name: :inputs,
+               driver: KinoEtherCAT.Driver.EL1809,
+               process_data: {:all, :main},
+               target_state: :op
+             },
+             %SlaveConfig{
+               name: :outputs,
+               driver: KinoEtherCAT.Driver.EL2809,
+               process_data: {:all, :main},
+               target_state: :op
+             }
+           ]
+         ),
+       :ok <- EtherCAT.await_running(),
+       :ok <- EtherCAT.await_operational() do
+    :ok
+  end
+
+case setup_result do
+  :ok ->
+    Kino.Layout.tabs(
+      Master: KinoEtherCAT.master(),
+      "Task Manager": KinoEtherCAT.diagnostics()
+    )
+
+  {:error, reason} ->
+    _ = EtherCAT.stop()
+
+    Kino.Markdown.new("""
+    ## EtherCAT setup failed
+
+    `#{inspect(reason)}`
+
+    The generated setup cell kept the notebook running instead of crashing.
+    Re-run the cell once the bus is stable. Configuration timeouts usually mean one or more slaves did not reach the requested state in time.
+    """)
+end
+```

@@ -2,6 +2,7 @@ defmodule KinoEtherCAT.Introduction.View do
   @moduledoc false
 
   alias EtherCAT.Simulator
+
   @spec payload(map() | nil) :: map()
   def payload(message \\ nil) do
     case Simulator.info() do
@@ -18,197 +19,238 @@ defmodule KinoEtherCAT.Introduction.View do
 
     %{
       title: "EtherCAT Introduction",
-      kind: "simulator-first lesson",
+      kind: "phase 1 and 2",
       status: "running",
       message: message,
       summary: [
         %{label: "Simulator", value: "running"},
-        %{label: "Master", value: Atom.to_string(master.state)},
+        %{label: "Ring", value: ring_label(info)},
         %{label: "Connections", value: Integer.to_string(length(connections))},
-        %{label: "Domain", value: master.domain_state},
+        %{label: "Master", value: Atom.to_string(master.state)},
         %{label: "WKC", value: master.wkc}
       ],
-      setup_workflow: setup_workflow(master),
-      path: learning_path(master),
-      state_overview: [
-        %{label: "Master state", value: Atom.to_string(master.state)},
-        %{label: "What it means", value: state_explanation(master.state)},
-        %{label: "Domain health", value: master.domain_health},
-        %{label: "Why WKC matters", value: wkc_explanation(master)}
-      ]
+      mental_model: mental_model_items(),
+      first_contact: first_contact_steps(info, master),
+      next_after_intro: next_after_intro(master),
+      state_overview: current_state_overview(master)
     }
   end
 
   defp offline_payload(reason, message) do
     %{
       title: "EtherCAT Introduction",
-      kind: "simulator-first lesson",
+      kind: "phase 1 and 2",
       status: "offline",
       reason: to_string(reason),
       message: message,
       summary: [
         %{label: "Simulator", value: "offline"},
-        %{label: "Master", value: "idle"},
+        %{label: "Ring", value: "not running"},
         %{label: "Connections", value: "0"},
-        %{label: "Domain", value: "n/a"},
+        %{label: "Master", value: "idle"},
         %{label: "WKC", value: "n/a"}
       ],
-      setup_workflow: offline_setup_workflow(),
-      path: offline_learning_path(),
-      state_overview: [
-        %{label: "Master state", value: "idle"},
-        %{
-          label: "What it means",
-          value:
-            "Start the simulator smart cell first. Then add the setup smart cell and evaluate the generated code to see PREOP, SAFEOP, and OP in action."
-        },
-        %{label: "Domain health", value: "No domains running yet."},
-        %{label: "Why WKC matters", value: "WKC becomes meaningful once a domain is cycling."}
-      ]
+      mental_model: mental_model_items(),
+      first_contact: offline_first_contact_steps(),
+      next_after_intro: offline_next_after_intro(),
+      state_overview: offline_state_overview()
     }
   end
 
-  defp learning_path(master) do
-    stage = setup_stage(master)
+  defp mental_model_items do
+    [
+      %{
+        label: "Master",
+        value: "The master drives startup, state transitions, and each cyclic exchange."
+      },
+      %{
+        label: "Slaves",
+        value:
+          "Slaves expose process data. They respond to the master rather than running the bus."
+      },
+      %{
+        label: "Process image",
+        value:
+          "Inputs and outputs are treated as one shared image that gets refreshed on every cycle."
+      },
+      %{
+        label: "Cyclic exchange",
+        value:
+          "Each cycle sends output data, receives input data back, and checks whether the expected devices answered."
+      },
+      %{
+        label: "States",
+        value:
+          "PREOP is for configuration, SAFEOP validates readiness, and OP is the state where cyclic process data matters."
+      }
+    ]
+  end
+
+  defp first_contact_steps(info, _master) do
+    loopback = loopback_text(Map.get(info, :connections, []))
+    connected? = Map.get(info, :connections, []) != []
 
     [
       %{
         title: "1. Evaluate the simulator smart cell",
         state: "done",
         body:
-          "Evaluate the generated simulator cell so the teaching workspace and the virtual EtherCAT ring come up."
+          "The simulator is already running. You now have a small EtherCAT ring you can inspect without any hardware: #{ring_label(info)}."
       },
       %{
-        title: "2. Add the EtherCAT Setup smart cell",
-        state: if(stage == :waiting_for_setup, do: "current", else: "done"),
+        title: "2. Stay with one signal path",
+        state: if(connected?, do: "done", else: "current"),
         body:
-          "This is the real onboarding step. The setup smart cell discovers the simulator ring automatically and turns it into a normal EtherCAT startup flow."
+          "#{loopback} Keep the topology small so the process image feels concrete instead of abstract."
       },
       %{
-        title: "3. Evaluate the generated setup cell",
-        state:
-          case stage do
-            :waiting_for_setup -> "next"
-            :waiting_for_generated_setup -> "current"
-            :configured_session -> "done"
-          end,
+        title: "3. Add the EtherCAT Visualizer smart cell",
+        state: if(connected?, do: "current", else: "next"),
         body:
-          "That is enough for the intro. The generated code starts the master, waits for PREOP readiness, and activates OP so the session becomes real."
+          "Select just `outputs.ch1` and `inputs.ch1`. That gives you the cleanest first contact: one output, one input, one visible relationship."
       }
     ]
   end
 
-  defp offline_learning_path do
+  defp offline_first_contact_steps do
     [
       %{
-        title: "1. Start the simulator workspace",
+        title: "1. Evaluate the simulator smart cell",
         state: "current",
         body:
-          "Use the EtherCAT Simulator smart cell to start the virtual ring and render the teaching tabs."
+          "Start with the default `coupler -> inputs -> outputs` ring. The simulator is the teaching environment for the first lessons."
       },
       %{
-        title: "2. Add the EtherCAT Setup smart cell",
+        title: "2. Keep the default loopback",
         state: "next",
         body:
-          "The setup smart cell is the bridge from the simulator to a normal EtherCAT startup flow."
+          "The intended first path is `outputs.ch1 -> inputs.ch1`, because it makes the process image easy to predict."
       },
       %{
-        title: "3. Evaluate the generated setup cell",
+        title: "3. Add the EtherCAT Visualizer smart cell",
         state: "next",
         body:
-          "Discovery happens automatically there. Evaluating the generated code creates the real master session and moves it through PREOP toward OP."
+          "Render just the first output and first input so one cause-and-effect path stays visible."
       }
     ]
   end
 
-  defp setup_workflow(%{state: :idle}) do
+  defp next_after_intro(%{state: :idle}) do
     [
       %{
         label: "Next step",
-        value: "Add the EtherCAT Setup smart cell and evaluate the generated code."
+        value:
+          "Add the EtherCAT Setup smart cell and evaluate the generated code. That moves you from a teaching ring to a real master session."
       },
       %{
         label: "Why",
         value:
-          "The setup smart cell discovers the simulator ring automatically and generates the startup code for a real EtherCAT master session."
+          "Phase 3 starts when the setup flow discovers the ring, reaches PREOP, and hands control to the Master render."
       },
       %{
-        label: "Main view after setup",
-        value: "Use the generated Master render for lifecycle control and current session state."
+        label: "Main surface",
+        value: "Use the generated Master render for PREOP, SAFEOP, OP, domain health, and WKC."
       },
       %{
-        label: "After that",
+        label: "What changes next",
         value:
-          "Add the EtherCAT Visualizer smart cell if you want a compact signal dashboard after Master."
+          "You stop looking only at signals and start looking at EtherCAT lifecycle, validity, and readiness."
       }
     ]
   end
 
-  defp setup_workflow(master) do
+  defp next_after_intro(master) do
     if setup_stage(master) == :waiting_for_generated_setup do
       [
         %{
           label: "Current step",
           value:
-            "The setup smart cell has already discovered the ring. Now evaluate the generated setup code."
+            "The setup smart cell has already discovered the ring. Evaluate its generated code to turn discovery into a configured master session."
         },
         %{
-          label: "What is running now",
+          label: "Why this matters",
           value:
-            "This is still the temporary discovery session, not the final configured master session."
+            "The discovery session is temporary. The generated setup code is what actually defines the master, domains, and activation path."
         },
         %{
-          label: "Main view after setup",
-          value:
-            "Once the generated code is evaluated, use the Master render for lifecycle control and current session state."
+          label: "Main surface",
+          value: "Once that cell is evaluated, use the Master render as the primary runtime view."
         },
         %{
-          label: "After that",
+          label: "What changes next",
           value:
-            "The EtherCAT Visualizer smart cell is a good next step for a compact signal dashboard."
+            "You move into phase 3: PREOP readiness, OP activation, domain validity, and WKC interpretation."
         }
       ]
     else
       [
         %{
           label: "Current focus",
-          value: "Stay with the generated Master render for lifecycle control."
+          value:
+            "You are already beyond phase 2. Stay with the Master render for lifecycle control."
+        },
+        %{
+          label: "What phase 3 adds",
+          value:
+            "You can now see PREOP, SAFEOP, OP, domain health, and WKC as part of a real master session."
         },
         %{
           label: "Setup role",
           value:
-            "The setup smart cell is now the source of truth for how this simulator ring becomes a master session."
+            "The setup smart cell is now the source of truth for how this simulator ring becomes an EtherCAT session."
         },
         %{
-          label: "This introduction tab",
+          label: "Later",
           value:
-            "Use it for EtherCAT explanations plus domain and WKC context while the Master render handles operations."
-        },
-        %{
-          label: "Next tool",
-          value: "Try the EtherCAT Visualizer smart cell for a compact signal dashboard."
+            "Once the baseline is clear, the simulator fault console is the natural entry to phase 4."
         }
       ]
     end
   end
 
-  defp offline_setup_workflow do
+  defp offline_next_after_intro do
     [
-      %{label: "First step", value: "Evaluate the EtherCAT Simulator smart cell."},
       %{
-        label: "Then",
+        label: "Next step",
         value:
-          "Add the EtherCAT Setup smart cell and evaluate the generated code. Discovery happens automatically."
+          "After the simulator is running and the first loopback is visible, add the EtherCAT Setup smart cell."
       },
       %{
-        label: "Main view after setup",
-        value: "Use the generated Master render as the primary operational surface."
+        label: "Why",
+        value:
+          "That is the bridge from a pure teaching ring into the real master lifecycle: discovery, PREOP, SAFEOP, and OP."
       },
       %{
-        label: "After that",
+        label: "Main surface",
         value:
-          "The EtherCAT Visualizer smart cell is the natural next step for a compact signal dashboard."
+          "The generated Master render becomes the primary view once setup code is evaluated."
+      },
+      %{
+        label: "What changes next",
+        value: "The focus shifts from signals to lifecycle and runtime health."
       }
+    ]
+  end
+
+  defp current_state_overview(master) do
+    [
+      %{label: "Master state", value: Atom.to_string(master.state)},
+      %{label: "What you are seeing", value: state_explanation(master.state)},
+      %{label: "Domain health", value: master.domain_health},
+      %{label: "Why WKC matters", value: wkc_explanation(master)}
+    ]
+  end
+
+  defp offline_state_overview do
+    [
+      %{label: "Master state", value: "idle"},
+      %{
+        label: "What you are seeing",
+        value:
+          "No master session is running yet. That is fine for phase 1 and 2, because the simulator ring comes first."
+      },
+      %{label: "Domain health", value: "No domains running yet."},
+      %{label: "Why WKC matters", value: "WKC becomes meaningful once a domain is cycling."}
     ]
   end
 
@@ -225,7 +267,6 @@ defmodule KinoEtherCAT.Introduction.View do
           state: state,
           wkc: "n/a",
           domain_health: "No domains running yet.",
-          domain_state: "n/a",
           configured_session?: false
         }
 
@@ -234,7 +275,6 @@ defmodule KinoEtherCAT.Introduction.View do
           state: state,
           wkc: domain_wkc(domain),
           domain_health: domain_health(domain),
-          domain_state: domain_state(domain),
           configured_session?: true
         }
     end
@@ -257,8 +297,6 @@ defmodule KinoEtherCAT.Introduction.View do
     end
   end
 
-  defp domain_state(info), do: info |> Map.get(:state, :unknown) |> to_string()
-
   defp domain_wkc(%{
          expected_wkc: expected,
          cycle_health: {:invalid, {:wkc_mismatch, %{actual: actual}}}
@@ -276,9 +314,36 @@ defmodule KinoEtherCAT.Introduction.View do
   defp domain_health(%{cycle_health: value}), do: format_value(value)
   defp domain_health(_info), do: "No domains running yet."
 
+  defp ring_label(info) do
+    info
+    |> Map.get(:slaves, [])
+    |> Enum.map_join(" -> ", &Atom.to_string(&1.name))
+    |> case do
+      "" -> "not discovered"
+      ring -> ring
+    end
+  end
+
+  defp loopback_text(connections) do
+    case preferred_connection(connections) do
+      %{source: {source_slave, source_signal}, target: {target_slave, target_signal}} ->
+        "The active loopback is #{source_slave}.#{source_signal} -> #{target_slave}.#{target_signal}."
+
+      nil ->
+        "No simulator signal connection is active yet. Reset to the default loopback or add one in Expert mode."
+    end
+  end
+
+  defp preferred_connection(connections) do
+    Enum.find(connections, fn
+      %{source: {:outputs, :ch1}, target: {:inputs, :ch1}} -> true
+      _other -> false
+    end) || List.first(connections)
+  end
+
   defp state_explanation(:idle),
     do:
-      "No master session is running yet. This is the right moment to scan the simulator from the setup smart cell."
+      "No master session is running yet. That is still fine for phase 1 and 2, because the simulator ring exists independently."
 
   defp state_explanation(:awaiting_preop),
     do:

@@ -32,14 +32,20 @@ defmodule KinoEtherCAT.Introduction.ViewTest do
     assert payload.status == "running"
     assert Enum.find(payload.summary, &(&1.label == "Connections")).value == "1"
 
-    assert Enum.find(payload.setup_workflow, &(&1.label == "Next step")).value =~
+    assert Enum.find(payload.summary, &(&1.label == "Ring")).value ==
+             "coupler -> inputs -> outputs"
+
+    assert Enum.find(payload.mental_model, &(&1.label == "Master")).value =~
+             "master drives"
+
+    assert Enum.find(payload.next_after_intro, &(&1.label == "Next step")).value =~
              "Setup smart cell"
 
-    assert Enum.any?(payload.setup_workflow, &String.contains?(&1.value, "Visualizer"))
+    assert Enum.any?(payload.first_contact, &String.contains?(&1.body, "outputs.ch1"))
+    assert Enum.any?(payload.first_contact, &String.contains?(&1.title, "Visualizer"))
 
-    refute Enum.any?(payload.path, &String.contains?(&1.title, "Scan Bus"))
-    assert Enum.any?(payload.path, &String.starts_with?(&1.title, "1. Evaluate"))
-    refute Enum.any?(payload.path, &String.starts_with?(&1.title, "4."))
+    refute Enum.any?(payload.first_contact, &String.contains?(&1.title, "Scan Bus"))
+    assert Enum.any?(payload.first_contact, &String.starts_with?(&1.title, "1. Evaluate"))
     assert Enum.any?(payload.state_overview, &(&1.label == "Master state"))
   end
 
@@ -50,11 +56,14 @@ defmodule KinoEtherCAT.Introduction.ViewTest do
 
     assert payload.status == "offline"
 
-    assert Enum.find(payload.setup_workflow, &(&1.label == "First step")).value =~
-             "Simulator smart cell"
+    assert Enum.find(payload.mental_model, &(&1.label == "Process image")).value =~
+             "shared image"
 
-    assert Enum.any?(payload.setup_workflow, &String.contains?(&1.value, "Visualizer"))
+    assert Enum.find(payload.next_after_intro, &(&1.label == "Next step")).value =~
+             "Setup smart cell"
 
-    assert Enum.find(payload.summary, &(&1.label == "Domain")).value == "n/a"
+    assert Enum.any?(payload.first_contact, &String.contains?(&1.title, "Visualizer"))
+
+    assert Enum.find(payload.summary, &(&1.label == "Ring")).value == "not running"
   end
 end

@@ -8,6 +8,16 @@
   align-self: end;
 }
 
+.ke95-simulator-faults-panel__tables {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.ke95-simulator-faults-panel__script {
+  min-height: 5.5rem;
+  width: 100%;
+}
+
 .ke95-simulator-faults-panel .ke95-table-wrap {
   max-height: 18rem;
   scrollbar-gutter: stable;
