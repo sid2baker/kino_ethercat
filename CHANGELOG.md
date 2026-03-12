@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-03-12
+
+### Added
+
+- Bus payload throughput telemetry and charts in diagnostics
+
+### Changed
+
+- The visualizer smart cell is now centered on an ordered signal path, with automatic widget selection and bus-order grouping
+- The simulator fault panel now leads with quick fault actions and moves the generic builders into advanced sections
+- The teaching flow and introduction notebook were polished around the simulator-to-setup-to-master path
+
+### Fixed
+
+- The visualizer smart cell now generates simpler, valid source code from signal selections
+- The simulator introduction checklist no longer repeats steps that are already complete inside the simulator workspace
+
 ## [0.3.0] - 2026-03-12
 
 ### Added

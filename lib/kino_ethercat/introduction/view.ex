@@ -130,8 +130,7 @@ defmodule KinoEtherCAT.Introduction.View do
       %{
         title: "3. Add the EtherCAT Setup smart cell",
         state: "next",
-        body:
-          "Setup is the bridge from the teaching ring into a real EtherCAT master session."
+        body: "Setup is the bridge from the teaching ring into a real EtherCAT master session."
       }
     ]
   end

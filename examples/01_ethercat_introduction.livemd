@@ -2,7 +2,8 @@
 
 ```elixir
 Mix.install([
-  {:kino_ethercat, "~> 0.3.0"}
+  {:ethercat, github: "sid2baker/ethercat", override: true},
+  {:kino_ethercat, path: "/home/n0gg1n/Development/Work/opencode/kino_ethercat"}
 ])
 ```
 
@@ -83,7 +84,7 @@ This is the small path we will use later:
 
 Now let the setup flow create the real master session.
 
-<!-- livebook:{"attrs":"eyJhd2FpdF9sb2NrIjpmYWxzZSwiZGNfY3ljbGVfbnMiOjEwMDAwMDAwLCJkY19lbmFibGVkIjpmYWxzZSwiZG9tYWlucyI6W3siY3ljbGVfdGltZV9tcyI6MTAsImN5Y2xlX3RpbWVfdXMiOjEwMDAwLCJpZCI6Im1haW4iLCJtaXNzX3RocmVzaG9sZCI6MTAwMH1dLCJob3N0IjoiMTI3LjAuMC4yIiwiaW50ZXJmYWNlIjoiZXRoMCIsImxvY2tfdGhyZXNob2xkX25zIjoxMDAsImxvY2tfdGltZW91dF9tcyI6NTAwMCwicG9ydCI6MzQ5ODAsInNsYXZlcyI6W3siZGlzY292ZXJlZF9uYW1lIjoiY291cGxlciIsImRvbWFpbl9pZCI6IiIsImRyaXZlciI6IiIsIm5hbWUiOiJjb3VwbGVyIiwicHJvZHVjdF9jb2RlIjo3MjEwMDk0Niwic3RhdGlvbiI6NDA5NiwidmVuZG9yX2lkIjoyfSx7ImRpc2NvdmVyZWRfbmFtZSI6ImlucHV0cyIsImRvbWFpbl9pZCI6Im1haW4iLCJkcml2ZXIiOiJLaW5vRXRoZXJDQVQuRHJpdmVyLkVMMTgwOSIsIm5hbWUiOiJpbnB1dHMiLCJwcm9kdWN0X2NvZGUiOjExODU2Njk5NCwic3RhdGlvbiI6NDA5NywidmVuZG9yX2lkIjoyfSx7ImRpc2NvdmVyZWRfbmFtZSI6Im91dHB1dHMiLCJkb21haW5faWQiOiJtYWluIiwiZHJpdmVyIjoiS2lub0V0aGVyQ0FULkRyaXZlci5FTDI4MDkiLCJuYW1lIjoib3V0cHV0cyIsInByb2R1Y3RfY29kZSI6MTg0MTAyOTk0LCJzdGF0aW9uIjo0MDk4LCJ2ZW5kb3JfaWQiOjJ9XSwidHJhbnNwb3J0IjoidWRwIiwidHJhbnNwb3J0X21vZGUiOiJhdXRvIiwid2FybXVwX2N5Y2xlcyI6MH0","chunks":null,"kind":"Elixir.KinoEtherCAT.SmartCells.Setup","livebook_object":"smart_cell"} -->
+<!-- livebook:{"attrs":"eyJhd2FpdF9sb2NrIjpmYWxzZSwiZGNfY3ljbGVfbnMiOjEwMDAwMDAwLCJkY19lbmFibGVkIjpmYWxzZSwiZG9tYWlucyI6W3siY3ljbGVfdGltZV9tcyI6MTAsImN5Y2xlX3RpbWVfdXMiOjEwMDAwLCJpZCI6Im1haW4iLCJtaXNzX3RocmVzaG9sZCI6MTAwMH1dLCJob3N0IjoiMTI3LjAuMC4yIiwiaW50ZXJmYWNlIjoiZW5wMHMzMWY2IiwibG9ja190aHJlc2hvbGRfbnMiOjEwMCwibG9ja190aW1lb3V0X21zIjo1MDAwLCJwb3J0IjozNDk4MCwic2xhdmVzIjpbeyJkaXNjb3ZlcmVkX25hbWUiOiJjb3VwbGVyIiwiZG9tYWluX2lkIjoiIiwiZHJpdmVyIjoiIiwibmFtZSI6ImNvdXBsZXIiLCJwcm9kdWN0X2NvZGUiOjcyMTAwOTQ2LCJzdGF0aW9uIjo0MDk2LCJ2ZW5kb3JfaWQiOjJ9LHsiZGlzY292ZXJlZF9uYW1lIjoiaW5wdXRzIiwiZG9tYWluX2lkIjoibWFpbiIsImRyaXZlciI6Iktpbm9FdGhlckNBVC5Ecml2ZXIuRUwxODA5IiwibmFtZSI6InNsYXZlXzEiLCJwcm9kdWN0X2NvZGUiOjExODU2Njk5NCwic3RhdGlvbiI6NDA5NywidmVuZG9yX2lkIjoyfSx7ImRpc2NvdmVyZWRfbmFtZSI6Im91dHB1dHMiLCJkb21haW5faWQiOiJtYWluIiwiZHJpdmVyIjoiS2lub0V0aGVyQ0FULkRyaXZlci5FTDI4MDkiLCJuYW1lIjoic2xhdmVfMiIsInByb2R1Y3RfY29kZSI6MTg0MTAyOTk0LCJzdGF0aW9uIjo0MDk4LCJ2ZW5kb3JfaWQiOjJ9XSwidHJhbnNwb3J0IjoidWRwIiwidHJhbnNwb3J0X21vZGUiOiJtYW51YWwiLCJ3YXJtdXBfY3ljbGVzIjowfQ","chunks":null,"kind":"Elixir.KinoEtherCAT.SmartCells.Setup","livebook_object":"smart_cell"} -->
 
 ```elixir
 alias EtherCAT.Slave.Config, as: SlaveConfig
@@ -107,13 +108,13 @@ setup_result =
            slaves: [
              %SlaveConfig{name: :coupler, target_state: :op},
              %SlaveConfig{
-               name: :inputs,
+               name: :slave_1,
                driver: KinoEtherCAT.Driver.EL1809,
                process_data: {:all, :main},
                target_state: :op
              },
              %SlaveConfig{
-               name: :outputs,
+               name: :slave_2,
                driver: KinoEtherCAT.Driver.EL2809,
                process_data: {:all, :main},
                target_state: :op
@@ -146,6 +147,24 @@ case setup_result do
 end
 ```
 
+<!-- livebook:{"attrs":"eyJzZWxlY3RlZCI6W3siYml0X3NpemUiOjEsImRlZmF1bHRfd2lkZ2V0Ijoic3dpdGNoIiwiZGlyZWN0aW9uIjoib3V0cHV0IiwiZG9tYWluIjoibWFpbiIsImtleSI6InNsYXZlXzIuY2gxIiwibGFiZWwiOm51bGwsInNpZ25hbCI6ImNoMSIsInNpZ25hbF9pbmRleCI6MCwic2xhdmUiOiJzbGF2ZV8yIiwic2xhdmVfaW5kZXgiOjIsIndpZGdldCI6ImF1dG8ifSx7ImJpdF9zaXplIjoxLCJkZWZhdWx0X3dpZGdldCI6ImxlZCIsImRpcmVjdGlvbiI6ImlucHV0IiwiZG9tYWluIjoibWFpbiIsImtleSI6InNsYXZlXzEuY2gxIiwibGFiZWwiOm51bGwsInNpZ25hbCI6ImNoMSIsInNpZ25hbF9pbmRleCI6MCwic2xhdmUiOiJzbGF2ZV8xIiwic2xhdmVfaW5kZXgiOjEsIndpZGdldCI6ImF1dG8ifV19","chunks":null,"kind":"Elixir.KinoEtherCAT.SmartCells.Visualizer","livebook_object":"smart_cell"} -->
+
+```elixir
+widgets = [
+  KinoEtherCAT.Widgets.switch(:slave_2, :ch1),
+  KinoEtherCAT.Widgets.led(:slave_1, :ch1)
+]
+
+case widgets do
+  [] -> Kino.nothing()
+  [widget] -> widget
+  _ -> Kino.Layout.grid(widgets, columns: 2)
+end
+|> Kino.render()
+
+Kino.nothing()
+```
+
 ## Try ch1
 
 Now change `outputs.ch1` through the normal EtherCAT path.
@@ -166,8 +185,8 @@ sequenceDiagram
 ```elixir
 Kino.Layout.grid(
   [
-    KinoEtherCAT.Widgets.switch(:outputs, :ch1, label: "outputs.ch1"),
-    KinoEtherCAT.Widgets.led(:inputs, :ch1, label: "inputs.ch1")
+    KinoEtherCAT.Widgets.switch(:slave_2, :ch1, label: "outputs.ch1"),
+    KinoEtherCAT.Widgets.led(:slave_1, :ch1, label: "inputs.ch1")
   ],
   columns: 2
 )
