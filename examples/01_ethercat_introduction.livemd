@@ -2,8 +2,7 @@
 
 ```elixir
 Mix.install([
-  {:ethercat, github: "sid2baker/ethercat", override: true},
-  {:kino_ethercat, path: "/home/n0gg1n/Development/Work/opencode/kino_ethercat"}
+  {:kino_ethercat, "~> 0.3.0"}
 ])
 ```
 
