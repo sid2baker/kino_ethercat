@@ -2,7 +2,8 @@
 
 ```elixir
 Mix.install([
-  {:kino_ethercat, "~> 0.3.0"}
+  {:ethercat, github: "sid2baker/ethercat", override: true},
+  {:kino_ethercat, path: "/home/n0gg1n/Development/Work/opencode/kino_ethercat"}
 ])
 ```
 
@@ -79,11 +80,7 @@ This is the small path we will use later:
 
 * `outputs.ch1 -> inputs.ch1`
 
-## Start The Master
-
-Now let the setup flow create the real master session.
-
-<!-- livebook:{"attrs":"eyJhd2FpdF9sb2NrIjpmYWxzZSwiZGNfY3ljbGVfbnMiOjEwMDAwMDAwLCJkY19lbmFibGVkIjpmYWxzZSwiZG9tYWlucyI6W3siY3ljbGVfdGltZV9tcyI6MTAsImN5Y2xlX3RpbWVfdXMiOjEwMDAwLCJpZCI6Im1haW4iLCJtaXNzX3RocmVzaG9sZCI6MTAwMH1dLCJob3N0IjoiMTI3LjAuMC4yIiwiaW50ZXJmYWNlIjoiZW5wMHMzMWY2IiwibG9ja190aHJlc2hvbGRfbnMiOjEwMCwibG9ja190aW1lb3V0X21zIjo1MDAwLCJwb3J0IjozNDk4MCwic2xhdmVzIjpbeyJkaXNjb3ZlcmVkX25hbWUiOiJjb3VwbGVyIiwiZG9tYWluX2lkIjoiIiwiZHJpdmVyIjoiIiwibmFtZSI6ImNvdXBsZXIiLCJwcm9kdWN0X2NvZGUiOjcyMTAwOTQ2LCJzdGF0aW9uIjo0MDk2LCJ2ZW5kb3JfaWQiOjJ9LHsiZGlzY292ZXJlZF9uYW1lIjoiaW5wdXRzIiwiZG9tYWluX2lkIjoibWFpbiIsImRyaXZlciI6Iktpbm9FdGhlckNBVC5Ecml2ZXIuRUwxODA5IiwibmFtZSI6InNsYXZlXzEiLCJwcm9kdWN0X2NvZGUiOjExODU2Njk5NCwic3RhdGlvbiI6NDA5NywidmVuZG9yX2lkIjoyfSx7ImRpc2NvdmVyZWRfbmFtZSI6Im91dHB1dHMiLCJkb21haW5faWQiOiJtYWluIiwiZHJpdmVyIjoiS2lub0V0aGVyQ0FULkRyaXZlci5FTDI4MDkiLCJuYW1lIjoic2xhdmVfMiIsInByb2R1Y3RfY29kZSI6MTg0MTAyOTk0LCJzdGF0aW9uIjo0MDk4LCJ2ZW5kb3JfaWQiOjJ9XSwidHJhbnNwb3J0IjoidWRwIiwidHJhbnNwb3J0X21vZGUiOiJtYW51YWwiLCJ3YXJtdXBfY3ljbGVzIjowfQ","chunks":null,"kind":"Elixir.KinoEtherCAT.SmartCells.Setup","livebook_object":"smart_cell"} -->
+<!-- livebook:{"attrs":"eyJhd2FpdF9sb2NrIjpmYWxzZSwiZGNfY3ljbGVfbnMiOjEwMDAwMDAwLCJkY19lbmFibGVkIjpmYWxzZSwiZG9tYWlucyI6W3siY3ljbGVfdGltZV9tcyI6MTAsImN5Y2xlX3RpbWVfdXMiOjEwMDAwLCJpZCI6Im1haW4iLCJtaXNzX3RocmVzaG9sZCI6MTAwMH1dLCJob3N0IjoiMTI3LjAuMC4yIiwiaW50ZXJmYWNlIjoiZXRoMCIsImxvY2tfdGhyZXNob2xkX25zIjoxMDAsImxvY2tfdGltZW91dF9tcyI6NTAwMCwicG9ydCI6MzQ5ODAsInNsYXZlcyI6W3siZGlzY292ZXJlZF9uYW1lIjoiY291cGxlciIsImRvbWFpbl9pZCI6IiIsImRyaXZlciI6IiIsIm5hbWUiOiJjb3VwbGVyIiwicHJvZHVjdF9jb2RlIjo3MjEwMDk0Niwic3RhdGlvbiI6NDA5NiwidmVuZG9yX2lkIjoyfSx7ImRpc2NvdmVyZWRfbmFtZSI6ImlucHV0cyIsImRvbWFpbl9pZCI6Im1haW4iLCJkcml2ZXIiOiJLaW5vRXRoZXJDQVQuRHJpdmVyLkVMMTgwOSIsIm5hbWUiOiJpbnB1dHMiLCJwcm9kdWN0X2NvZGUiOjExODU2Njk5NCwic3RhdGlvbiI6NDA5NywidmVuZG9yX2lkIjoyfSx7ImRpc2NvdmVyZWRfbmFtZSI6Im91dHB1dHMiLCJkb21haW5faWQiOiJtYWluIiwiZHJpdmVyIjoiS2lub0V0aGVyQ0FULkRyaXZlci5FTDI4MDkiLCJuYW1lIjoib3V0cHV0cyIsInByb2R1Y3RfY29kZSI6MTg0MTAyOTk0LCJzdGF0aW9uIjo0MDk4LCJ2ZW5kb3JfaWQiOjJ9XSwidHJhbnNwb3J0IjoidWRwIiwidHJhbnNwb3J0X21vZGUiOiJhdXRvIiwid2FybXVwX2N5Y2xlcyI6MH0","chunks":null,"kind":"Elixir.KinoEtherCAT.SmartCells.Setup","livebook_object":"smart_cell"} -->
 
 ```elixir
 alias EtherCAT.Slave.Config, as: SlaveConfig
@@ -94,32 +91,49 @@ udp_bind_ip = {127, 0, 0, 1}
 # The notebook now boots the master from a single static EtherCAT.start/1 call.
 _ = EtherCAT.stop()
 
+start_master = fn start_master, attempts_left ->
+  result =
+    EtherCAT.start(
+      transport: :udp,
+      host: udp_host,
+      port: 34980,
+      bind_ip: udp_bind_ip,
+      frame_timeout_ms: 10,
+      domains: [%DomainConfig{id: :main, cycle_time_us: 10000, miss_threshold: 1000}],
+      dc: nil,
+      slaves: [
+        %SlaveConfig{name: :coupler, target_state: :op},
+        %SlaveConfig{
+          name: :inputs,
+          driver: KinoEtherCAT.Driver.EL1809,
+          process_data: {:all, :main},
+          target_state: :op
+        },
+        %SlaveConfig{
+          name: :outputs,
+          driver: KinoEtherCAT.Driver.EL2809,
+          process_data: {:all, :main},
+          target_state: :op
+        }
+      ]
+    )
+
+  case result do
+    {:error, :eaddrinuse} when attempts_left > 1 ->
+      Process.sleep(20)
+      start_master.(start_master, attempts_left - 1)
+
+    {:error, {:open_failed, :eaddrinuse}} when attempts_left > 1 ->
+      Process.sleep(20)
+      start_master.(start_master, attempts_left - 1)
+
+    other ->
+      other
+  end
+end
+
 setup_result =
-  with :ok <-
-         EtherCAT.start(
-           transport: :udp,
-           host: udp_host,
-           port: 34980,
-           bind_ip: udp_bind_ip,
-           frame_timeout_ms: 10,
-           domains: [%DomainConfig{id: :main, cycle_time_us: 10000, miss_threshold: 1000}],
-           dc: nil,
-           slaves: [
-             %SlaveConfig{name: :coupler, target_state: :op},
-             %SlaveConfig{
-               name: :slave_1,
-               driver: KinoEtherCAT.Driver.EL1809,
-               process_data: {:all, :main},
-               target_state: :op
-             },
-             %SlaveConfig{
-               name: :slave_2,
-               driver: KinoEtherCAT.Driver.EL2809,
-               process_data: {:all, :main},
-               target_state: :op
-             }
-           ]
-         ),
+  with :ok <- start_master.(start_master, 3),
        :ok <- EtherCAT.await_running(),
        :ok <- EtherCAT.await_operational() do
     :ok
@@ -145,6 +159,10 @@ case setup_result do
     """)
 end
 ```
+
+## Start The Master
+
+Now let the setup flow create the real master session.
 
 <!-- livebook:{"attrs":"eyJzZWxlY3RlZCI6W3siYml0X3NpemUiOjEsImRlZmF1bHRfd2lkZ2V0Ijoic3dpdGNoIiwiZGlyZWN0aW9uIjoib3V0cHV0IiwiZG9tYWluIjoibWFpbiIsImtleSI6InNsYXZlXzIuY2gxIiwibGFiZWwiOm51bGwsInNpZ25hbCI6ImNoMSIsInNpZ25hbF9pbmRleCI6MCwic2xhdmUiOiJzbGF2ZV8yIiwic2xhdmVfaW5kZXgiOjIsIndpZGdldCI6ImF1dG8ifSx7ImJpdF9zaXplIjoxLCJkZWZhdWx0X3dpZGdldCI6ImxlZCIsImRpcmVjdGlvbiI6ImlucHV0IiwiZG9tYWluIjoibWFpbiIsImtleSI6InNsYXZlXzEuY2gxIiwibGFiZWwiOm51bGwsInNpZ25hbCI6ImNoMSIsInNpZ25hbF9pbmRleCI6MCwic2xhdmUiOiJzbGF2ZV8xIiwic2xhdmVfaW5kZXgiOjEsIndpZGdldCI6ImF1dG8ifV19","chunks":null,"kind":"Elixir.KinoEtherCAT.SmartCells.Visualizer","livebook_object":"smart_cell"} -->
 

@@ -3,6 +3,9 @@ defmodule KinoEtherCAT.SmartCells.SetupSource do
 
   alias KinoEtherCAT.SmartCells.{SetupTransport, Source}
 
+  @udp_start_retry_attempts 3
+  @udp_start_retry_delay_ms 20
+
   @spec render(map()) :: String.t()
   def render(attrs) when is_map(attrs) do
     config = normalize(attrs)
@@ -24,17 +27,11 @@ defmodule KinoEtherCAT.SmartCells.SetupSource do
       "# Persisted from live bus discovery.\n",
       "# The notebook now boots the master from a single static EtherCAT.start/1 call.\n",
       "_ = EtherCAT.stop()\n\n",
+      start_prelude(config, transport),
       "setup_result =\n",
-      "  with :ok <-\n",
-      "         EtherCAT.start(\n",
-      indent_lines(
-        keyword_entries(
-          start_entries(config, transport) ++ [slaves: slave_literals(config.slaves)]
-        ),
-        10
-      ),
-      "\n",
-      "         ),\n",
+      "  with :ok <- ",
+      start_call(transport),
+      ",\n",
       "       :ok <- EtherCAT.await_running(),\n",
       "       :ok <- EtherCAT.await_operational() do\n",
       "    :ok\n",
@@ -56,6 +53,54 @@ defmodule KinoEtherCAT.SmartCells.SetupSource do
       "end\n"
     ])
   end
+
+  defp start_prelude(config, %{transport: :udp} = transport) do
+    Source.multiline([
+      "start_master = fn start_master, attempts_left ->\n",
+      "  result =\n",
+      "    EtherCAT.start(\n",
+      indent_lines(
+        keyword_entries(
+          start_entries(config, transport) ++ [slaves: slave_literals(config.slaves)]
+        ),
+        6
+      ),
+      "\n",
+      "    )\n\n",
+      "  case result do\n",
+      "    {:error, :eaddrinuse} when attempts_left > 1 ->\n",
+      "      Process.sleep(#{@udp_start_retry_delay_ms})\n",
+      "      start_master.(start_master, attempts_left - 1)\n\n",
+      "    {:error, {:open_failed, :eaddrinuse}} when attempts_left > 1 ->\n",
+      "      Process.sleep(#{@udp_start_retry_delay_ms})\n",
+      "      start_master.(start_master, attempts_left - 1)\n\n",
+      "    other ->\n",
+      "      other\n",
+      "  end\n",
+      "end\n\n"
+    ])
+  end
+
+  defp start_prelude(config, transport) do
+    Source.multiline([
+      "start_master = fn ->\n",
+      "  EtherCAT.start(\n",
+      indent_lines(
+        keyword_entries(
+          start_entries(config, transport) ++ [slaves: slave_literals(config.slaves)]
+        ),
+        4
+      ),
+      "\n",
+      "  )\n",
+      "end\n\n"
+    ])
+  end
+
+  defp start_call(%{transport: :udp}),
+    do: "start_master.(start_master, #{@udp_start_retry_attempts})"
+
+  defp start_call(_transport), do: "start_master.()"
 
   defp aliases(config) do
     Source.multiline([
