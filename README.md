@@ -2,7 +2,7 @@
 
 [Livebook](https://livebook.dev) and [Kino](https://github.com/livebook-dev/kino) tools for [EtherCAT](https://github.com/sid2baker/ethercat) discovery, runtime inspection, diagnostics, hardware bring-up, and simulator-first examples.
 
-The current teaching direction is documented in [examples/README.md](./examples/README.md). Phase 1 and 2 are currently merged into the story notebook [Meet The Tiny EtherCAT Machine](./examples/01_mental_model.livemd), while the rest of the curriculum is rebuilt around a simulator-first introduction path.
+The current teaching direction is documented in [examples/README.md](./examples/README.md). Phase 1 and 2 are currently merged into [EtherCAT Introduction](./examples/01_ethercat_introduction.livemd), while the rest of the curriculum is rebuilt around a simulator-first introduction path.
 
 ## Installation
 

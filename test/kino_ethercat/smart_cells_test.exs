@@ -129,6 +129,7 @@ defmodule KinoEtherCAT.SmartCellsTest do
     assert source =~ "host: udp_host"
     assert source =~ "port: 34980"
     assert source =~ "bind_ip: udp_bind_ip"
+    assert source =~ "frame_timeout_ms: 10"
     assert source =~ "driver: KinoEtherCAT.Driver.EL1809"
     assert source =~ ~s(process_data: {:all, :main})
     refute source =~ "EtherCAT.Simulator"

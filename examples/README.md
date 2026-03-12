@@ -1,13 +1,13 @@
 # EtherCAT Introduction
 
 This folder now holds the Livebook teaching material for the simulator-first introduction path.
-The first two phases are now merged into one story notebook: visual first, little text, one idea per scene.
+The first two phases are now merged into one simple notebook.
 
 The objective is still the same: create an excellent introduction to EtherCAT for newcomers with as little setup friction as possible. The simulator should be the default environment, real hardware should be optional, and the material should teach EtherCAT itself before it teaches this library or Elixir.
 
 ## Implemented Now
 
-- [Phases 1 and 2: Meet The Tiny EtherCAT Machine](./01_mental_model.livemd)
+- [Phases 1 and 2: EtherCAT Introduction](./01_ethercat_introduction.livemd)
 
 These two phases are also reflected in the generated `Introduction` tab from the `EtherCAT Simulator` smart cell.
 
@@ -26,8 +26,7 @@ That workspace now gives you:
 - a guided learning path
 - a reduced teaching-mode UI instead of the full operator layout
 - short explanations next to master state and domain/WKC health
-- a direct process-data playground
-- a clear handoff from simulator loopback to setup/discovery and OP activation
+- a clear handoff from the simulator ring to setup/discovery and OP activation
 
 Use the `EtherCAT Setup` smart cell against the same simulator when you want to move from the virtual ring into discovery, PREOP readiness, and OP activation.
 
@@ -103,7 +102,7 @@ Purpose:
 - build intuition for EtherCAT without implementation noise
 
 Status:
-- implemented in [01_mental_model.livemd](./01_mental_model.livemd)
+- implemented in [01_ethercat_introduction.livemd](./01_ethercat_introduction.livemd)
 
 Target concepts:
 - master
@@ -121,7 +120,7 @@ Purpose:
 - let the reader use the simulator to make EtherCAT behavior tangible
 
 Status:
-- currently merged into [01_mental_model.livemd](./01_mental_model.livemd)
+- currently merged into [01_ethercat_introduction.livemd](./01_ethercat_introduction.livemd)
 
 Target concepts:
 - fixed ring

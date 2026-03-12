@@ -87,6 +87,7 @@ defmodule KinoEtherCAT.SmartCells.SetupSource do
 
   defp start_entries(config, transport) do
     (transport_entries(transport) ++
+       startup_tuning_entries(transport) ++
        [
          domains: domain_literals(config.domains),
          dc: dc_literal(config)
@@ -102,6 +103,14 @@ defmodule KinoEtherCAT.SmartCells.SetupSource do
     [transport: ":udp", host: "udp_host", port: Source.integer_literal(port)] ++
       if(bind_ip, do: [bind_ip: "udp_bind_ip"], else: [])
   end
+
+  defp startup_tuning_entries(%{transport: :udp}) do
+    # Livebook + simulator UDP is more scheduler-sensitive than raw-socket hardware,
+    # so keep the bus response timeout above the master's 2ms auto floor.
+    [frame_timeout_ms: "10"]
+  end
+
+  defp startup_tuning_entries(_transport), do: []
 
   defp domain_literals(domains) do
     "[" <>

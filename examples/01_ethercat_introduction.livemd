@@ -1,15 +1,15 @@
-# Meet The Tiny EtherCAT Machine
+# EtherCAT Introduction
 
 ```elixir
 Mix.install([
   {:ethercat, github: "sid2baker/ethercat", override: true},
-  {:kino_ethercat, github: "sid2baker/kino_ethercat"}
-])
+  {:kino_ethercat, path: "/home/n0gg1n/Development/Work/opencode/kino_ethercat"}
+], force: true)
 ```
 
-## Scene 1: The Whole World
+## The Ring
 
-One master. Three slaves. That is enough for the first story.
+One master. Three slaves.
 
 ```mermaid
 flowchart LR
@@ -24,7 +24,7 @@ flowchart LR
   end
 ```
 
-## Scene 2: What The Master Does
+## One Cycle
 
 The master uses cyclic EtherCAT frames.
 
@@ -37,9 +37,9 @@ sequenceDiagram
   M->>M: check the cycle
 ```
 
-## Scene 3: Bring It To Life
+## Start The Simulator
 
-Evaluate the simulator cell, then follow the instructions shown by the simulator workspace.
+Evaluate the simulator cell, then follow the short instructions in the `Introduction` tab.
 
 <!-- livebook:{"attrs":"eyJjb25uZWN0aW9ucyI6W3sic291cmNlX2lkIjoiMyIsInNvdXJjZV9zaWduYWwiOiJjaDEiLCJ0YXJnZXRfaWQiOiIyIiwidGFyZ2V0X3NpZ25hbCI6ImNoMSJ9XSwiZXhwZXJ0X21vZGUiOmZhbHNlLCJzZWxlY3RlZCI6W3siZHJpdmVyIjoiS2lub0V0aGVyQ0FULkRyaXZlci5FSzExMDAiLCJpZCI6IjEiLCJuYW1lIjoiY291cGxlciJ9LHsiZHJpdmVyIjoiS2lub0V0aGVyQ0FULkRyaXZlci5FTDE4MDkiLCJpZCI6IjIiLCJuYW1lIjoiaW5wdXRzIn0seyJkcml2ZXIiOiJLaW5vRXRoZXJDQVQuRHJpdmVyLkVMMjgwOSIsImlkIjoiMyIsIm5hbWUiOiJvdXRwdXRzIn1dfQ","chunks":null,"kind":"Elixir.KinoEtherCAT.SmartCells.Simulator","livebook_object":"smart_cell"} -->
 
@@ -73,17 +73,13 @@ flowchart LR
   O[outputs.ch1] --> I[inputs.ch1]
 ```
 
-From here on, let the setup flow create the master session and let the Master render own state and outputs.
+This is the small path we will use later:
 
-## Keep This Picture
+* `outputs.ch1 -> inputs.ch1`
 
-* EtherCAT is a coordinated cycle, not isolated device calls.
-* The master owns the session.
-* One tiny signal path is enough to make the process image feel real.
+## Start The Master
 
-## Next
-
-Add the `EtherCAT Setup` smart cell, evaluate its generated code, and continue with the `Master` render.
+Now let the setup flow create the real master session.
 
 <!-- livebook:{"attrs":"eyJhd2FpdF9sb2NrIjpmYWxzZSwiZGNfY3ljbGVfbnMiOjEwMDAwMDAwLCJkY19lbmFibGVkIjpmYWxzZSwiZG9tYWlucyI6W3siY3ljbGVfdGltZV9tcyI6MTAsImN5Y2xlX3RpbWVfdXMiOjEwMDAwLCJpZCI6Im1haW4iLCJtaXNzX3RocmVzaG9sZCI6MTAwMH1dLCJob3N0IjoiMTI3LjAuMC4yIiwiaW50ZXJmYWNlIjoiZXRoMCIsImxvY2tfdGhyZXNob2xkX25zIjoxMDAsImxvY2tfdGltZW91dF9tcyI6NTAwMCwicG9ydCI6MzQ5ODAsInNsYXZlcyI6W3siZGlzY292ZXJlZF9uYW1lIjoiY291cGxlciIsImRvbWFpbl9pZCI6IiIsImRyaXZlciI6IiIsIm5hbWUiOiJjb3VwbGVyIiwicHJvZHVjdF9jb2RlIjo3MjEwMDk0Niwic3RhdGlvbiI6NDA5NiwidmVuZG9yX2lkIjoyfSx7ImRpc2NvdmVyZWRfbmFtZSI6ImlucHV0cyIsImRvbWFpbl9pZCI6Im1haW4iLCJkcml2ZXIiOiJLaW5vRXRoZXJDQVQuRHJpdmVyLkVMMTgwOSIsIm5hbWUiOiJpbnB1dHMiLCJwcm9kdWN0X2NvZGUiOjExODU2Njk5NCwic3RhdGlvbiI6NDA5NywidmVuZG9yX2lkIjoyfSx7ImRpc2NvdmVyZWRfbmFtZSI6Im91dHB1dHMiLCJkb21haW5faWQiOiJtYWluIiwiZHJpdmVyIjoiS2lub0V0aGVyQ0FULkRyaXZlci5FTDI4MDkiLCJuYW1lIjoib3V0cHV0cyIsInByb2R1Y3RfY29kZSI6MTg0MTAyOTk0LCJzdGF0aW9uIjo0MDk4LCJ2ZW5kb3JfaWQiOjJ9XSwidHJhbnNwb3J0IjoidWRwIiwidHJhbnNwb3J0X21vZGUiOiJhdXRvIiwid2FybXVwX2N5Y2xlcyI6MH0","chunks":null,"kind":"Elixir.KinoEtherCAT.SmartCells.Setup","livebook_object":"smart_cell"} -->
 
@@ -103,6 +99,7 @@ setup_result =
            host: udp_host,
            port: 34980,
            bind_ip: udp_bind_ip,
+           frame_timeout_ms: 10,
            domains: [%DomainConfig{id: :main, cycle_time_us: 10000, miss_threshold: 1000}],
            dc: nil,
            slaves: [
@@ -145,4 +142,30 @@ case setup_result do
     Re-run the cell once the bus is stable. Configuration timeouts usually mean one or more slaves did not reach the requested state in time.
     """)
 end
+```
+
+## Try ch1
+
+Now change `outputs.ch1` through the normal EtherCAT path.
+
+When you toggle the output, `inputs.ch1` should change too.
+
+```mermaid
+sequenceDiagram
+  participant M as Master
+  participant O as outputs.ch1
+  participant I as inputs.ch1
+  M->>O: write output bit
+  O->>I: loopback wiring
+  I-->>M: input bit in next cycle
+```
+
+```elixir
+Kino.Layout.grid(
+  [
+    KinoEtherCAT.Widgets.switch(:outputs, :ch1, label: "outputs.ch1"),
+    KinoEtherCAT.Widgets.led(:inputs, :ch1, label: "inputs.ch1")
+  ],
+  columns: 2
+)
 ```
