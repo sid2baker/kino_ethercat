@@ -99,7 +99,7 @@ defmodule KinoEtherCAT.Introduction.View do
           "#{loopback} Keep the topology small so the process image feels concrete instead of abstract."
       },
       %{
-        title: "2. Add the EtherCAT Setup smart cell",
+        title: "2. Use the EtherCAT Setup smart cell",
         state: setup_step_state(setup_stage),
         body:
           "Use Setup to turn the simulator ring #{ring_label(info)} into a real EtherCAT master configuration."
@@ -128,7 +128,7 @@ defmodule KinoEtherCAT.Introduction.View do
           "The intended first path is `outputs.ch1 -> inputs.ch1`, because it makes the process image easy to predict."
       },
       %{
-        title: "3. Add the EtherCAT Setup smart cell",
+        title: "3. Use the EtherCAT Setup smart cell",
         state: "next",
         body: "Setup is the bridge from the teaching ring into a real EtherCAT master session."
       }
@@ -140,7 +140,7 @@ defmodule KinoEtherCAT.Introduction.View do
       %{
         label: "Next step",
         value:
-          "Add the EtherCAT Setup smart cell and evaluate the generated code. That moves you from a teaching ring to a real master session."
+          "Use the EtherCAT Setup smart cell and evaluate the generated code. That moves you from a teaching ring to a real master session."
       },
       %{
         label: "Why",
@@ -213,7 +213,7 @@ defmodule KinoEtherCAT.Introduction.View do
       %{
         label: "Next step",
         value:
-          "After the simulator is running and the first loopback is visible, add the EtherCAT Setup smart cell."
+          "After the simulator is running and the first loopback is visible, use the EtherCAT Setup smart cell."
       },
       %{
         label: "Why",

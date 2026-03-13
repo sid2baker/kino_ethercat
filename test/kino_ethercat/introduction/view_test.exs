@@ -44,9 +44,11 @@ defmodule KinoEtherCAT.Introduction.ViewTest do
     assert Enum.any?(payload.first_contact, &String.contains?(&1.body, "outputs.ch1"))
     assert Enum.any?(payload.first_contact, &String.contains?(&1.title, "Setup smart cell"))
     assert Enum.any?(payload.first_contact, &String.contains?(&1.title, "generated setup cell"))
+    assert Enum.any?(payload.first_contact, &String.contains?(&1.title, "Use the EtherCAT Setup"))
 
     refute Enum.any?(payload.first_contact, &String.contains?(&1.title, "Scan Bus"))
     refute Enum.any?(payload.first_contact, &String.contains?(&1.title, "Evaluate the simulator"))
+    refute Enum.any?(payload.first_contact, &String.contains?(&1.title, "Add the EtherCAT Setup"))
     assert Enum.any?(payload.first_contact, &String.starts_with?(&1.title, "1. Stay"))
     assert Enum.any?(payload.state_overview, &(&1.label == "Master state"))
   end
@@ -65,6 +67,7 @@ defmodule KinoEtherCAT.Introduction.ViewTest do
              "Setup smart cell"
 
     assert Enum.any?(payload.first_contact, &String.contains?(&1.title, "Setup smart cell"))
+    assert Enum.any?(payload.first_contact, &String.contains?(&1.title, "Use the EtherCAT Setup"))
     assert Enum.any?(payload.first_contact, &String.contains?(&1.title, "Start the simulator"))
 
     assert Enum.find(payload.summary, &(&1.label == "Ring")).value == "not running"

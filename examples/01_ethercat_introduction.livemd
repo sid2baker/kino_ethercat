@@ -79,89 +79,30 @@ This is the small path we will use later:
 
 * `outputs.ch1 -> inputs.ch1`
 
-<!-- livebook:{"attrs":"eyJhd2FpdF9sb2NrIjpmYWxzZSwiZGNfY3ljbGVfbnMiOjEwMDAwMDAwLCJkY19lbmFibGVkIjpmYWxzZSwiZG9tYWlucyI6W3siY3ljbGVfdGltZV9tcyI6MTAsImN5Y2xlX3RpbWVfdXMiOjEwMDAwLCJpZCI6Im1haW4iLCJtaXNzX3RocmVzaG9sZCI6MTAwMH1dLCJob3N0IjoiMTI3LjAuMC4yIiwiaW50ZXJmYWNlIjoiZXRoMCIsImxvY2tfdGhyZXNob2xkX25zIjoxMDAsImxvY2tfdGltZW91dF9tcyI6NTAwMCwicG9ydCI6MzQ5ODAsInNsYXZlcyI6W3siZGlzY292ZXJlZF9uYW1lIjoiY291cGxlciIsImRvbWFpbl9pZCI6IiIsImRyaXZlciI6IiIsIm5hbWUiOiJjb3VwbGVyIiwicHJvZHVjdF9jb2RlIjo3MjEwMDk0Niwic3RhdGlvbiI6NDA5NiwidmVuZG9yX2lkIjoyfSx7ImRpc2NvdmVyZWRfbmFtZSI6ImlucHV0cyIsImRvbWFpbl9pZCI6Im1haW4iLCJkcml2ZXIiOiJLaW5vRXRoZXJDQVQuRHJpdmVyLkVMMTgwOSIsIm5hbWUiOiJpbnB1dHMiLCJwcm9kdWN0X2NvZGUiOjExODU2Njk5NCwic3RhdGlvbiI6NDA5NywidmVuZG9yX2lkIjoyfSx7ImRpc2NvdmVyZWRfbmFtZSI6Im91dHB1dHMiLCJkb21haW5faWQiOiJtYWluIiwiZHJpdmVyIjoiS2lub0V0aGVyQ0FULkRyaXZlci5FTDI4MDkiLCJuYW1lIjoib3V0cHV0cyIsInByb2R1Y3RfY29kZSI6MTg0MTAyOTk0LCJzdGF0aW9uIjo0MDk4LCJ2ZW5kb3JfaWQiOjJ9XSwidHJhbnNwb3J0IjoidWRwIiwidHJhbnNwb3J0X21vZGUiOiJhdXRvIiwid2FybXVwX2N5Y2xlcyI6MH0","chunks":null,"kind":"Elixir.KinoEtherCAT.SmartCells.Setup","livebook_object":"smart_cell"} -->
+## Use The Setup Cell
 
-```elixir
-start_opts = [
-  transport: :udp,
-  host: {127, 0, 0, 2},
-  port: 34980,
-  bind_ip: {127, 0, 0, 1},
-  frame_timeout_ms: 10,
-  domains: [%EtherCAT.Domain.Config{id: :main, cycle_time_us: 10000, miss_threshold: 1000}],
-  dc: nil,
-  slaves: [
-    %EtherCAT.Slave.Config{name: :coupler, target_state: :op},
-    %EtherCAT.Slave.Config{
-      name: :inputs,
-      driver: KinoEtherCAT.Driver.EL1809,
-      process_data: {:all, :main},
-      target_state: :op
-    },
-    %EtherCAT.Slave.Config{
-      name: :outputs,
-      driver: KinoEtherCAT.Driver.EL2809,
-      process_data: {:all, :main},
-      target_state: :op
-    }
-  ]
-]
+Now do what the simulator `Introduction` tab tells you:
 
-_ = EtherCAT.stop()
+1. Add an `EtherCAT Setup` smart cell below.
+2. Keep the default ring names: `coupler`, `inputs`, `outputs`.
+3. Evaluate the generated setup code.
 
-setup_result =
-  with :ok <- EtherCAT.start(start_opts),
-       :ok <- EtherCAT.await_running(),
-       :ok <- EtherCAT.await_operational() do
-    :ok
-  end
+That starts the real EtherCAT master session.
 
-case setup_result do
-  :ok ->
-    Kino.Layout.tabs(
-      Master: KinoEtherCAT.master(),
-      "Task Manager": KinoEtherCAT.diagnostics()
-    )
+## Use The Visualizer
 
-  {:error, reason} ->
-    _ = EtherCAT.stop()
+After setup is running, add an `EtherCAT Visualizer` smart cell.
 
-    Kino.Markdown.new("""
-    ## EtherCAT setup failed
+Select only:
 
-    `#{inspect(reason)}`
+* `outputs.ch1`
+* `inputs.ch1`
 
-    The generated setup cell kept the notebook running instead of crashing.
-    Re-run the cell once the bus is stable. Configuration timeouts usually mean one or more slaves did not reach the requested state in time.
-    """)
-end
-```
-
-## Start The Master
-
-Now let the setup flow create the real master session.
-
-<!-- livebook:{"attrs":"eyJzZWxlY3RlZCI6W3siYml0X3NpemUiOjEsImRlZmF1bHRfd2lkZ2V0Ijoic3dpdGNoIiwiZGlyZWN0aW9uIjoib3V0cHV0IiwiZG9tYWluIjoibWFpbiIsImtleSI6InNsYXZlXzIuY2gxIiwibGFiZWwiOm51bGwsInNpZ25hbCI6ImNoMSIsInNpZ25hbF9pbmRleCI6MCwic2xhdmUiOiJzbGF2ZV8yIiwic2xhdmVfaW5kZXgiOjIsIndpZGdldCI6ImF1dG8ifSx7ImJpdF9zaXplIjoxLCJkZWZhdWx0X3dpZGdldCI6ImxlZCIsImRpcmVjdGlvbiI6ImlucHV0IiwiZG9tYWluIjoibWFpbiIsImtleSI6InNsYXZlXzEuY2gxIiwibGFiZWwiOm51bGwsInNpZ25hbCI6ImNoMSIsInNpZ25hbF9pbmRleCI6MCwic2xhdmUiOiJzbGF2ZV8xIiwic2xhdmVfaW5kZXgiOjEsIndpZGdldCI6ImF1dG8ifV19","chunks":null,"kind":"Elixir.KinoEtherCAT.SmartCells.Visualizer","livebook_object":"smart_cell"} -->
-
-```elixir
-widgets = [
-  KinoEtherCAT.Widgets.switch(:slave_2, :ch1),
-  KinoEtherCAT.Widgets.led(:slave_1, :ch1)
-]
-
-case widgets do
-  [] -> Kino.nothing()
-  [widget] -> widget
-  _ -> Kino.Layout.grid(widgets, columns: 2)
-end
-|> Kino.render()
-
-Kino.nothing()
-```
+Evaluate the generated widget cell.
 
 ## Try ch1
 
-Now change `outputs.ch1` through the normal EtherCAT path.
+Now use the visualizer.
 
 When you toggle the output, `inputs.ch1` should change too.
 
@@ -174,14 +115,4 @@ sequenceDiagram
   M->>O: write output bit
   O->>I: loopback wiring
   I-->>M: input bit in next cycle
-```
-
-```elixir
-Kino.Layout.grid(
-  [
-    KinoEtherCAT.Widgets.switch(:slave_2, :ch1, label: "outputs.ch1"),
-    KinoEtherCAT.Widgets.led(:slave_1, :ch1, label: "inputs.ch1")
-  ],
-  columns: 2
-)
 ```
