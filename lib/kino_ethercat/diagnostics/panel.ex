@@ -133,8 +133,8 @@ defmodule KinoEtherCAT.Diagnostics.Panel do
 
   defp fetch_snapshot do
     %{
-      state: to_string(safe(fn -> EtherCAT.state() end, :idle)),
-      last_failure: format_failure(safe(fn -> EtherCAT.last_failure() end, nil)),
+      state: fetch_state(),
+      last_failure: fetch_last_failure(),
       slaves: fetch_slaves(),
       domains: fetch_domains(),
       dc: fetch_dc()
@@ -144,28 +144,33 @@ defmodule KinoEtherCAT.Diagnostics.Panel do
   defp fetch_slaves do
     safe(
       fn ->
-        EtherCAT.slaves()
-        |> Enum.map(fn %{name: name, station: station} ->
-          {al_state, config_error} =
-            case EtherCAT.slave_info(name) do
-              {:ok, info} -> {info.al_state, info.configuration_error}
-              _ -> {:unknown, nil}
-            end
+        case EtherCAT.slaves() do
+          slaves when is_list(slaves) ->
+            Enum.map(slaves, fn %{name: name, station: station} ->
+              {al_state, config_error} =
+                case EtherCAT.slave_info(name) do
+                  {:ok, info} -> {info.al_state, info.configuration_error}
+                  _ -> {:unknown, nil}
+                end
 
-          al_error =
-            case SlaveAPI.error(name) do
-              code when is_integer(code) -> code
-              _ -> nil
-            end
+              al_error =
+                case SlaveAPI.error(name) do
+                  code when is_integer(code) -> code
+                  _ -> nil
+                end
 
-          %{
-            name: to_string(name),
-            station: station,
-            al_state: to_string(al_state),
-            al_error: al_error,
-            configuration_error: nil_or_string(config_error)
-          }
-        end)
+              %{
+                name: to_string(name),
+                station: station,
+                al_state: to_string(al_state),
+                al_error: al_error,
+                configuration_error: nil_or_string(config_error)
+              }
+            end)
+
+          _ ->
+            []
+        end
       end,
       []
     )
@@ -174,24 +179,29 @@ defmodule KinoEtherCAT.Diagnostics.Panel do
   defp fetch_domains do
     safe(
       fn ->
-        EtherCAT.domains()
-        |> Enum.map(fn {id, cycle_time_us, _pid} ->
-          info =
-            case EtherCAT.domain_info(id) do
-              {:ok, i} -> i
-              _ -> %{}
-            end
+        case EtherCAT.domains() do
+          domains when is_list(domains) ->
+            Enum.map(domains, fn {id, cycle_time_us, _pid} ->
+              info =
+                case EtherCAT.domain_info(id) do
+                  {:ok, i} -> i
+                  _ -> %{}
+                end
 
-          %{
-            id: to_string(id),
-            cycle_time_us: cycle_time_us,
-            state: to_string(Map.get(info, :state, :unknown)),
-            cycle_count: Map.get(info, :cycle_count, 0),
-            miss_count: Map.get(info, :miss_count, 0),
-            total_miss_count: Map.get(info, :total_miss_count, 0),
-            expected_wkc: Map.get(info, :expected_wkc, 0)
-          }
-        end)
+              %{
+                id: to_string(id),
+                cycle_time_us: cycle_time_us,
+                state: to_string(Map.get(info, :state, :unknown)),
+                cycle_count: Map.get(info, :cycle_count, 0),
+                miss_count: Map.get(info, :miss_count, 0),
+                total_miss_count: Map.get(info, :total_miss_count, 0),
+                expected_wkc: Map.get(info, :expected_wkc, 0)
+              }
+            end)
+
+          _ ->
+            []
+        end
       end,
       []
     )
@@ -200,26 +210,46 @@ defmodule KinoEtherCAT.Diagnostics.Panel do
   defp fetch_dc do
     safe(
       fn ->
-        s = EtherCAT.dc_status()
+        case EtherCAT.dc_status() do
+          %{configured?: configured, active?: active} = s ->
+            %{
+              configured: configured,
+              active: active,
+              lock_state: to_string(s.lock_state),
+              reference_clock: nil_or_string(s.reference_clock),
+              max_sync_diff_ns: s.max_sync_diff_ns,
+              cycle_ns: s.cycle_ns,
+              monitor_failures: s.monitor_failures
+            }
 
-        %{
-          configured: s.configured?,
-          active: s.active?,
-          lock_state: to_string(s.lock_state),
-          reference_clock: nil_or_string(s.reference_clock),
-          max_sync_diff_ns: s.max_sync_diff_ns,
-          cycle_ns: s.cycle_ns,
-          monitor_failures: s.monitor_failures
-        }
+          _ ->
+            nil
+        end
       end,
       nil
     )
+  end
+
+  defp fetch_state do
+    case safe(fn -> EtherCAT.state() end, :idle) do
+      state when is_atom(state) -> to_string(state)
+      _ -> "idle"
+    end
+  end
+
+  defp fetch_last_failure do
+    case safe(fn -> EtherCAT.last_failure() end, nil) do
+      failure when is_map(failure) -> format_failure(failure)
+      _ -> nil
+    end
   end
 
   defp safe(fun, default) do
     fun.()
   rescue
     _ -> default
+  catch
+    :exit, _ -> default
   end
 
   defp nil_or_string(nil), do: nil

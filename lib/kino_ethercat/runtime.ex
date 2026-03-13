@@ -462,7 +462,7 @@ defmodule KinoEtherCAT.Runtime do
     with {:ok, cycle_time_us} <- parse_positive_integer(value) do
       run_action(
         resource,
-        fn -> DomainAPI.update_cycle_time(id, cycle_time_us) end,
+        fn -> EtherCAT.update_domain_cycle_time(id, cycle_time_us) end,
         "Domain cycle updated to #{cycle_time_us} us"
       )
     else
@@ -472,14 +472,13 @@ defmodule KinoEtherCAT.Runtime do
 
   def perform(%Bus{} = resource, "set_frame_timeout", %{"value" => value}) do
     with {:ok, timeout_ms} <- parse_positive_integer(value),
-         bus when not is_nil(bus) <- safe(fn -> EtherCAT.bus() end, nil) do
+         {:ok, bus} <- current_bus_server() do
       run_action(
         resource,
         fn -> EtherCAT.Bus.set_frame_timeout(bus, timeout_ms) end,
         "Frame timeout set to #{timeout_ms} ms"
       )
     else
-      nil -> {:error, resource, error_message(:not_started)}
       {:error, reason} -> {:error, resource, error_message(reason)}
     end
   end
@@ -618,6 +617,14 @@ defmodule KinoEtherCAT.Runtime do
 
       _ ->
         default_dc_resource()
+    end
+  end
+
+  defp current_bus_server do
+    case safe(fn -> EtherCAT.bus() end, nil) do
+      nil -> {:error, :not_started}
+      {:error, _} = error -> error
+      bus_server -> {:ok, bus_server}
     end
   end
 
