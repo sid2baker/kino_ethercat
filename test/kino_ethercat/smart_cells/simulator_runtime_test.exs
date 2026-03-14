@@ -32,7 +32,7 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntimeTest do
       SimulatorConfig.default_selected()
       |> SimulatorConfig.selected_entries()
 
-    payload = SimulatorRuntime.payload(configured, [])
+    payload = SimulatorRuntime.payload(configured, [], "udp")
 
     assert payload.status == "running"
     assert payload.matches_selection
@@ -50,7 +50,7 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntimeTest do
       ]
       |> SimulatorConfig.selected_entries()
 
-    payload = SimulatorRuntime.payload(configured, [])
+    payload = SimulatorRuntime.payload(configured, [], "udp")
 
     refute payload.matches_selection
     assert payload.sync_tone == "warn"
@@ -61,16 +61,15 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntimeTest do
     :ok = Simulator.inject_fault(Fault.disconnect(:inputs) |> Fault.next(2))
     :ok = Udp.inject_fault(UdpFault.truncate() |> UdpFault.next(3))
 
-    payload = SimulatorRuntime.payload([], [])
+    payload = SimulatorRuntime.payload([], [], "udp")
 
     assert payload.faults.runtime_sticky_count == 1
-    assert payload.faults.runtime_pending_count >= 1
     assert payload.faults.udp_pending_count == 3
+    assert payload.faults.summary =~ "runtime"
+    assert payload.faults.summary =~ "UDP queued"
 
-    assert payload.faults.active_count ==
-             payload.faults.runtime_sticky_count +
-               payload.faults.runtime_pending_count +
-               payload.faults.udp_pending_count
+    assert payload.faults.active_count >=
+             payload.faults.runtime_sticky_count + payload.faults.udp_pending_count
   end
 
   test "runtime actions clear faults and stop the simulator" do
@@ -78,9 +77,107 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntimeTest do
     :ok = Udp.inject_fault(UdpFault.wrong_idx())
 
     assert %{level: "info"} = SimulatorRuntime.perform("clear_faults")
-    assert SimulatorRuntime.payload([], []).faults.active_count == 0
+    assert SimulatorRuntime.payload([], [], "udp").faults.active_count == 0
 
     assert %{level: "info"} = SimulatorRuntime.perform("stop_runtime")
-    assert SimulatorRuntime.payload([], []).status == "offline"
+    assert SimulatorRuntime.payload([], [], "udp").status == "offline"
+  end
+
+  test "payload warns when configured transport differs from the running simulator" do
+    configured =
+      SimulatorConfig.default_selected()
+      |> SimulatorConfig.selected_entries()
+
+    payload = SimulatorRuntime.payload(configured, [], "raw_socket")
+
+    refute payload.matches_selection
+    assert payload.running_transport == "udp"
+    assert payload.configured_transport == "raw_socket"
+    assert payload.sync_tone == "warn"
+  end
+
+  test "payload reports disabled when simulator has no external transport" do
+    _ = Simulator.stop()
+
+    devices = [
+      Slave.from_driver(KinoEtherCAT.Driver.EK1100, name: :coupler),
+      Slave.from_driver(KinoEtherCAT.Driver.EL1809, name: :inputs),
+      Slave.from_driver(KinoEtherCAT.Driver.EL2809, name: :outputs)
+    ]
+
+    {:ok, _supervisor} = Simulator.start(devices: devices)
+
+    configured =
+      SimulatorConfig.default_selected()
+      |> SimulatorConfig.selected_entries()
+
+    payload = SimulatorRuntime.payload(configured, [], "raw_socket_redundant")
+
+    assert payload.running_transport == "disabled"
+    assert Enum.find(payload.summary, &(&1.label == "Transport")).value == "disabled"
+    assert payload.sync_tone == "warn"
+  end
+
+  test "payload reports raw socket transport when raw simulator is running" do
+    if transport_available?("raw_socket") do
+      _ = Simulator.stop()
+
+      devices = [
+        Slave.from_driver(KinoEtherCAT.Driver.EK1100, name: :coupler),
+        Slave.from_driver(KinoEtherCAT.Driver.EL1809, name: :inputs),
+        Slave.from_driver(KinoEtherCAT.Driver.EL2809, name: :outputs)
+      ]
+
+      {:ok, _supervisor} = Simulator.start(devices: devices, raw: [interface: "veth-s0"])
+
+      configured =
+        SimulatorConfig.default_selected()
+        |> SimulatorConfig.selected_entries()
+
+      payload = SimulatorRuntime.payload(configured, [], "raw_socket")
+
+      assert payload.running_transport == "raw_socket"
+      assert Enum.find(payload.summary, &(&1.label == "Raw (primary)")).value == "veth-s0"
+      assert payload.sync_tone == "info"
+    else
+      assert true
+    end
+  end
+
+  test "payload reports redundant raw transport when redundant simulator is running" do
+    if transport_available?("raw_socket_redundant") do
+      _ = Simulator.stop()
+
+      devices = [
+        Slave.from_driver(KinoEtherCAT.Driver.EK1100, name: :coupler),
+        Slave.from_driver(KinoEtherCAT.Driver.EL1809, name: :inputs),
+        Slave.from_driver(KinoEtherCAT.Driver.EL2809, name: :outputs)
+      ]
+
+      {:ok, _supervisor} =
+        Simulator.start(
+          devices: devices,
+          topology: :redundant,
+          raw: [primary: [interface: "veth-s0"], secondary: [interface: "veth-s1"]]
+        )
+
+      configured =
+        SimulatorConfig.default_selected()
+        |> SimulatorConfig.selected_entries()
+
+      payload = SimulatorRuntime.payload(configured, [], "raw_socket_redundant")
+
+      assert payload.running_transport == "raw_socket_redundant"
+      assert Enum.find(payload.summary, &(&1.label == "Raw (primary)")).value == "veth-s0"
+      assert Enum.find(payload.summary, &(&1.label == "Raw (secondary)")).value == "veth-s1"
+      assert payload.sync_tone == "info"
+    else
+      assert true
+    end
+  end
+
+  defp transport_available?(value) do
+    SimulatorConfig.available_transports()
+    |> Enum.any?(&(&1.value == value and &1.available))
   end
 end

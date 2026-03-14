@@ -1,7 +1,7 @@
 defmodule KinoEtherCAT.SmartCellsTest do
   use ExUnit.Case, async: true
 
-  alias KinoEtherCAT.SmartCells.{Setup, Simulator, Visualizer}
+  alias KinoEtherCAT.SmartCells.{Setup, Simulator, SimulatorConfig, Visualizer}
 
   test "setup cell persists static startup code from discovered slaves" do
     source =
@@ -146,6 +146,32 @@ defmodule KinoEtherCAT.SmartCellsTest do
     refute source =~ "simulator_ip"
   end
 
+  test "setup cell renders redundant raw transport source" do
+    source =
+      Setup.to_source(%{
+        "transport" => "raw_redundant",
+        "interface" => "veth-m0",
+        "backup_interface" => "veth-m1",
+        "dc_enabled" => false,
+        "domains" => [
+          %{"id" => "main", "cycle_time_ms" => 10, "miss_threshold" => 1_000}
+        ],
+        "slaves" => [
+          %{
+            "name" => "inputs",
+            "discovered_name" => "inputs",
+            "driver" => "KinoEtherCAT.Driver.EL1809",
+            "domain_id" => "main"
+          }
+        ]
+      })
+
+    assert source =~ ~s(interface: "veth-m0")
+    assert source =~ ~s(backup_interface: "veth-m1")
+    refute source =~ "transport: :udp"
+    refute source =~ "frame_timeout_ms: 10"
+  end
+
   test "visualizer cell renders signal widget calls" do
     source =
       Visualizer.to_source(%{
@@ -221,8 +247,7 @@ defmodule KinoEtherCAT.SmartCellsTest do
     assert source =~ "Slave.from_driver(KinoEtherCAT.Driver.EL2809, name: :rack_outputs)"
     assert source =~ "Slave.from_driver(KinoEtherCAT.Driver.EL1809, name: :rack_inputs)"
     assert source =~ "Slave.from_driver(KinoEtherCAT.Driver.EL2809, name: :outputs)"
-    assert source =~ "simulator_ip = {127, 0, 0, 2}"
-    assert source =~ "Simulator.start(devices: devices, udp: [ip: simulator_ip, port: 34980])"
+    assert transport_start_snippet(source, SimulatorConfig.default_transport())
     assert source =~ ":ok = Slave.connect({:rack_outputs, :ch1}, {:rack_inputs, :ch1})"
     assert source =~ "Kino.Layout.tabs("
     assert source =~ "Introduction: KinoEtherCAT.introduction()"
@@ -237,6 +262,31 @@ defmodule KinoEtherCAT.SmartCellsTest do
     source = Simulator.to_source(%{})
 
     assert source =~ ":ok = Slave.connect({:outputs, :ch1}, {:inputs, :ch1})"
+  end
+
+  test "simulator cell defaults to the best available transport" do
+    assert SimulatorConfig.normalize_transport(nil) == SimulatorConfig.default_transport()
+    assert SimulatorConfig.normalize_transport("udp") == "udp"
+
+    source = Simulator.to_source(%{})
+
+    assert transport_start_snippet(source, SimulatorConfig.default_transport())
+  end
+
+  test "simulator cell renders raw socket transport source" do
+    source =
+      Simulator.to_source(%{
+        "transport" => "raw_socket",
+        "selected" => [
+          %{"id" => "1", "driver" => "KinoEtherCAT.Driver.EK1100", "name" => "coupler"},
+          %{"id" => "2", "driver" => "KinoEtherCAT.Driver.EL1809", "name" => "inputs"},
+          %{"id" => "3", "driver" => "KinoEtherCAT.Driver.EL2809", "name" => "outputs"}
+        ]
+      })
+
+    assert source =~ ~s|Simulator.start(devices: devices, raw: [interface: "veth-s0"])|
+    refute source =~ "simulator_ip ="
+    refute source =~ "udp:"
   end
 
   test "simulator cell omits introduction tab in expert mode" do
@@ -254,5 +304,34 @@ defmodule KinoEtherCAT.SmartCellsTest do
     refute source =~ "Introduction: KinoEtherCAT.introduction()"
     assert source =~ "Simulator: KinoEtherCAT.simulator()"
     assert source =~ "Faults: KinoEtherCAT.simulator_faults()"
+  end
+
+  test "simulator cell renders redundant raw transport source" do
+    source =
+      Simulator.to_source(%{
+        "transport" => "raw_socket_redundant",
+        "selected" => [
+          %{"id" => "1", "driver" => "KinoEtherCAT.Driver.EK1100", "name" => "coupler"},
+          %{"id" => "2", "driver" => "KinoEtherCAT.Driver.EL1809", "name" => "inputs"},
+          %{"id" => "3", "driver" => "KinoEtherCAT.Driver.EL2809", "name" => "outputs"}
+        ]
+      })
+
+    assert source =~ "topology: :redundant"
+    assert source =~ ~s(raw: [primary: [interface: "veth-s0"], secondary: [interface: "veth-s1"]])
+  end
+
+  defp transport_start_snippet(source, "udp") do
+    source =~ "simulator_ip = {127, 0, 0, 2}" and
+      source =~ "Simulator.start(devices: devices, udp: [ip: simulator_ip, port: 34980])"
+  end
+
+  defp transport_start_snippet(source, "raw_socket") do
+    source =~ ~s|Simulator.start(devices: devices, raw: [interface: "veth-s0"])|
+  end
+
+  defp transport_start_snippet(source, "raw_socket_redundant") do
+    source =~ "topology: :redundant" and
+      source =~ ~s(raw: [primary: [interface: "veth-s0"], secondary: [interface: "veth-s1"]])
   end
 end

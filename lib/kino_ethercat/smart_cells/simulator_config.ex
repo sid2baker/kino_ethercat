@@ -6,6 +6,16 @@ defmodule KinoEtherCAT.SmartCells.SimulatorConfig do
 
   @default_simulator_ip "127.0.0.2"
   @default_port 0x88A4
+
+  @raw_master_interface "veth-m0"
+  @raw_simulator_interface "veth-s0"
+  @redundant_master_primary_interface "veth-m0"
+  @redundant_simulator_primary_interface "veth-s0"
+  @redundant_master_secondary_interface "veth-m1"
+  @redundant_simulator_secondary_interface "veth-s1"
+
+  @transport_modes [:udp, :raw_socket, :raw_socket_redundant]
+
   @default_driver_modules [
     KinoEtherCAT.Driver.EK1100,
     KinoEtherCAT.Driver.EL1809,
@@ -62,6 +72,44 @@ defmodule KinoEtherCAT.SmartCells.SimulatorConfig do
       _ -> []
     end
   end
+
+  @spec available_transports() :: [map()]
+  def available_transports do
+    interfaces = list_network_interfaces()
+
+    @transport_modes
+    |> Enum.map(fn mode -> transport_entry(mode, interfaces) end)
+  end
+
+  @spec normalize_transport(term()) :: String.t()
+  def normalize_transport(value) when value in ["udp", "raw_socket", "raw_socket_redundant"],
+    do: value
+
+  def normalize_transport(_value), do: default_transport()
+
+  @spec default_transport() :: String.t()
+  def default_transport do
+    available_transports()
+    |> preferred_transport()
+  end
+
+  @spec raw_master_interface() :: String.t()
+  def raw_master_interface, do: @raw_master_interface
+
+  @spec raw_simulator_interface() :: String.t()
+  def raw_simulator_interface, do: @raw_simulator_interface
+
+  @spec redundant_master_primary_interface() :: String.t()
+  def redundant_master_primary_interface, do: @redundant_master_primary_interface
+
+  @spec redundant_simulator_primary_interface() :: String.t()
+  def redundant_simulator_primary_interface, do: @redundant_simulator_primary_interface
+
+  @spec redundant_master_secondary_interface() :: String.t()
+  def redundant_master_secondary_interface, do: @redundant_master_secondary_interface
+
+  @spec redundant_simulator_secondary_interface() :: String.t()
+  def redundant_simulator_secondary_interface, do: @redundant_simulator_secondary_interface
 
   @spec normalize(map()) :: %{selected: [map()], connections: [map()]}
   def normalize(attrs) when is_map(attrs) do
@@ -407,5 +455,74 @@ defmodule KinoEtherCAT.SmartCells.SimulatorConfig do
     occurrence = Map.get(counts, base_name, 0) + 1
     name = if occurrence == 1, do: base_name, else: "#{base_name}_#{occurrence}"
     {name, Map.put(counts, base_name, occurrence)}
+  end
+
+  defp transport_entry(:udp, _interfaces) do
+    %{value: "udp", label: "UDP", available: true, hint: nil}
+  end
+
+  defp transport_entry(:raw_socket, interfaces) do
+    required = [@raw_master_interface, @raw_simulator_interface]
+    missing = Enum.reject(required, &MapSet.member?(interfaces, &1))
+
+    if missing == [] do
+      %{value: "raw_socket", label: "Raw socket", available: true, hint: nil}
+    else
+      %{
+        value: "raw_socket",
+        label: "Raw socket",
+        available: false,
+        hint: "Missing interfaces: #{Enum.join(missing, ", ")}"
+      }
+    end
+  end
+
+  defp transport_entry(:raw_socket_redundant, interfaces) do
+    required = [
+      @redundant_master_primary_interface,
+      @redundant_simulator_primary_interface,
+      @redundant_master_secondary_interface,
+      @redundant_simulator_secondary_interface
+    ]
+
+    missing = Enum.reject(required, &MapSet.member?(interfaces, &1))
+
+    if missing == [] do
+      %{
+        value: "raw_socket_redundant",
+        label: "Raw socket + redundant",
+        available: true,
+        hint: nil
+      }
+    else
+      %{
+        value: "raw_socket_redundant",
+        label: "Raw socket + redundant",
+        available: false,
+        hint: "Missing interfaces: #{Enum.join(missing, ", ")}"
+      }
+    end
+  end
+
+  defp list_network_interfaces do
+    case :net.if_names() do
+      {:ok, if_list} ->
+        if_list
+        |> Enum.map(fn {_index, name} -> to_string(name) end)
+        |> MapSet.new()
+
+      _ ->
+        MapSet.new()
+    end
+  end
+
+  defp preferred_transport(transports) do
+    available = MapSet.new(for transport <- transports, transport.available, do: transport.value)
+
+    cond do
+      MapSet.member?(available, "raw_socket_redundant") -> "raw_socket_redundant"
+      MapSet.member?(available, "raw_socket") -> "raw_socket"
+      true -> "udp"
+    end
   end
 end
