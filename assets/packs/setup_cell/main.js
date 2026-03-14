@@ -21,6 +21,7 @@ import {
   StatusBadge,
   SummaryGrid,
 } from "../../ui/react95";
+import { BusSetupFields, transportLabel, transportSourceLabel } from "../../ui/bus_setup";
 
 const CUSTOM = "__custom__";
 
@@ -123,24 +124,6 @@ function driverSelectValue(slave, availableDrivers) {
   return slave.driver === "" || known.includes(slave.driver) ? slave.driver : CUSTOM;
 }
 
-function interfaceOptions(state) {
-  const options = Array.isArray(state.available_interfaces) ? [...state.available_interfaces] : [];
-
-  if (state.interface && !options.includes(state.interface)) {
-    options.unshift(state.interface);
-  }
-
-  if (state.backup_interface && !options.includes(state.backup_interface)) {
-    options.unshift(state.backup_interface);
-  }
-
-  return options;
-}
-
-function transportSourceLabel(state) {
-  return state.transport_source || (state.transport === "udp" ? "udp:unconfigured" : state.interface || "n/a");
-}
-
 function masterStateTone(state) {
   const value = String(state ?? "").toLowerCase();
 
@@ -148,17 +131,6 @@ function masterStateTone(state) {
   if (["discovering", "awaiting_preop", "recovering", "scanning"].includes(value)) return "warn";
   if (["activation_blocked", "error", "down"].includes(value)) return "danger";
   return "neutral";
-}
-
-function transportLabel(transport) {
-  switch (transport) {
-    case "raw_redundant":
-      return "raw + redundant";
-    case "udp":
-      return "udp";
-    default:
-      return "raw";
-  }
 }
 
 function headerState(state) {
@@ -174,7 +146,6 @@ function SetupCell({ ctx, data }) {
   const [state, setState] = useState(data);
   const [udpPortInput, setUdpPortInput] = useState(String(data.port ?? 34980));
   const stateRef = useRef(state);
-  const interfaces = interfaceOptions(state);
   const displayState = headerState(state);
 
   useEffect(() => {
@@ -270,90 +241,14 @@ function SetupCell({ ctx, data }) {
         />
 
         <Panel title="Bus">
-          <Columns minWidth="14rem">
-            <ControlField label="Transport">
-              <Dropdown
-                className="ke95-fill"
-                value={state.transport}
-                onChange={(event) =>
-                  commit((previous) => markTransportManual(previous, { transport: event.target.value }))
-                }
-              >
-                <option value="raw">Raw socket</option>
-                <option value="raw_redundant">Raw + redundant</option>
-                <option value="udp">UDP</option>
-              </Dropdown>
-            </ControlField>
-
-            {state.transport === "udp" ? (
-              <>
-                <ControlField label="Host">
-                  <Input
-                    className="ke95-fill"
-                    placeholder="127.0.0.2"
-                    value={state.host}
-                    onChange={(event) =>
-                      updateLocal((previous) => markTransportManual(previous, { host: event.target.value }))
-                    }
-                    onBlur={(event) =>
-                      commit((previous) => markTransportManual(previous, { host: event.target.value }))
-                    }
-                  />
-                </ControlField>
-
-                <ControlField label="Port">
-                  <Input
-                    className="ke95-fill"
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={udpPortInput}
-                    onChange={(event) => setUdpPortInput(event.target.value)}
-                    onBlur={(event) => commitUdpPort(event.target.value)}
-                    onKeyDown={(event) => event.key === "Enter" && commitUdpPort(event.target.value)}
-                  />
-                </ControlField>
-              </>
-            ) : (
-              <>
-                <ControlField label="Interface" className="ke95-fill">
-                  <Dropdown
-                    className="ke95-fill"
-                    value={state.interface}
-                    onChange={(event) =>
-                      commit((previous) => markTransportManual(previous, { interface: event.target.value }))
-                    }
-                  >
-                    {interfaces.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </Dropdown>
-                </ControlField>
-
-                {state.transport === "raw_redundant" ? (
-                  <ControlField label="Backup interface" className="ke95-fill">
-                    <Dropdown
-                      className="ke95-fill"
-                      value={state.backup_interface}
-                      onChange={(event) =>
-                        commit((previous) =>
-                          markTransportManual(previous, { backup_interface: event.target.value })
-                        )
-                      }
-                    >
-                      {interfaces.map((name) => (
-                        <option key={name} value={name}>
-                          {name}
-                        </option>
-                      ))}
-                    </Dropdown>
-                  </ControlField>
-                ) : null}
-              </>
-            )}
-          </Columns>
+          <BusSetupFields
+            state={state}
+            udpPortInput={udpPortInput}
+            onUdpPortInputChange={setUdpPortInput}
+            onUdpPortCommit={commitUdpPort}
+            onLocalPatch={(patch) => updateLocal((previous) => markTransportManual(previous, patch))}
+            onPatch={(patch) => commit((previous) => markTransportManual(previous, patch))}
+          />
         </Panel>
 
         {state.error ? <MessageLine tone="error">{state.error}</MessageLine> : null}

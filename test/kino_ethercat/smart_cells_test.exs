@@ -1,7 +1,7 @@
 defmodule KinoEtherCAT.SmartCellsTest do
   use ExUnit.Case, async: true
 
-  alias KinoEtherCAT.SmartCells.{Setup, Simulator, SimulatorConfig, Visualizer}
+  alias KinoEtherCAT.SmartCells.{Setup, Simulator, SimulatorConfig, SlaveExplorer, Visualizer}
 
   test "setup cell persists static startup code from discovered slaves" do
     source =
@@ -172,6 +172,56 @@ defmodule KinoEtherCAT.SmartCellsTest do
     refute source =~ "frame_timeout_ms: 10"
   end
 
+  test "slave explorer capture surface renders scaffold source with default modules" do
+    source =
+      SlaveExplorer.to_source(%{
+        "surface" => "capture",
+        "slave" => "slave_1",
+        "capture_snapshot" => capture_snapshot()
+      })
+
+    assert source =~ "defmodule EtherCAT.Drivers.Slave1 do"
+    assert source =~ "defmodule EtherCAT.Drivers.Slave1.Simulator do"
+    assert source =~ "@behaviour EtherCAT.Slave.Driver"
+    assert source =~ "@behaviour EtherCAT.Simulator.DriverAdapter"
+    assert source =~ "ch1: 0x1A00"
+    assert {:ok, _quoted} = Code.string_to_quoted(source)
+    refute source =~ "EtherCAT.Capture.capture("
+    refute source =~ "definition_options ="
+    refute source =~ "EtherCAT.Capture.gen_driver("
+    refute source =~ "EtherCAT.Capture.gen_simulator("
+    refute source =~ "EtherCAT.Capture.render_driver("
+  end
+
+  test "slave explorer capture surface renders scaffold source with overrides and sdos" do
+    source =
+      SlaveExplorer.to_source(%{
+        "surface" => "capture",
+        "slave" => "slave_1",
+        "capture_snapshot" => capture_snapshot(mailbox_capture_fixture()),
+        "driver_name" => "EL1809",
+        "capture_sdos" => "0x1008:0x00\n0x1009:0x00",
+        "capture_signal_entries" => [
+          %{
+            "key" => "input:1a00",
+            "name" => "left_input",
+            "direction" => "input",
+            "pdo_index" => 0x1A00,
+            "bit_size" => 1
+          }
+        ]
+      })
+
+    assert source =~ "defmodule EtherCAT.Drivers.EL1809 do"
+    assert source =~ "defmodule EtherCAT.Drivers.EL1809.Simulator do"
+    assert source =~ "left_input: 0x1A00"
+    assert source =~ "def mailbox_config(_config)"
+    assert {:ok, _quoted} = Code.string_to_quoted(source)
+    refute source =~ "String.to_atom"
+    refute source =~ "EtherCAT.Capture.gen_driver("
+    refute source =~ "EtherCAT.Capture.capture("
+  end
+
   test "visualizer cell renders signal widget calls" do
     source =
       Visualizer.to_source(%{
@@ -319,6 +369,65 @@ defmodule KinoEtherCAT.SmartCellsTest do
 
     assert source =~ "topology: :redundant"
     assert source =~ ~s(raw: [primary: [interface: "veth-s0"], secondary: [interface: "veth-s1"]])
+  end
+
+  defp capture_snapshot(capture \\ capture_fixture()) do
+    capture
+    |> :erlang.term_to_binary(compressed: 6)
+    |> Base.encode64(padding: false)
+  end
+
+  defp capture_fixture do
+    identity = %{
+      vendor_id: 0x0000_0002,
+      product_code: 0x0711_3052,
+      revision: 0,
+      serial_number: 0
+    }
+
+    pdo_configs =
+      Enum.map(0..15, fn offset ->
+        %{
+          index: 0x1A00 + offset,
+          direction: :input,
+          sm_index: 3,
+          bit_size: 1,
+          bit_offset: offset
+        }
+      end)
+
+    %{
+      format: 1,
+      captured_at: "2026-03-14T00:00:00Z",
+      source: %{
+        master_state: :preop_ready,
+        bus: %{transport: :test},
+        slave_name: :slave_1,
+        station: 1
+      },
+      slave: %{
+        name: :slave_1,
+        station: 1,
+        al_state: :preop,
+        identity: identity,
+        esc: %{fmmu_count: 4, sm_count: 4},
+        driver: EtherCAT.Slave.Driver.Default,
+        coe: false,
+        configuration_error: nil
+      },
+      sii: %{
+        identity: identity,
+        mailbox_config: %{recv_offset: 0, recv_size: 0, send_offset: 0, send_size: 0},
+        sm_configs: [],
+        pdo_configs: pdo_configs
+      },
+      sdos: [],
+      warnings: []
+    }
+  end
+
+  defp mailbox_capture_fixture do
+    Map.put(capture_fixture(), :sdos, [%{index: 0x1008, subindex: 0x00, data: <<"EL1809", 0>>}])
   end
 
   defp transport_start_snippet(source, "udp") do

@@ -50,6 +50,7 @@ defmodule KinoEtherCAT.MixProject do
            lib/assets/setup_cell/build
            lib/assets/simulator_cell/build
            lib/assets/simulator_panel/build
+           lib/assets/slave_explorer_cell/build
            lib/assets/slave_panel/build
            lib/assets/switch/build
            lib/assets/value/build

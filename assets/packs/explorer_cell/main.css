@@ -1,3 +1,8 @@
 .ke95-explorer__textarea {
   min-height: 6rem;
 }
+
+.ke95-explorer__list {
+  margin: 0;
+  padding-left: 1.25rem;
+}

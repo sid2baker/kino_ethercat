@@ -1,0 +1,12 @@
+.ke95-slave-explorer__textarea {
+  min-height: 6rem;
+}
+
+.ke95-slave-explorer__list {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.ke95-slave-explorer__slave-row--selected td {
+  background: #dfe9f7;
+}

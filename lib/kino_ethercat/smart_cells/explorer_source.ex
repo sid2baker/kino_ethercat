@@ -3,6 +3,30 @@ defmodule KinoEtherCAT.SmartCells.ExplorerSource do
 
   alias KinoEtherCAT.SmartCells.Source
 
+  @spec render_capture(map()) :: String.t()
+  def render_capture(attrs) when is_map(attrs) do
+    with {:ok, capture} <- capture_snapshot_from_attrs(attrs),
+         {:ok, driver_name} <- capture_driver_name(attrs["driver_name"], attrs["slave"]),
+         {:ok, driver_module} <- capture_driver_module_literal(driver_name),
+         {:ok, simulator_module} <- capture_simulator_module_literal(driver_name),
+         {:ok, signal_names} <- capture_signal_name_overrides(attrs),
+         {:ok, source} <-
+           EtherCAT.Capture.render_driver(
+             capture,
+             Keyword.merge(
+               capture_sdo_opts(Map.get(attrs, "capture_sdos", "")),
+               module: driver_module,
+               simulator_module: simulator_module,
+               signal_names: signal_names
+             )
+           ) do
+      source
+    else
+      :error -> ""
+      {:error, _reason} -> ""
+    end
+  end
+
   @spec render_sdo(map()) :: String.t()
   def render_sdo(attrs) when is_map(attrs) do
     with {:ok, slave} <- slave_literal(attrs["slave"]),
@@ -405,6 +429,22 @@ defmodule KinoEtherCAT.SmartCells.ExplorerSource do
 
   defp slave_literal(_value), do: :error
 
+  defp capture_snapshot_from_attrs(attrs) when is_map(attrs) do
+    case Map.get(attrs, "capture_snapshot") do
+      value when is_binary(value) and value != "" ->
+        with {:ok, binary} <- Base.decode64(value, padding: false) do
+          {:ok, :erlang.binary_to_term(binary)}
+        else
+          :error -> {:error, :invalid_capture_snapshot}
+        end
+
+      _ ->
+        {:error, :missing_capture_snapshot}
+    end
+  rescue
+    _ -> {:error, :invalid_capture_snapshot}
+  end
+
   defp integer_literal(value) when is_integer(value) and value >= 0 do
     {:ok, Integer.to_string(value)}
   end
@@ -460,4 +500,206 @@ defmodule KinoEtherCAT.SmartCells.ExplorerSource do
   end
 
   defp binary_literal(_value), do: :error
+
+  defp capture_driver_module_literal(driver_name) when is_binary(driver_name) do
+    driver_name
+    |> capture_driver_module()
+    |> Source.module_literal()
+  end
+
+  defp capture_simulator_module_literal(driver_name) when is_binary(driver_name) do
+    driver_name
+    |> capture_simulator_module()
+    |> Source.module_literal()
+  end
+
+  defp capture_driver_name(value, slave_name) when is_binary(value) do
+    case normalize_capture_driver_name(value) do
+      "" -> {:ok, default_capture_driver_name(slave_name)}
+      normalized -> {:ok, normalized}
+    end
+  end
+
+  defp capture_driver_name(_value, slave_name), do: {:ok, default_capture_driver_name(slave_name)}
+
+  defp default_capture_driver_name(slave_name) do
+    normalize_capture_driver_name(to_string(slave_name || "Device"))
+    |> case do
+      "" -> "Device"
+      normalized -> normalized
+    end
+  end
+
+  defp capture_driver_module(driver_name) when is_binary(driver_name) do
+    "EtherCAT.Drivers." <> driver_name
+  end
+
+  defp capture_simulator_module(driver_name) when is_binary(driver_name) do
+    capture_driver_module(driver_name) <> ".Simulator"
+  end
+
+  defp normalize_capture_driver_name(value) when is_binary(value) do
+    value
+    |> String.trim()
+    |> String.trim_leading("Elixir.")
+    |> String.replace_prefix("EtherCAT.Drivers.", "")
+    |> String.replace_suffix(".Simulator", "")
+    |> String.split(".", trim: true)
+    |> Enum.map(&normalize_capture_driver_name_segment/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.join(".")
+  end
+
+  defp normalize_capture_driver_name(_value), do: ""
+
+  defp normalize_capture_driver_name_segment(segment) do
+    trimmed = String.trim(segment)
+
+    cond do
+      trimmed == "" ->
+        ""
+
+      String.match?(trimmed, ~r/^[A-Z][A-Za-z0-9_]*$/) ->
+        trimmed
+
+      true ->
+        trimmed
+        |> Macro.camelize()
+        |> ensure_driver_name_segment()
+    end
+  end
+
+  defp ensure_driver_name_segment(""), do: ""
+
+  defp ensure_driver_name_segment(segment) do
+    if String.match?(segment, ~r/^[A-Z][A-Za-z0-9_]*$/) do
+      segment
+    else
+      "Device" <> segment
+    end
+  end
+
+  defp capture_signal_entries_from_attrs(attrs) when is_map(attrs) do
+    attrs
+    |> Map.get("capture_signal_entries", [])
+    |> Enum.flat_map(fn
+      %{
+        "key" => key,
+        "name" => name,
+        "direction" => direction,
+        "pdo_index" => pdo_index,
+        "bit_size" => bit_size
+      } ->
+        [
+          %{
+            key: to_string(key),
+            name: normalize_capture_name(name),
+            direction: normalize_capture_direction(direction),
+            pdo_index: pdo_index,
+            bit_size: bit_size
+          }
+        ]
+
+      %{
+        key: key,
+        name: name,
+        direction: direction,
+        pdo_index: pdo_index,
+        bit_size: bit_size
+      } ->
+        [
+          %{
+            key: to_string(key),
+            name: normalize_capture_name(name),
+            direction: normalize_capture_direction(direction),
+            pdo_index: pdo_index,
+            bit_size: bit_size
+          }
+        ]
+
+      _ ->
+        []
+    end)
+    |> Enum.reject(&(is_nil(&1.direction) or is_nil(&1.pdo_index) or is_nil(&1.bit_size)))
+  end
+
+  defp capture_signal_name_overrides(attrs) when is_map(attrs) do
+    attrs
+    |> capture_signal_entries_from_attrs()
+    |> Enum.reduce({:ok, %{}}, fn entry, {:ok, acc} ->
+      {:ok, Map.put(acc, {entry.direction, entry.pdo_index}, entry.name)}
+    end)
+  end
+
+  defp normalize_capture_name(name) when is_binary(name) do
+    case String.trim(name) do
+      "" -> "signal"
+      trimmed -> trimmed
+    end
+  end
+
+  defp normalize_capture_name(name), do: to_string(name)
+
+  defp normalize_capture_direction(direction) when direction in [:input, :output], do: direction
+  defp normalize_capture_direction("input"), do: :input
+  defp normalize_capture_direction("output"), do: :output
+  defp normalize_capture_direction(_direction), do: nil
+
+  defp capture_sdo_opts(value) do
+    case parse_capture_sdos(value) do
+      [] -> []
+      refs -> [sdos: refs]
+    end
+  end
+
+  defp parse_capture_sdos(value) when is_binary(value) do
+    value
+    |> String.split(~r/[\n,;]+/, trim: true)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.reduce([], fn line, acc ->
+      case parse_capture_sdo(line) do
+        {:ok, ref} -> acc ++ [ref]
+        :error -> acc
+      end
+    end)
+  end
+
+  defp parse_capture_sdos(_value), do: []
+
+  defp parse_capture_sdo(line) do
+    case Regex.run(~r/^(.+?)(?::|\s+)(.+)$/, line, capture: :all_but_first) do
+      [index, subindex] ->
+        with {:ok, index} <- integer_value(index),
+             {:ok, subindex} <- integer_value(subindex) do
+          {:ok, {index, subindex}}
+        end
+
+      _ ->
+        :error
+    end
+  end
+
+  defp integer_value(value) when is_binary(value) do
+    trimmed = String.trim(value)
+
+    cond do
+      trimmed == "" ->
+        :error
+
+      String.starts_with?(String.downcase(trimmed), "0x") ->
+        case Integer.parse(String.slice(trimmed, 2..-1//1), 16) do
+          {integer, ""} when integer >= 0 -> {:ok, integer}
+          _ -> :error
+        end
+
+      true ->
+        case Integer.parse(trimmed) do
+          {integer, ""} when integer >= 0 -> {:ok, integer}
+          _ -> :error
+        end
+    end
+  end
+
+  defp integer_value(_value), do: :error
 end

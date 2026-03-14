@@ -3,7 +3,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
   use Kino.JS.Live
   use Kino.SmartCell, name: "EtherCAT Setup"
 
-  alias KinoEtherCAT.SmartCells.{SetupSource, SetupTransport, SimulatorConfig}
+  alias KinoEtherCAT.SmartCells.{BusSetup, SetupSource, SetupTransport, SimulatorConfig}
 
   @scan_await_timeout_ms 30_000
   @scan_frame_timeout_ms 25
@@ -22,9 +22,9 @@ defmodule KinoEtherCAT.SmartCells.Setup do
      assign(ctx,
        status: status,
        error: nil,
-       master_state: runtime_state(),
+       master_state: BusSetup.runtime_state(),
        master_pid: Process.whereis(EtherCAT.Master),
-       available_interfaces: available_interfaces(),
+       available_interfaces: BusSetup.available_interfaces(),
        transport_mode: config.transport_mode,
        transport: config.transport,
        interface: config.interface,
@@ -72,7 +72,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
 
     ctx =
       assign(ctx,
-        available_interfaces: available_interfaces(),
+        available_interfaces: BusSetup.available_interfaces(),
         transport_mode: config.transport_mode,
         transport: config.transport,
         interface: config.interface,
@@ -100,9 +100,9 @@ defmodule KinoEtherCAT.SmartCells.Setup do
         status: :discovered,
         slaves: slaves,
         error: nil,
-        master_state: runtime_state(),
+        master_state: BusSetup.runtime_state(),
         master_pid: Process.whereis(EtherCAT.Master),
-        available_interfaces: available_interfaces()
+        available_interfaces: BusSetup.available_interfaces()
       )
 
     broadcast_event(ctx, "snapshot", payload(ctx.assigns))
@@ -126,15 +126,15 @@ defmodule KinoEtherCAT.SmartCells.Setup do
   def handle_info(:poll_state, ctx) do
     Process.send_after(self(), :poll_state, 2_000)
 
-    state = runtime_state()
+    state = BusSetup.runtime_state()
     pid = Process.whereis(EtherCAT.Master)
-    interfaces = available_interfaces()
-    transport = ctx.assigns |> transport_assigns() |> SetupTransport.refresh_auto()
+    interfaces = BusSetup.available_interfaces()
+    transport = ctx.assigns |> BusSetup.transport_assigns() |> SetupTransport.refresh_auto()
 
     if state != ctx.assigns.master_state or
          pid != ctx.assigns.master_pid or
          interfaces != ctx.assigns.available_interfaces or
-         transport_changed?(ctx.assigns, transport) do
+         BusSetup.transport_changed?(ctx.assigns, transport) do
       ctx =
         ctx
         |> assign(master_state: state, master_pid: pid, available_interfaces: interfaces)
@@ -179,7 +179,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
 
   defp begin_scan(ctx) do
     server = self()
-    transport = ctx.assigns |> transport_assigns() |> SetupTransport.refresh_auto()
+    transport = ctx.assigns |> BusSetup.transport_assigns() |> SetupTransport.refresh_auto()
     ctx = assign_transport(ctx, transport)
 
     Task.start(fn ->
@@ -376,7 +376,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
   end
 
   defp payload(assigns) do
-    transport = transport_assigns(assigns)
+    transport = BusSetup.transport_assigns(assigns)
 
     %{
       transport_mode: Atom.to_string(assigns.transport_mode),
@@ -398,7 +398,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
       lock_timeout_ms: assigns.lock_timeout_ms,
       warmup_cycles: assigns.warmup_cycles,
       master_state: to_string(assigns.master_state),
-      master_pid: format_pid(assigns.master_pid),
+      master_pid: BusSetup.format_pid(assigns.master_pid),
       available_drivers:
         Enum.map(KinoEtherCAT.Driver.all(), fn %{module: mod, name: name} ->
           %{module: inspect(mod), name: name}
@@ -555,45 +555,8 @@ defmodule KinoEtherCAT.SmartCells.Setup do
     |> max(1)
   end
 
-  defp runtime_state do
-    case EtherCAT.state() do
-      {:ok, state} when is_atom(state) -> state
-      _ -> :idle
-    end
-  rescue
-    _ -> :idle
-  end
-
-  defp format_pid(pid) when is_pid(pid), do: inspect(pid)
-  defp format_pid(_pid), do: nil
-
-  defp available_interfaces do
-    "/sys/class/net"
-    |> File.ls()
-    |> case do
-      {:ok, interfaces} ->
-        interfaces
-        |> Enum.reject(&(&1 == "lo"))
-        |> Enum.sort()
-
-      {:error, _reason} ->
-        []
-    end
-  end
-
   defp normalize_string(value) when is_binary(value), do: String.trim(value)
   defp normalize_string(_value), do: ""
-
-  defp transport_assigns(assigns) do
-    %{
-      transport_mode: assigns.transport_mode,
-      transport: assigns.transport,
-      interface: assigns.interface,
-      backup_interface: assigns.backup_interface,
-      host: assigns.host,
-      port: assigns.port
-    }
-  end
 
   defp assign_transport(ctx, transport) do
     assign(ctx,
@@ -604,15 +567,6 @@ defmodule KinoEtherCAT.SmartCells.Setup do
       host: transport.host,
       port: transport.port
     )
-  end
-
-  defp transport_changed?(assigns, transport) do
-    assigns.transport_mode != transport.transport_mode or
-      assigns.transport != transport.transport or
-      assigns.interface != transport.interface or
-      assigns.backup_interface != transport.backup_interface or
-      assigns.host != transport.host or
-      assigns.port != transport.port
   end
 
   defp simulator_matches_start_opts?(%{udp: %{ip: host, port: port}}, start_opts) do
