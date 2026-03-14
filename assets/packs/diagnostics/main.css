@@ -60,6 +60,22 @@
   scrollbar-gutter: stable;
 }
 
+.ke95-diagnostics__table-event {
+  display: grid;
+  gap: 2px;
+}
+
+.ke95-diagnostics__port-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+}
+
+.ke95-diagnostics__port-card {
+  display: grid;
+  gap: 4px;
+}
+
 .ke95-diagnostics__event--info {
   background: #d9ecff;
 }
@@ -70,6 +86,10 @@
 
 .ke95-diagnostics__event--danger {
   background: #f8d4d4;
+}
+
+.ke95-diagnostics__event--neutral {
+  background: #ececec;
 }
 
 @media (min-width: 1200px) {

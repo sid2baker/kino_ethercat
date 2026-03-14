@@ -17,29 +17,7 @@ defmodule KinoEtherCAT.Diagnostics.Panel do
 
   @poll_ms 1_000
   @flush_ms 250
-  @events [
-    [:ethercat, :bus, :transact, :stop],
-    [:ethercat, :bus, :transact, :exception],
-    [:ethercat, :bus, :submission, :enqueued],
-    [:ethercat, :bus, :submission, :expired],
-    [:ethercat, :bus, :dispatch, :sent],
-    [:ethercat, :bus, :frame, :sent],
-    [:ethercat, :bus, :frame, :received],
-    [:ethercat, :bus, :frame, :dropped],
-    [:ethercat, :bus, :frame, :ignored],
-    [:ethercat, :bus, :link, :down],
-    [:ethercat, :bus, :link, :reconnected],
-    [:ethercat, :dc, :tick],
-    [:ethercat, :dc, :sync_diff, :observed],
-    [:ethercat, :dc, :lock, :changed],
-    [:ethercat, :domain, :cycle, :done],
-    [:ethercat, :domain, :cycle, :missed],
-    [:ethercat, :domain, :stopped],
-    [:ethercat, :domain, :crashed],
-    [:ethercat, :slave, :crashed],
-    [:ethercat, :slave, :health, :fault],
-    [:ethercat, :slave, :down]
-  ]
+  @events EtherCAT.Telemetry.events()
 
   @doc false
   def new do
@@ -146,7 +124,7 @@ defmodule KinoEtherCAT.Diagnostics.Panel do
       fn ->
         case EtherCAT.slaves() do
           {:ok, slaves} when is_list(slaves) ->
-            Enum.map(slaves, fn %{name: name, station: station} ->
+            Enum.map(slaves, fn %{name: name, station: station, fault: fault} ->
               {al_state, config_error} =
                 case EtherCAT.slave_info(name) do
                   {:ok, info} -> {info.al_state, info.configuration_error}
@@ -164,6 +142,7 @@ defmodule KinoEtherCAT.Diagnostics.Panel do
                 station: station,
                 al_state: to_string(al_state),
                 al_error: al_error,
+                fault: nil_or_string(fault),
                 configuration_error: nil_or_string(config_error)
               }
             end)
@@ -192,10 +171,15 @@ defmodule KinoEtherCAT.Diagnostics.Panel do
                 id: to_string(id),
                 cycle_time_us: cycle_time_us,
                 state: to_string(Map.get(info, :state, :unknown)),
+                cycle_health: format_cycle_health(Map.get(info, :cycle_health, :healthy)),
                 cycle_count: Map.get(info, :cycle_count, 0),
                 miss_count: Map.get(info, :miss_count, 0),
                 total_miss_count: Map.get(info, :total_miss_count, 0),
-                expected_wkc: Map.get(info, :expected_wkc, 0)
+                expected_wkc: Map.get(info, :expected_wkc, 0),
+                logical_base: Map.get(info, :logical_base),
+                image_size: Map.get(info, :image_size),
+                last_invalid_cycle_at_us: Map.get(info, :last_invalid_cycle_at_us),
+                last_invalid_reason: format_invalid_reason(Map.get(info, :last_invalid_reason))
               }
             end)
 
@@ -217,9 +201,12 @@ defmodule KinoEtherCAT.Diagnostics.Panel do
               active: active,
               lock_state: to_string(s.lock_state),
               reference_clock: nil_or_string(s.reference_clock),
+              reference_station: Map.get(s, :reference_station),
               max_sync_diff_ns: s.max_sync_diff_ns,
               cycle_ns: s.cycle_ns,
-              monitor_failures: s.monitor_failures
+              monitor_failures: s.monitor_failures,
+              await_lock: Map.get(s, :await_lock?),
+              lock_policy: nil_or_string(Map.get(s, :lock_policy))
             }
 
           _ ->
@@ -254,6 +241,19 @@ defmodule KinoEtherCAT.Diagnostics.Panel do
 
   defp nil_or_string(nil), do: nil
   defp nil_or_string(v), do: to_string(v)
+
+  defp format_cycle_health(:healthy), do: %{state: "healthy", detail: nil}
+
+  defp format_cycle_health({:invalid, reason}) do
+    %{state: "invalid", detail: format_invalid_reason(reason)}
+  end
+
+  defp format_cycle_health(other), do: %{state: to_string(other), detail: nil}
+
+  defp format_invalid_reason(nil), do: nil
+  defp format_invalid_reason(reason) when is_atom(reason), do: Atom.to_string(reason)
+  defp format_invalid_reason(reason) when is_binary(reason), do: reason
+  defp format_invalid_reason(reason), do: inspect(reason, pretty: false, limit: 20)
 
   defp format_failure(nil), do: nil
   defp format_failure(map), do: inspect(map, pretty: false, limit: 20)
