@@ -51,13 +51,7 @@ function SlaveExplorerCell({ ctx, payload }) {
     });
 
     ctx.handleSync(() => {
-      const active = document.activeElement;
-
-      if (active && ctx.root.contains(active) && typeof active.blur === "function") {
-        active.blur();
-      } else {
-        ctx.pushEvent("update", valuesRef.current);
-      }
+      ctx.pushEvent("update", valuesRef.current);
     });
   }, [ctx]);
 
@@ -194,6 +188,54 @@ function SlaveExplorerCell({ ctx, payload }) {
   );
 }
 
+function BufferedInput({ value, onCommit, ...props }) {
+  const [draft, setDraft] = useState(value ?? "");
+
+  useEffect(() => {
+    setDraft(value ?? "");
+  }, [value]);
+
+  const commit = () => {
+    const nextValue = draft ?? "";
+
+    if (nextValue !== (value ?? "")) {
+      onCommit(nextValue);
+    }
+  };
+
+  return (
+    <Input
+      {...props}
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.currentTarget.blur();
+        }
+      }}
+    />
+  );
+}
+
+function BufferedTextArea({ value, onCommit, ...props }) {
+  const [draft, setDraft] = useState(value ?? "");
+
+  useEffect(() => {
+    setDraft(value ?? "");
+  }, [value]);
+
+  const commit = () => {
+    const nextValue = draft ?? "";
+
+    if (nextValue !== (value ?? "")) {
+      onCommit(nextValue);
+    }
+  };
+
+  return <TextArea {...props} value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={commit} />;
+}
+
 function ConfigurationTab({ state, values, update }) {
   const driverName = values.driver_name ?? state.scaffold.driver_name ?? "";
 
@@ -206,7 +248,7 @@ function ConfigurationTab({ state, values, update }) {
               label="Driver Name"
               help="Generated modules are derived as EtherCAT.Drivers.<name> and EtherCAT.Drivers.<name>.Simulator."
             >
-              <Input className="ke95-fill" value={driverName} onChange={(event) => update({ driver_name: event.target.value })} />
+              <BufferedInput className="ke95-fill" value={driverName} onCommit={(driver_name) => update({ driver_name })} />
             </ControlField>
 
             <PropertyList
@@ -218,11 +260,11 @@ function ConfigurationTab({ state, values, update }) {
           </div>
 
           <ControlField label="SDOs" help="Optional object entries to include in the capture and scaffold.">
-            <TextArea
+            <BufferedTextArea
               className="ke95-fill ke95-slave-explorer__textarea"
               placeholder="0x1008:0x00&#10;0x1009:0x00"
               value={values.capture_sdos ?? state.scaffold.capture_sdos ?? ""}
-              onChange={(event) => update({ capture_sdos: event.target.value })}
+              onCommit={(capture_sdos) => update({ capture_sdos })}
             />
           </ControlField>
         </Stack>
@@ -240,10 +282,10 @@ function ConfigurationTab({ state, values, update }) {
                   label={entry.default_name}
                   help={`${entry.direction} • PDO 0x${entry.pdo_index.toString(16).toUpperCase()} • ${entry.bit_size} bit`}
                 >
-                  <Input
+                  <BufferedInput
                     className="ke95-fill"
                     value={values[fieldName] ?? entry.name}
-                    onChange={(event) => update({ [fieldName]: event.target.value })}
+                    onCommit={(nextValue) => update({ [fieldName]: nextValue })}
                   />
                 </ControlField>
               );
@@ -297,36 +339,36 @@ function InspectionTab({ ctx, state, values, update, selectedSlave }) {
 
             {String(values.register_mode ?? state.inspection.register.register_mode) === "preset" ? (
               <ControlField label="Preset">
-                <Input
+                <BufferedInput
                   className="ke95-fill"
                   value={values.register ?? state.inspection.register.register}
-                  onChange={(event) => update({ register: event.target.value })}
+                  onCommit={(register) => update({ register })}
                 />
               </ControlField>
             ) : (
               <>
                 <ControlField label="Address">
-                  <Input
+                  <BufferedInput
                     className="ke95-fill"
                     value={values.address ?? state.inspection.register.address}
-                    onChange={(event) => update({ address: event.target.value })}
+                    onCommit={(address) => update({ address })}
                   />
                 </ControlField>
                 <ControlField label="Size">
-                  <Input
+                  <BufferedInput
                     className="ke95-fill"
                     value={values.size ?? state.inspection.register.size}
-                    onChange={(event) => update({ size: event.target.value })}
+                    onCommit={(size) => update({ size })}
                   />
                 </ControlField>
               </>
             )}
 
             <ControlField label="Channel">
-              <Input
+              <BufferedInput
                 className="ke95-fill"
                 value={values.channel ?? state.inspection.register.channel}
-                onChange={(event) => update({ channel: event.target.value })}
+                onCommit={(channel) => update({ channel })}
               />
             </ControlField>
 
@@ -334,18 +376,18 @@ function InspectionTab({ ctx, state, values, update, selectedSlave }) {
               <>
                 {String(values.register_mode ?? state.inspection.register.register_mode) === "preset" ? (
                   <ControlField label="Value">
-                    <Input
+                    <BufferedInput
                       className="ke95-fill"
                       value={values.value ?? state.inspection.register.value}
-                      onChange={(event) => update({ value: event.target.value })}
+                      onCommit={(value) => update({ value })}
                     />
                   </ControlField>
                 ) : (
                   <ControlField label="Write Data">
-                    <TextArea
+                    <BufferedTextArea
                       className="ke95-fill ke95-slave-explorer__textarea"
                       value={values.write_data ?? state.inspection.register.write_data}
-                      onChange={(event) => update({ write_data: event.target.value })}
+                      onCommit={(write_data) => update({ write_data })}
                     />
                   </ControlField>
                 )}
@@ -375,27 +417,27 @@ function InspectionTab({ ctx, state, values, update, selectedSlave }) {
             </ControlField>
 
             <ControlField label="Index">
-              <Input
+              <BufferedInput
                 className="ke95-fill"
                 value={values.sdo_index ?? state.inspection.sdo.index}
-                onChange={(event) => update({ sdo_index: event.target.value })}
+                onCommit={(sdo_index) => update({ sdo_index })}
               />
             </ControlField>
 
             <ControlField label="Subindex">
-              <Input
+              <BufferedInput
                 className="ke95-fill"
                 value={values.sdo_subindex ?? state.inspection.sdo.subindex}
-                onChange={(event) => update({ sdo_subindex: event.target.value })}
+                onCommit={(sdo_subindex) => update({ sdo_subindex })}
               />
             </ControlField>
 
             {String(values.sdo_operation ?? state.inspection.sdo.operation) === "download" ? (
               <ControlField label="Write Data">
-                <TextArea
+                <BufferedTextArea
                   className="ke95-fill ke95-slave-explorer__textarea"
                   value={values.sdo_write_data ?? state.inspection.sdo.write_data}
-                  onChange={(event) => update({ sdo_write_data: event.target.value })}
+                  onCommit={(sdo_write_data) => update({ sdo_write_data })}
                 />
               </ControlField>
             ) : null}
@@ -431,27 +473,27 @@ function InspectionTab({ ctx, state, values, update, selectedSlave }) {
             {["read_words", "write_words"].includes(String(values.sii_operation ?? state.inspection.sii.operation)) ? (
               <>
                 <ControlField label="Word Address">
-                  <Input
+                  <BufferedInput
                     className="ke95-fill"
                     value={values.sii_word_address ?? state.inspection.sii.word_address}
-                    onChange={(event) => update({ sii_word_address: event.target.value })}
+                    onCommit={(sii_word_address) => update({ sii_word_address })}
                   />
                 </ControlField>
 
                 {String(values.sii_operation ?? state.inspection.sii.operation) === "read_words" ? (
                   <ControlField label="Word Count">
-                    <Input
+                    <BufferedInput
                       className="ke95-fill"
                       value={values.sii_word_count ?? state.inspection.sii.word_count}
-                      onChange={(event) => update({ sii_word_count: event.target.value })}
+                      onCommit={(sii_word_count) => update({ sii_word_count })}
                     />
                   </ControlField>
                 ) : (
                   <ControlField label="Write Data">
-                    <TextArea
+                    <BufferedTextArea
                       className="ke95-fill ke95-slave-explorer__textarea"
                       value={values.sii_write_data ?? state.inspection.sii.write_data}
-                      onChange={(event) => update({ sii_write_data: event.target.value })}
+                      onCommit={(sii_write_data) => update({ sii_write_data })}
                     />
                   </ControlField>
                 )}
