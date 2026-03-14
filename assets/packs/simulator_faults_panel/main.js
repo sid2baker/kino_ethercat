@@ -224,7 +224,8 @@ function SimulatorFaultsPanel({ ctx, data }) {
   }, [runtimePlan, runtimePlanOptions]);
 
   const disabled = snapshot.status !== "running";
-  const udpDisabled = disabled || !snapshot.udp_faults?.enabled;
+  const udpEnabled = Boolean(snapshot.udp_faults?.enabled);
+  const udpDisabled = disabled || !udpEnabled;
   const runtimeFaults = snapshot.runtime_faults ?? {};
   const udpFaults = snapshot.udp_faults ?? {};
   const status = <StatusBadge tone={statusTone(snapshot.status)}>{snapshot.status}</StatusBadge>;
@@ -267,12 +268,14 @@ function SimulatorFaultsPanel({ ctx, data }) {
               >
                 Clear runtime
               </Button>
-              <Button
-                disabled={udpDisabled || udpFaults.active_count === 0}
-                onClick={() => pushAction("clear_udp_faults")}
-              >
-                Clear UDP
-              </Button>
+              {udpEnabled ? (
+                <Button
+                  disabled={udpDisabled || udpFaults.active_count === 0}
+                  onClick={() => pushAction("clear_udp_faults")}
+                >
+                  Clear UDP
+                </Button>
+              ) : null}
               <Button
                 disabled={disabled || (runtimeFaults.active_count === 0 && udpFaults.active_count === 0)}
                 onClick={() => pushAction("clear_faults")}
@@ -355,46 +358,48 @@ function SimulatorFaultsPanel({ ctx, data }) {
                 </InlineButtons>
               </Stack>
 
-              <Stack compact className="ke95-simulator-faults-panel__quick-group">
-                <div className="ke95-kicker">UDP</div>
-                <SectionCopy>Use these when you only want to disturb the transport replies.</SectionCopy>
-                <InlineButtons>
-                  <Button
-                    disabled={udpDisabled}
-                    onClick={() =>
-                      pushAction("apply_udp_fault", {
-                        mode: "truncate",
-                        plan: "next",
-                      })
-                    }
-                  >
-                    Truncate next reply
-                  </Button>
-                  <Button
-                    disabled={udpDisabled}
-                    onClick={() =>
-                      pushAction("apply_udp_fault", {
-                        mode: "wrong_idx",
-                        plan: "count",
-                        count: "3",
-                      })
-                    }
-                  >
-                    Wrong index for 3 replies
-                  </Button>
-                  <Button
-                    disabled={udpDisabled}
-                    onClick={() =>
-                      pushAction("apply_udp_fault", {
-                        mode: "replay_previous",
-                        plan: "next",
-                      })
-                    }
-                  >
-                    Replay previous reply
-                  </Button>
-                </InlineButtons>
-              </Stack>
+              {udpEnabled ? (
+                <Stack compact className="ke95-simulator-faults-panel__quick-group">
+                  <div className="ke95-kicker">UDP</div>
+                  <SectionCopy>Use these when you only want to disturb the transport replies.</SectionCopy>
+                  <InlineButtons>
+                    <Button
+                      disabled={udpDisabled}
+                      onClick={() =>
+                        pushAction("apply_udp_fault", {
+                          mode: "truncate",
+                          plan: "next",
+                        })
+                      }
+                    >
+                      Truncate next reply
+                    </Button>
+                    <Button
+                      disabled={udpDisabled}
+                      onClick={() =>
+                        pushAction("apply_udp_fault", {
+                          mode: "wrong_idx",
+                          plan: "count",
+                          count: "3",
+                        })
+                      }
+                    >
+                      Wrong index for 3 replies
+                    </Button>
+                    <Button
+                      disabled={udpDisabled}
+                      onClick={() =>
+                        pushAction("apply_udp_fault", {
+                          mode: "replay_previous",
+                          plan: "next",
+                        })
+                      }
+                    >
+                      Replay previous reply
+                    </Button>
+                  </InlineButtons>
+                </Stack>
+              ) : null}
             </Columns>
           </Stack>
         </Panel>
@@ -408,11 +413,13 @@ function SimulatorFaultsPanel({ ctx, data }) {
                 <PropertyList items={runtimeProperties} />
               </Stack>
 
-              <Stack compact>
-                <div className="ke95-kicker">UDP</div>
-                <SectionCopy>{udpFaults.summary ?? "UDP disabled."}</SectionCopy>
-                <PropertyList items={udpProperties} />
-              </Stack>
+              {udpEnabled ? (
+                <Stack compact>
+                  <div className="ke95-kicker">UDP</div>
+                  <SectionCopy>{udpFaults.summary ?? "UDP disabled."}</SectionCopy>
+                  <PropertyList items={udpProperties} />
+                </Stack>
+              ) : null}
             </Columns>
 
             <Stack compact className="ke95-simulator-faults-panel__tables">
@@ -440,14 +447,16 @@ function SimulatorFaultsPanel({ ctx, data }) {
                 <ScheduledFaultTable faults={runtimeFaults.scheduled_faults} />
               </div>
 
-              <div className="ke95-simulator-faults-panel__table-section">
-                <div className="ke95-kicker">Queued UDP reply faults</div>
-                <SectionCopy>These affect future UDP replies without changing simulator state directly.</SectionCopy>
-                <FaultTable
-                  labels={udpFaults.pending_labels}
-                  emptyText="No UDP reply faults are queued."
-                />
-              </div>
+              {udpEnabled ? (
+                <div className="ke95-simulator-faults-panel__table-section">
+                  <div className="ke95-kicker">Queued UDP reply faults</div>
+                  <SectionCopy>These affect future UDP replies without changing simulator state directly.</SectionCopy>
+                  <FaultTable
+                    labels={udpFaults.pending_labels}
+                    emptyText="No UDP reply faults are queued."
+                  />
+                </div>
+              ) : null}
             </Stack>
           </Stack>
         </Panel>
@@ -670,66 +679,68 @@ function SimulatorFaultsPanel({ ctx, data }) {
           </Stack>
         </Panel>
 
-        <Panel title="Advanced UDP builder">
-          <Stack compact>
-            <SectionCopy>
-              Keep this for transport-specific cases like scripts, truncation, and wrong datagram indexes.
-            </SectionCopy>
+        {udpEnabled ? (
+          <Panel title="Advanced UDP builder">
+            <Stack compact>
+              <SectionCopy>
+                Keep this for transport-specific cases like scripts, truncation, and wrong datagram indexes.
+              </SectionCopy>
 
-            <Columns minWidth="12rem">
-              <ControlField label="Reply fault">
-                <Dropdown value={udpMode} onChange={(event) => setUdpMode(event.target.value)}>
-                  {UDP_MODES.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </Dropdown>
-              </ControlField>
-
-              <ControlField label="Plan">
-                <Dropdown value={udpPlan} onChange={(event) => setUdpPlan(event.target.value)}>
-                  <option value="next">Next reply</option>
-                  <option value="count">Next N replies</option>
-                  <option value="script">Script</option>
-                </Dropdown>
-              </ControlField>
-
-              {udpPlan === "count" ? (
-                <ControlField label="Count">
-                  <Input value={udpCount} onChange={(event) => setUdpCount(event.target.value)} />
+              <Columns minWidth="12rem">
+                <ControlField label="Reply fault">
+                  <Dropdown value={udpMode} onChange={(event) => setUdpMode(event.target.value)}>
+                    {UDP_MODES.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Dropdown>
                 </ControlField>
-              ) : null}
 
-              {udpPlan === "script" ? (
-                <ControlField label="Script">
-                  <TextArea
-                    rows={3}
-                    className="ke95-simulator-faults-panel__script"
-                    value={udpScript}
-                    onChange={(event) => setUdpScript(event.target.value)}
-                  />
+                <ControlField label="Plan">
+                  <Dropdown value={udpPlan} onChange={(event) => setUdpPlan(event.target.value)}>
+                    <option value="next">Next reply</option>
+                    <option value="count">Next N replies</option>
+                    <option value="script">Script</option>
+                  </Dropdown>
                 </ControlField>
-              ) : null}
 
-              <InlineButtons className="ke95-simulator-faults-panel__row-actions">
-                <Button
-                  disabled={udpDisabled}
-                  onClick={() =>
-                    pushAction("apply_udp_fault", {
-                      mode: udpMode,
-                      plan: udpPlan,
-                      count: udpCount,
-                      script: udpScript,
-                    })
-                  }
-                >
-                  {udpApplyLabel}
-                </Button>
-              </InlineButtons>
-            </Columns>
-          </Stack>
-        </Panel>
+                {udpPlan === "count" ? (
+                  <ControlField label="Count">
+                    <Input value={udpCount} onChange={(event) => setUdpCount(event.target.value)} />
+                  </ControlField>
+                ) : null}
+
+                {udpPlan === "script" ? (
+                  <ControlField label="Script">
+                    <TextArea
+                      rows={3}
+                      className="ke95-simulator-faults-panel__script"
+                      value={udpScript}
+                      onChange={(event) => setUdpScript(event.target.value)}
+                    />
+                  </ControlField>
+                ) : null}
+
+                <InlineButtons className="ke95-simulator-faults-panel__row-actions">
+                  <Button
+                    disabled={udpDisabled}
+                    onClick={() =>
+                      pushAction("apply_udp_fault", {
+                        mode: udpMode,
+                        plan: udpPlan,
+                        count: udpCount,
+                        script: udpScript,
+                      })
+                    }
+                  >
+                    {udpApplyLabel}
+                  </Button>
+                </InlineButtons>
+              </Columns>
+            </Stack>
+          </Panel>
+        ) : null}
       </Stack>
     </Shell>
   );

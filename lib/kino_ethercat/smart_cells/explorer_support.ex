@@ -4,7 +4,7 @@ defmodule KinoEtherCAT.SmartCells.ExplorerSupport do
   @spec slave_suggestions(:all | :coe) :: [map()]
   def slave_suggestions(filter \\ :all) do
     case safe(fn -> EtherCAT.slaves() end, []) do
-      slaves when is_list(slaves) ->
+      {:ok, slaves} when is_list(slaves) ->
         Enum.flat_map(slaves, fn %{name: name, station: station} ->
           case safe(fn -> EtherCAT.slave_info(name) end, {:error, :not_found}) do
             {:ok, info} ->

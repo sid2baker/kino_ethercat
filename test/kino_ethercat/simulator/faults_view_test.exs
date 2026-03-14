@@ -113,4 +113,22 @@ defmodule KinoEtherCAT.Simulator.FaultsViewTest do
     assert outputs.al_error == "latched"
     assert outputs.al_status_code == "0x0011"
   end
+
+  test "payload marks udp faults disabled when simulator has no udp transport" do
+    _ = Simulator.stop()
+
+    devices = [
+      Slave.from_driver(KinoEtherCAT.Driver.EK1100, name: :coupler),
+      Slave.from_driver(KinoEtherCAT.Driver.EL1809, name: :inputs),
+      Slave.from_driver(KinoEtherCAT.Driver.EL2809, name: :outputs)
+    ]
+
+    {:ok, _supervisor} = Simulator.start(devices: devices)
+
+    payload = FaultsView.payload()
+
+    assert payload.udp_faults.enabled == false
+    assert payload.udp_faults.summary == "UDP disabled."
+    assert Enum.all?(payload.summary, &(&1.label != "UDP faults"))
+  end
 end

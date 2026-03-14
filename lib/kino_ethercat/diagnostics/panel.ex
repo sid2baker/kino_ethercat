@@ -145,7 +145,7 @@ defmodule KinoEtherCAT.Diagnostics.Panel do
     safe(
       fn ->
         case EtherCAT.slaves() do
-          slaves when is_list(slaves) ->
+          {:ok, slaves} when is_list(slaves) ->
             Enum.map(slaves, fn %{name: name, station: station} ->
               {al_state, config_error} =
                 case EtherCAT.slave_info(name) do
@@ -180,7 +180,7 @@ defmodule KinoEtherCAT.Diagnostics.Panel do
     safe(
       fn ->
         case EtherCAT.domains() do
-          domains when is_list(domains) ->
+          {:ok, domains} when is_list(domains) ->
             Enum.map(domains, fn {id, cycle_time_us, _pid} ->
               info =
                 case EtherCAT.domain_info(id) do
@@ -211,7 +211,7 @@ defmodule KinoEtherCAT.Diagnostics.Panel do
     safe(
       fn ->
         case EtherCAT.dc_status() do
-          %{configured?: configured, active?: active} = s ->
+          {:ok, %{configured?: configured, active?: active} = s} ->
             %{
               configured: configured,
               active: active,
@@ -232,14 +232,14 @@ defmodule KinoEtherCAT.Diagnostics.Panel do
 
   defp fetch_state do
     case safe(fn -> EtherCAT.state() end, :idle) do
-      state when is_atom(state) -> to_string(state)
+      {:ok, state} when is_atom(state) -> to_string(state)
       _ -> "idle"
     end
   end
 
   defp fetch_last_failure do
     case safe(fn -> EtherCAT.last_failure() end, nil) do
-      failure when is_map(failure) -> format_failure(failure)
+      {:ok, failure} when is_map(failure) -> format_failure(failure)
       _ -> nil
     end
   end

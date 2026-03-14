@@ -517,9 +517,11 @@ defmodule KinoEtherCAT.Runtime do
 
   defp fetch_bus_state do
     case safe(fn -> EtherCAT.bus() end, nil) do
-      nil -> {:error, :not_started}
+      {:ok, nil} -> {:error, :not_started}
+      {:ok, bus_server} -> fetch_statem_state(bus_server)
       {:error, _} = error -> error
-      bus_server -> fetch_statem_state(bus_server)
+      nil -> {:error, :not_started}
+      _ -> {:error, :not_started}
     end
   end
 
@@ -588,31 +590,31 @@ defmodule KinoEtherCAT.Runtime do
 
   defp runtime_slaves do
     case safe(fn -> EtherCAT.slaves() end, []) do
-      slaves when is_list(slaves) -> slaves
+      {:ok, slaves} when is_list(slaves) -> slaves
       _ -> []
     end
   end
 
   defp runtime_domains do
     case safe(fn -> EtherCAT.domains() end, []) do
-      domains when is_list(domains) -> domains
+      {:ok, domains} when is_list(domains) -> domains
       _ -> []
     end
   end
 
   defp runtime_state(default) do
     case safe(fn -> EtherCAT.state() end, default) do
-      state when is_atom(state) -> state
+      {:ok, state} when is_atom(state) -> state
       _ -> default
     end
   end
 
   defp fetch_dc_status do
     case safe(fn -> EtherCAT.dc_status() end, nil) do
-      resource when is_struct(resource, EtherCAT.DC) ->
+      {:ok, resource} when is_struct(resource, EtherCAT.DC) ->
         resource
 
-      resource when is_struct(resource, EtherCAT.DC.Status) ->
+      {:ok, resource} when is_struct(resource, EtherCAT.DC.Status) ->
         resource
 
       _ ->
@@ -622,9 +624,11 @@ defmodule KinoEtherCAT.Runtime do
 
   defp current_bus_server do
     case safe(fn -> EtherCAT.bus() end, nil) do
-      nil -> {:error, :not_started}
+      {:ok, nil} -> {:error, :not_started}
+      {:ok, bus_server} -> {:ok, bus_server}
       {:error, _} = error -> error
-      bus_server -> {:ok, bus_server}
+      nil -> {:error, :not_started}
+      _ -> {:error, :not_started}
     end
   end
 

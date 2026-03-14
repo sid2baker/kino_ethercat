@@ -257,7 +257,7 @@ defmodule KinoEtherCAT.Introduction.View do
   defp master_snapshot do
     state =
       case safe(fn -> EtherCAT.state() end, :idle) do
-        value when is_atom(value) -> value
+        {:ok, value} when is_atom(value) -> value
         _ -> :idle
       end
 
@@ -293,7 +293,7 @@ defmodule KinoEtherCAT.Introduction.View do
 
   defp first_domain_snapshot do
     case safe(fn -> EtherCAT.domains() end, []) do
-      [{id, _cycle_time_us, _pid} | _rest] ->
+      {:ok, [{id, _cycle_time_us, _pid} | _rest]} ->
         case safe(fn -> EtherCAT.domain_info(id) end, {:error, :not_found}) do
           {:ok, info} -> info
           _ -> nil

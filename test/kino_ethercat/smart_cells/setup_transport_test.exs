@@ -75,4 +75,32 @@ defmodule KinoEtherCAT.SmartCells.SetupTransportTest do
     assert config.host == "127.0.0.2"
     assert config.port == 40_000
   end
+
+  test "source config supports redundant raw transport" do
+    assert {:ok,
+            %{
+              transport: :raw_redundant,
+              interface: "eth0",
+              backup_interface: "eth1",
+              host: nil,
+              bind_ip: nil
+            }} =
+             SetupTransport.source_config(%{
+               transport_mode: :manual,
+               transport: :raw_redundant,
+               interface: "eth0",
+               backup_interface: "eth1",
+               host: "127.0.0.2",
+               port: 0x88A4
+             })
+
+    assert SetupTransport.summary_label(%{
+             transport_mode: :manual,
+             transport: :raw_redundant,
+             interface: "eth0",
+             backup_interface: "eth1",
+             host: "127.0.0.2",
+             port: 0x88A4
+           }) == "eth0 + eth1"
+  end
 end

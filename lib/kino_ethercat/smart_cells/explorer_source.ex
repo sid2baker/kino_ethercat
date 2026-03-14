@@ -68,7 +68,7 @@ defmodule KinoEtherCAT.SmartCells.ExplorerSource do
             Source.multiline([
               aliases,
               "register = #{spec.source}\n\n",
-              "with bus when not is_nil(bus) <- EtherCAT.bus(),\n",
+              "with {:ok, bus} when not is_nil(bus) <- EtherCAT.bus(),\n",
               "     {:ok, %{station: station}} <- EtherCAT.slave_info(#{slave}),\n",
               "     {:ok, [%{wkc: wkc}]} <-\n",
               "       EtherCAT.Bus.transaction(bus, Transaction.fpwr(station, register)) do\n",
@@ -95,7 +95,7 @@ defmodule KinoEtherCAT.SmartCells.ExplorerSource do
             Source.multiline([
               aliases,
               "register = #{spec.source}\n\n",
-              "with bus when not is_nil(bus) <- EtherCAT.bus(),\n",
+              "with {:ok, bus} when not is_nil(bus) <- EtherCAT.bus(),\n",
               "     {:ok, %{station: station}} <- EtherCAT.slave_info(#{slave}),\n",
               "     {:ok, [%{data: data, wkc: wkc}]} <-\n",
               "       EtherCAT.Bus.transaction(bus, Transaction.fprd(station, register)) do\n",
@@ -164,7 +164,7 @@ defmodule KinoEtherCAT.SmartCells.ExplorerSource do
           :reload ->
             Source.multiline([
               aliases,
-              "with bus when not is_nil(bus) <- EtherCAT.bus(),\n",
+              "with {:ok, bus} when not is_nil(bus) <- EtherCAT.bus(),\n",
               "     {:ok, %{station: station}} <- EtherCAT.slave_info(#{slave}),\n",
               "     :ok <- SII.reload(bus, station) do\n",
               "  %{operation: :reload, slave: #{slave}, station: station, result: :ok}\n",
@@ -174,7 +174,7 @@ defmodule KinoEtherCAT.SmartCells.ExplorerSource do
           :dump ->
             Source.multiline([
               aliases,
-              "with bus when not is_nil(bus) <- EtherCAT.bus(),\n",
+              "with {:ok, bus} when not is_nil(bus) <- EtherCAT.bus(),\n",
               "     {:ok, %{station: station}} <- EtherCAT.slave_info(#{slave}),\n",
               "     {:ok, binary} <- SII.dump(bus, station) do\n",
               "  %{\n",
@@ -193,7 +193,7 @@ defmodule KinoEtherCAT.SmartCells.ExplorerSource do
                  {:ok, word_count} <- integer_literal(attrs["word_count"]) do
               Source.multiline([
                 aliases,
-                "with bus when not is_nil(bus) <- EtherCAT.bus(),\n",
+                "with {:ok, bus} when not is_nil(bus) <- EtherCAT.bus(),\n",
                 "     {:ok, %{station: station}} <- EtherCAT.slave_info(#{slave}),\n",
                 "     {:ok, binary} <- SII.read(bus, station, #{word_address}, #{word_count}) do\n",
                 "  %{\n",
@@ -218,7 +218,7 @@ defmodule KinoEtherCAT.SmartCells.ExplorerSource do
               Source.multiline([
                 aliases,
                 "payload = #{payload}\n\n",
-                "with bus when not is_nil(bus) <- EtherCAT.bus(),\n",
+                "with {:ok, bus} when not is_nil(bus) <- EtherCAT.bus(),\n",
                 "     {:ok, %{station: station}} <- EtherCAT.slave_info(#{slave}),\n",
                 "     :ok <- SII.write(bus, station, #{word_address}, payload) do\n",
                 "  %{\n",
@@ -378,7 +378,7 @@ defmodule KinoEtherCAT.SmartCells.ExplorerSource do
   defp simple_sii_call(aliases, slave, call_source, operation_name) do
     Source.multiline([
       aliases,
-      "with bus when not is_nil(bus) <- EtherCAT.bus(),\n",
+      "with {:ok, bus} when not is_nil(bus) <- EtherCAT.bus(),\n",
       "     {:ok, %{station: station}} <- EtherCAT.slave_info(#{slave}),\n",
       "     {:ok, result} <- #{call_source} do\n",
       "  %{operation: :#{operation_name}, slave: #{slave}, station: station, result: result}\n",

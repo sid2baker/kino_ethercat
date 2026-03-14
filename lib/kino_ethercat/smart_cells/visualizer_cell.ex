@@ -124,13 +124,21 @@ defmodule KinoEtherCAT.SmartCells.Visualizer do
   end
 
   defp fetch_signals do
-    signals =
-      EtherCAT.slaves()
-      |> Enum.with_index()
-      |> Enum.flat_map(fn {slave, slave_index} -> slave_signal_entries(slave, slave_index) end)
-      |> Enum.sort_by(&signal_sort_key/1)
+    case EtherCAT.slaves() do
+      {:ok, slaves} when is_list(slaves) ->
+        signals =
+          slaves
+          |> Enum.with_index()
+          |> Enum.flat_map(fn {slave, slave_index} ->
+            slave_signal_entries(slave, slave_index)
+          end)
+          |> Enum.sort_by(&signal_sort_key/1)
 
-    {:ok, signals}
+        {:ok, signals}
+
+      _ ->
+        {:not_running, []}
+    end
   rescue
     _ -> {:not_running, []}
   end

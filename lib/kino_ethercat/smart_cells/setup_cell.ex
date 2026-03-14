@@ -3,7 +3,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
   use Kino.JS.Live
   use Kino.SmartCell, name: "EtherCAT Setup"
 
-  alias KinoEtherCAT.SmartCells.{SetupSource, SetupTransport}
+  alias KinoEtherCAT.SmartCells.{SetupSource, SetupTransport, SimulatorConfig}
 
   @scan_await_timeout_ms 30_000
   @scan_frame_timeout_ms 25
@@ -28,6 +28,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
        transport_mode: config.transport_mode,
        transport: config.transport,
        interface: config.interface,
+       backup_interface: config.backup_interface,
        host: config.host,
        port: config.port,
        slaves: config.slaves,
@@ -75,6 +76,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
         transport_mode: config.transport_mode,
         transport: config.transport,
         interface: config.interface,
+        backup_interface: config.backup_interface,
         host: config.host,
         port: config.port,
         slaves: config.slaves,
@@ -151,6 +153,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
       "transport_mode" => Atom.to_string(ctx.assigns.transport_mode),
       "transport" => Atom.to_string(ctx.assigns.transport),
       "interface" => ctx.assigns.interface,
+      "backup_interface" => ctx.assigns.backup_interface,
       "host" => ctx.assigns.host,
       "port" => ctx.assigns.port,
       "slaves" => ctx.assigns.slaves,
@@ -277,7 +280,13 @@ defmodule KinoEtherCAT.SmartCells.Setup do
     default_domain_id = first_domain_id(domains)
     simulator_name_index = simulator_name_index(start_opts)
 
-    EtherCAT.slaves()
+    slaves =
+      case EtherCAT.slaves() do
+        {:ok, runtime_slaves} when is_list(runtime_slaves) -> runtime_slaves
+        _ -> []
+      end
+
+    slaves
     |> Enum.with_index()
     |> Enum.map(fn {%{name: name, station: station}, index} ->
       identity =
@@ -350,11 +359,8 @@ defmodule KinoEtherCAT.SmartCells.Setup do
   end
 
   defp simulator_name_index(start_opts) when is_list(start_opts) do
-    host = Keyword.get(start_opts, :host)
-    port = Keyword.get(start_opts, :port)
-
-    with :udp <- Keyword.get(start_opts, :transport, :raw),
-         {:ok, %{udp: %{ip: ^host, port: ^port}, slaves: slaves}} <- EtherCAT.Simulator.info() do
+    with {:ok, %{slaves: slaves} = info} <- EtherCAT.Simulator.info(),
+         true <- simulator_matches_start_opts?(info, start_opts) do
       %{
         by_station:
           Map.new(slaves, fn %{station: station, name: name} ->
@@ -376,6 +382,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
       transport_mode: Atom.to_string(assigns.transport_mode),
       transport: Atom.to_string(assigns.transport),
       interface: assigns.interface,
+      backup_interface: assigns.backup_interface,
       host: assigns.host,
       port: assigns.port,
       transport_source: SetupTransport.summary_label(transport),
@@ -411,6 +418,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
       transport_mode: transport.transport_mode,
       transport: transport.transport,
       interface: transport.interface,
+      backup_interface: transport.backup_interface,
       host: transport.host,
       port: transport.port,
       domains: domains,
@@ -549,7 +557,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
 
   defp runtime_state do
     case EtherCAT.state() do
-      state when is_atom(state) -> state
+      {:ok, state} when is_atom(state) -> state
       _ -> :idle
     end
   rescue
@@ -581,6 +589,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
       transport_mode: assigns.transport_mode,
       transport: assigns.transport,
       interface: assigns.interface,
+      backup_interface: assigns.backup_interface,
       host: assigns.host,
       port: assigns.port
     }
@@ -591,6 +600,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
       transport_mode: transport.transport_mode,
       transport: transport.transport,
       interface: transport.interface,
+      backup_interface: transport.backup_interface,
       host: transport.host,
       port: transport.port
     )
@@ -600,9 +610,34 @@ defmodule KinoEtherCAT.SmartCells.Setup do
     assigns.transport_mode != transport.transport_mode or
       assigns.transport != transport.transport or
       assigns.interface != transport.interface or
+      assigns.backup_interface != transport.backup_interface or
       assigns.host != transport.host or
       assigns.port != transport.port
   end
+
+  defp simulator_matches_start_opts?(%{udp: %{ip: host, port: port}}, start_opts) do
+    Keyword.get(start_opts, :transport, :raw) == :udp and
+      Keyword.get(start_opts, :host) == host and
+      Keyword.get(start_opts, :port) == port
+  end
+
+  defp simulator_matches_start_opts?(%{raw: %{interface: interface}}, start_opts) do
+    interface == SimulatorConfig.raw_simulator_interface() and
+      Keyword.get(start_opts, :interface) == SimulatorConfig.raw_master_interface()
+  end
+
+  defp simulator_matches_start_opts?(
+         %{raw: %{primary: %{interface: primary}, secondary: %{interface: secondary}}},
+         start_opts
+       ) do
+    primary == SimulatorConfig.redundant_simulator_primary_interface() and
+      secondary == SimulatorConfig.redundant_simulator_secondary_interface() and
+      Keyword.get(start_opts, :interface) == SimulatorConfig.redundant_master_primary_interface() and
+      Keyword.get(start_opts, :backup_interface) ==
+        SimulatorConfig.redundant_master_secondary_interface()
+  end
+
+  defp simulator_matches_start_opts?(_info, _start_opts), do: false
 
   defp positive_integer(value, _default) when is_integer(value) and value > 0, do: value
 

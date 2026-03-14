@@ -39,6 +39,7 @@ function serialize(state) {
     transport_mode: state.transport_mode,
     transport: state.transport,
     interface: state.interface,
+    backup_interface: state.backup_interface,
     host: state.host,
     port: state.port,
     domains: state.domains,
@@ -129,13 +130,15 @@ function interfaceOptions(state) {
     options.unshift(state.interface);
   }
 
+  if (state.backup_interface && !options.includes(state.backup_interface)) {
+    options.unshift(state.backup_interface);
+  }
+
   return options;
 }
 
 function transportSourceLabel(state) {
-  return state.transport === "udp"
-    ? state.transport_source || "udp:unconfigured"
-    : state.interface || "n/a";
+  return state.transport_source || (state.transport === "udp" ? "udp:unconfigured" : state.interface || "n/a");
 }
 
 function masterStateTone(state) {
@@ -145,6 +148,17 @@ function masterStateTone(state) {
   if (["discovering", "awaiting_preop", "recovering", "scanning"].includes(value)) return "warn";
   if (["activation_blocked", "error", "down"].includes(value)) return "danger";
   return "neutral";
+}
+
+function transportLabel(transport) {
+  switch (transport) {
+    case "raw_redundant":
+      return "raw + redundant";
+    case "udp":
+      return "udp";
+    default:
+      return "raw";
+  }
 }
 
 function headerState(state) {
@@ -248,7 +262,7 @@ function SetupCell({ ctx, data }) {
         <SummaryGrid
           items={[
             { label: "Master PID", value: state.master_pid ?? "not running" },
-            { label: "Transport", value: state.transport ?? "raw" },
+            { label: "Transport", value: transportLabel(state.transport) },
             { label: "Bus source", value: transportSourceLabel(state) },
             { label: "Slaves", value: String(state.slaves.length) },
             { label: "Domains", value: String(state.domains.length) },
@@ -266,6 +280,7 @@ function SetupCell({ ctx, data }) {
                 }
               >
                 <option value="raw">Raw socket</option>
+                <option value="raw_redundant">Raw + redundant</option>
                 <option value="udp">UDP</option>
               </Dropdown>
             </ControlField>
@@ -300,21 +315,43 @@ function SetupCell({ ctx, data }) {
                 </ControlField>
               </>
             ) : (
-              <ControlField label="Interface" className="ke95-fill">
-                <Dropdown
-                  className="ke95-fill"
-                  value={state.interface}
-                  onChange={(event) =>
-                    commit((previous) => markTransportManual(previous, { interface: event.target.value }))
-                  }
-                >
-                  {interfaces.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </Dropdown>
-              </ControlField>
+              <>
+                <ControlField label="Interface" className="ke95-fill">
+                  <Dropdown
+                    className="ke95-fill"
+                    value={state.interface}
+                    onChange={(event) =>
+                      commit((previous) => markTransportManual(previous, { interface: event.target.value }))
+                    }
+                  >
+                    {interfaces.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </Dropdown>
+                </ControlField>
+
+                {state.transport === "raw_redundant" ? (
+                  <ControlField label="Backup interface" className="ke95-fill">
+                    <Dropdown
+                      className="ke95-fill"
+                      value={state.backup_interface}
+                      onChange={(event) =>
+                        commit((previous) =>
+                          markTransportManual(previous, { backup_interface: event.target.value })
+                        )
+                      }
+                    >
+                      {interfaces.map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                    </Dropdown>
+                  </ControlField>
+                ) : null}
+              </>
             )}
           </Columns>
         </Panel>

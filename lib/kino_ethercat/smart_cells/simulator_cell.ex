@@ -3,6 +3,7 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
   use Kino.JS.Live
   use Kino.SmartCell, name: "EtherCAT Simulator"
 
+  alias EtherCAT.Simulator
   alias KinoEtherCAT.SmartCells.{SimulatorConfig, SimulatorRuntime, SimulatorSource}
 
   @refresh_interval_ms 1_000
@@ -16,6 +17,7 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
      assign(ctx,
        selected: selected,
        connections: connections,
+       transport: SimulatorConfig.normalize_transport(Map.get(attrs, "transport")),
        expert_mode: expert_mode?(attrs),
        next_id: next_id(selected),
        runtime_message: nil
@@ -28,7 +30,37 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
   end
 
   @impl true
-  def handle_event("add_device", %{"driver" => driver}, ctx) do
+  def handle_event(action, params, ctx)
+      when action in [
+             "add_device",
+             "reorder",
+             "set_transport",
+             "rename",
+             "remove",
+             "reset_defaults",
+             "auto_wire_matching",
+             "remove_connection"
+           ] do
+    if simulator_running?() do
+      {:noreply, reject_running_config_change(ctx)}
+    else
+      handle_config_event(action, params, ctx)
+    end
+  end
+
+  def handle_event("runtime_action", %{"id" => id}, ctx) do
+    ctx = assign(ctx, runtime_message: SimulatorRuntime.perform(id))
+    broadcast_event(ctx, "snapshot", payload(ctx.assigns))
+    {:noreply, ctx}
+  end
+
+  def handle_event("set_expert_mode", %{"enabled" => enabled}, ctx) do
+    ctx = assign(ctx, expert_mode: truthy?(enabled))
+    broadcast_event(ctx, "snapshot", payload(ctx.assigns))
+    {:noreply, ctx}
+  end
+
+  defp handle_config_event("add_device", %{"driver" => driver}, ctx) do
     if SimulatorConfig.valid_driver?(driver) do
       selected =
         ctx.assigns.selected ++
@@ -52,7 +84,7 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
     end
   end
 
-  def handle_event("reorder", %{"ids" => ids}, ctx) do
+  defp handle_config_event("reorder", %{"ids" => ids}, ctx) do
     selected = reorder_selected(ctx.assigns.selected, ids)
 
     connections =
@@ -66,19 +98,13 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
     {:noreply, ctx}
   end
 
-  def handle_event("runtime_action", %{"id" => id}, ctx) do
-    ctx = assign(ctx, runtime_message: SimulatorRuntime.perform(id))
+  defp handle_config_event("set_transport", %{"transport" => transport}, ctx) do
+    ctx = assign(ctx, transport: SimulatorConfig.normalize_transport(transport))
     broadcast_event(ctx, "snapshot", payload(ctx.assigns))
     {:noreply, ctx}
   end
 
-  def handle_event("set_expert_mode", %{"enabled" => enabled}, ctx) do
-    ctx = assign(ctx, expert_mode: truthy?(enabled))
-    broadcast_event(ctx, "snapshot", payload(ctx.assigns))
-    {:noreply, ctx}
-  end
-
-  def handle_event("rename", %{"id" => id, "name" => name}, ctx) do
+  defp handle_config_event("rename", %{"id" => id, "name" => name}, ctx) do
     selected =
       Enum.map(ctx.assigns.selected, fn entry ->
         if Map.get(entry, "id") == id do
@@ -99,7 +125,7 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
     {:noreply, ctx}
   end
 
-  def handle_event("remove", %{"id" => id}, ctx) do
+  defp handle_config_event("remove", %{"id" => id}, ctx) do
     selected = Enum.reject(ctx.assigns.selected, &(Map.get(&1, "id") == id))
 
     connections =
@@ -119,7 +145,7 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
     {:noreply, ctx}
   end
 
-  def handle_event("reset_defaults", _params, ctx) do
+  defp handle_config_event("reset_defaults", _params, ctx) do
     selected = SimulatorConfig.default_selected()
     connections = SimulatorConfig.default_connections(selected)
 
@@ -135,7 +161,7 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
     {:noreply, ctx}
   end
 
-  def handle_event("auto_wire_matching", _params, ctx) do
+  defp handle_config_event("auto_wire_matching", _params, ctx) do
     {connections, stats} = SimulatorConfig.auto_wire_matching(ctx.assigns.selected)
 
     ctx =
@@ -148,7 +174,7 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
     {:noreply, ctx}
   end
 
-  def handle_event("remove_connection", %{"key" => key}, ctx) do
+  defp handle_config_event("remove_connection", %{"key" => key}, ctx) do
     connections =
       Enum.reject(ctx.assigns.connections, fn connection ->
         connection_key(connection) == key
@@ -176,6 +202,7 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
     %{
       "selected" => ctx.assigns.selected,
       "connections" => ctx.assigns.connections,
+      "transport" => ctx.assigns.transport,
       "expert_mode" => ctx.assigns.expert_mode
     }
   end
@@ -195,10 +222,18 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
       simulator_host: SimulatorConfig.default_simulator_ip(),
       simulator_port: SimulatorConfig.default_port(),
       available_drivers: SimulatorConfig.available_drivers(),
+      available_transports: SimulatorConfig.available_transports(),
+      transport: assigns.transport,
       expert_mode: assigns.expert_mode,
       selected: selected,
       connections: connections,
-      runtime: SimulatorRuntime.payload(selected, connections, assigns.runtime_message)
+      runtime:
+        SimulatorRuntime.payload(
+          selected,
+          connections,
+          assigns.transport,
+          assigns.runtime_message
+        )
     }
   end
 
@@ -232,6 +267,23 @@ defmodule KinoEtherCAT.SmartCells.Simulator do
     %{level: "info", text: "Auto-wired #{matched} matching signals."}
   end
 
+  defp reject_running_config_change(ctx) do
+    ctx =
+      assign(
+        ctx,
+        runtime_message:
+          error_message("Stop the simulator before changing transport, devices, or connections.")
+      )
+
+    broadcast_event(ctx, "snapshot", payload(ctx.assigns))
+    ctx
+  end
+
+  defp simulator_running? do
+    match?({:ok, _info}, Simulator.info())
+  end
+
+  defp error_message(text), do: %{level: "error", text: text}
   defp info_message(text), do: %{level: "info", text: text}
 
   defp connection_key(connection) do

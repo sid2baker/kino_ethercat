@@ -43,9 +43,9 @@ export async function init(ctx, data) {
   root.render(<SimulatorCell ctx={ctx} data={data} />);
 }
 
-function DeviceRow({ entry, position, onRename, onRemove }) {
+function DeviceRow({ entry, position, onRename, onRemove, disabled }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: entry.id });
+    useSortable({ id: entry.id, disabled });
   const [nameValue, setNameValue] = useState(entry.name ?? "");
 
   useEffect(() => {
@@ -60,6 +60,7 @@ function DeviceRow({ entry, position, onRename, onRemove }) {
   };
 
   const commitName = () => {
+    if (disabled) return;
     if (nameValue === (entry.name ?? "")) return;
     onRename(entry.id, nameValue);
   };
@@ -70,7 +71,13 @@ function DeviceRow({ entry, position, onRename, onRemove }) {
       style={style}
       className={`ke95-simulator-cell__row${isDragging ? " ke95-simulator-cell__row--dragging" : ""}`}
     >
-      <button className="ke95-simulator-cell__handle" title="Reorder" {...attributes} {...listeners}>
+      <button
+        className="ke95-simulator-cell__handle"
+        title="Reorder"
+        disabled={disabled}
+        {...attributes}
+        {...listeners}
+      >
         ::
       </button>
       <Mono>{String(position + 1).padStart(2, "0")}</Mono>
@@ -78,6 +85,7 @@ function DeviceRow({ entry, position, onRename, onRemove }) {
         value={nameValue}
         className="ke95-fill"
         aria-label={`Device name ${position + 1}`}
+        disabled={disabled}
         onChange={(event) => setNameValue(event.target.value)}
         onBlur={commitName}
         onKeyDown={(event) => {
@@ -87,18 +95,18 @@ function DeviceRow({ entry, position, onRename, onRemove }) {
         }}
       />
       <Mono className="ke95-simulator-cell__driver">{entry.label}</Mono>
-      <Button onClick={() => onRemove(entry.id)}>Remove</Button>
+      <Button disabled={disabled} onClick={() => onRemove(entry.id)}>Remove</Button>
     </li>
   );
 }
 
-function ConnectionRow({ entry, onRemove }) {
+function ConnectionRow({ entry, onRemove, disabled }) {
   return (
     <li className="ke95-simulator-cell__connection">
       <Mono className="ke95-simulator-cell__connection-label">{entry.source_label}</Mono>
       <Mono className="ke95-simulator-cell__connection-arrow">-&gt;</Mono>
       <Mono className="ke95-simulator-cell__connection-label">{entry.target_label}</Mono>
-      <Button onClick={() => onRemove(entry.key)}>Remove</Button>
+      <Button disabled={disabled} onClick={() => onRemove(entry.key)}>Remove</Button>
     </li>
   );
 }
@@ -115,6 +123,17 @@ function ringLabel(names, empty = "none") {
   return names?.length ? names.join(" -> ") : empty;
 }
 
+function transportLabel(transport) {
+  switch (transport) {
+    case "raw_socket":
+      return "Raw socket";
+    case "raw_socket_redundant":
+      return "Raw socket + redundant";
+    default:
+      return "UDP";
+  }
+}
+
 function SimpleModeContent({ snapshot }) {
   const defaultRing = ringLabel(
     (snapshot.selected ?? []).map((entry) => entry.name),
@@ -126,11 +145,8 @@ function SimpleModeContent({ snapshot }) {
       <Panel title="What this is">
         <Stack compact className="ke95-simulator-cell__intro-copy">
           <div>
-            This smart cell starts <Mono>EtherCAT.Simulator</Mono> on{" "}
-            <Mono>
-              {snapshot.simulator_host}:{snapshot.simulator_port}
-            </Mono>
-            , so you can learn EtherCAT without real hardware.
+            This smart cell starts <Mono>EtherCAT.Simulator</Mono> using{" "}
+            <Mono>{transportLabel(snapshot.transport)}</Mono> transport, so you can learn EtherCAT without real hardware.
           </div>
           <div>
             By default it creates a small loopback bench with a coupler, an input card, and an
@@ -144,12 +160,13 @@ function SimpleModeContent({ snapshot }) {
           <PropertyList
             items={[
               { label: "Default ring", value: defaultRing },
+              { label: "Transport", value: transportLabel(snapshot.transport) },
               { label: "Generated tabs", value: "Introduction, Simulator, Faults" },
             ]}
           />
           <ol className="ke95-simulator-cell__steps">
             <li>Evaluate this cell to start the simulator workspace.</li>
-            <li>Add the EtherCAT Setup smart cell and click Scan bus.</li>
+            <li>Use the EtherCAT Setup smart cell. It will detect the running simulator transport.</li>
             <li>Evaluate the generated setup cell to move from PREOP to OP.</li>
             <li>Enable Expert mode if you want to rename devices, reorder the ring, or add connections.</li>
           </ol>
@@ -192,6 +209,7 @@ function SimulatorCell({ ctx, data }) {
   const availableDrivers = snapshot.available_drivers ?? [];
   const runtime = snapshot.runtime ?? {};
   const expertMode = Boolean(snapshot.expert_mode);
+  const configLocked = runtime.status === "running";
 
   const selectedCountLabel = useMemo(
     () => `${selected.length} device${selected.length === 1 ? "" : "s"}`,
@@ -199,6 +217,7 @@ function SimulatorCell({ ctx, data }) {
   );
 
   const handleDragEnd = ({ active, over }) => {
+    if (configLocked) return;
     if (!over || active.id === over.id) return;
     const oldIndex = selected.findIndex((entry) => entry.id === active.id);
     const newIndex = selected.findIndex((entry) => entry.id === over.id);
@@ -208,12 +227,14 @@ function SimulatorCell({ ctx, data }) {
   };
 
   const handleRemove = (id) => {
+    if (configLocked) return;
     const next = selected.filter((entry) => entry.id !== id);
     setSelected(next);
     ctx.pushEvent("remove", { id });
   };
 
   const handleRename = (id, name) => {
+    if (configLocked) return;
     setSelected((current) =>
       current.map((entry) => (entry.id === id ? { ...entry, name } : entry))
     );
@@ -261,6 +282,22 @@ function SimulatorCell({ ctx, data }) {
           >
             <Stack compact>
               <SummaryGrid items={runtime.summary ?? []} />
+              <Columns minWidth="14rem">
+                <ControlField label="Transport" className="ke95-fill">
+                  <Dropdown
+                    value={snapshot.transport ?? "udp"}
+                    className="ke95-fill"
+                    disabled={configLocked}
+                    onChange={(event) => ctx.pushEvent("set_transport", { transport: event.target.value })}
+                  >
+                    {(snapshot.available_transports ?? []).map((t) => (
+                      <option key={t.value} value={t.value} disabled={!t.available}>
+                        {t.label}{!t.available && t.hint ? ` (${t.hint})` : ""}
+                      </option>
+                    ))}
+                  </Dropdown>
+                </ControlField>
+              </Columns>
               <PropertyList
                 minWidth="12rem"
                 items={[
@@ -268,7 +305,18 @@ function SimulatorCell({ ctx, data }) {
                     label: "Configured ring",
                     value: ringLabel(runtime.configured_names, "Add devices to define the virtual ring."),
                   },
+                  {
+                    label: "Configured transport",
+                    value: transportLabel(runtime.configured_transport ?? snapshot.transport),
+                  },
                   { label: "Running ring", value: ringLabel(runtime.running_names, "Simulator offline.") },
+                  {
+                    label: "Running transport",
+                    value:
+                      runtime.running_transport === "disabled"
+                        ? "disabled"
+                        : transportLabel(runtime.running_transport),
+                  },
                   { label: "Faults", value: runtime.faults?.summary ?? "No active faults." },
                   {
                     label: "Connections",
@@ -276,6 +324,11 @@ function SimulatorCell({ ctx, data }) {
                   },
                 ]}
               />
+              {configLocked ? (
+                <MessageLine tone="info">
+                  Stop the simulator before changing transport, devices, or connections.
+                </MessageLine>
+              ) : null}
               <MessageLine tone={runtime.sync_tone ?? "info"}>{runtime.sync_message}</MessageLine>
               <MessageLine tone={messageTone(runtime.message?.level)}>{runtime.message?.text}</MessageLine>
             </Stack>
@@ -284,7 +337,7 @@ function SimulatorCell({ ctx, data }) {
           <Panel
             title="Add device"
             actions={
-              <Button onClick={() => ctx.pushEvent("reset_defaults", {})}>
+              <Button disabled={configLocked} onClick={() => ctx.pushEvent("reset_defaults", {})}>
                 Reset loopback
               </Button>
             }
@@ -294,6 +347,7 @@ function SimulatorCell({ ctx, data }) {
                 <Dropdown
                   value={driverToAdd}
                   className="ke95-fill"
+                  disabled={configLocked}
                   onChange={(event) => setDriverToAdd(event.target.value)}
                 >
                   {availableDrivers.map((driver) => (
@@ -304,7 +358,10 @@ function SimulatorCell({ ctx, data }) {
                 </Dropdown>
               </ControlField>
               <InlineButtons className="ke95-simulator-cell__add-actions">
-                <Button disabled={!driverToAdd} onClick={() => ctx.pushEvent("add_device", { driver: driverToAdd })}>
+                <Button
+                  disabled={configLocked || !driverToAdd}
+                  onClick={() => ctx.pushEvent("add_device", { driver: driverToAdd })}
+                >
                   Add
                 </Button>
               </InlineButtons>
@@ -331,6 +388,7 @@ function SimulatorCell({ ctx, data }) {
                         key={entry.id}
                         entry={entry}
                         position={index}
+                        disabled={configLocked}
                         onRename={handleRename}
                         onRemove={handleRemove}
                       />
@@ -345,7 +403,7 @@ function SimulatorCell({ ctx, data }) {
             title="Connections"
             actions={
               <Button
-                disabled={selected.length === 0}
+                disabled={configLocked || selected.length === 0}
                 onClick={() => ctx.pushEvent("auto_wire_matching", {})}
               >
                 Auto-wire matching signals
@@ -359,6 +417,7 @@ function SimulatorCell({ ctx, data }) {
                     <ConnectionRow
                       key={entry.key}
                       entry={entry}
+                      disabled={configLocked}
                       onRemove={(key) => ctx.pushEvent("remove_connection", { key })}
                     />
                   ))}

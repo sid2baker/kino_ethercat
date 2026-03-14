@@ -80,6 +80,14 @@ defmodule KinoEtherCAT.SmartCells.SetupSource do
     [interface: inspect(interface)]
   end
 
+  defp transport_entries(%{
+         transport: :raw_redundant,
+         interface: interface,
+         backup_interface: backup_interface
+       }) do
+    [interface: inspect(interface), backup_interface: inspect(backup_interface)]
+  end
+
   defp transport_entries(%{transport: :udp, host: host, port: port, bind_ip: bind_ip}) do
     [transport: ":udp", host: ip_literal(host), port: Source.integer_literal(port)] ++
       if(bind_ip, do: [bind_ip: ip_literal(bind_ip)], else: [])
@@ -138,6 +146,7 @@ defmodule KinoEtherCAT.SmartCells.SetupSource do
     %{
       transport: transport.transport,
       interface: transport.interface,
+      backup_interface: transport.backup_interface,
       host: transport.host,
       port: transport.port,
       domains: domains,

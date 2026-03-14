@@ -9,29 +9,62 @@ defmodule KinoEtherCAT.SmartCells.SimulatorSource do
   def render(attrs) when is_map(attrs) do
     config = normalize(attrs)
     expert_mode = expert_mode?(attrs)
+    transport = SimulatorConfig.normalize_transport(Map.get(attrs, "transport"))
 
     config
-    |> source(expert_mode)
+    |> source(expert_mode, transport)
     |> Source.format()
   end
 
-  defp source(config, expert_mode) do
+  defp source(config, expert_mode, transport) do
     Source.multiline([
       "alias EtherCAT.Simulator\n",
       "alias EtherCAT.Simulator.Slave\n\n",
-      "simulator_ip = ",
-      ip_literal(@default_simulator_ip),
-      "\n\n",
+      transport_preamble(transport),
       "_ = Simulator.stop()\n\n",
       "devices = ",
       devices_literal(config.selected),
       "\n\n",
-      "{:ok, _supervisor} = Simulator.start(devices: devices, udp: [ip: simulator_ip, port: #{SimulatorConfig.default_port()}])\n\n",
+      start_literal(transport),
+      "\n\n",
       connection_literals(config.connections),
       if(config.connections == [], do: "", else: "\n"),
       "Kino.Layout.tabs(\n",
       tabs_literal(expert_mode),
       ")\n"
+    ])
+  end
+
+  defp transport_preamble("udp") do
+    Source.multiline([
+      "simulator_ip = ",
+      ip_literal(@default_simulator_ip),
+      "\n\n"
+    ])
+  end
+
+  defp transport_preamble(_raw), do: ""
+
+  defp start_literal("udp") do
+    "{:ok, _supervisor} = Simulator.start(devices: devices, udp: [ip: simulator_ip, port: #{SimulatorConfig.default_port()}])"
+  end
+
+  defp start_literal("raw_socket") do
+    sim_iface = SimulatorConfig.raw_simulator_interface()
+
+    "{:ok, _supervisor} = Simulator.start(devices: devices, raw: [interface: #{inspect(sim_iface)}])"
+  end
+
+  defp start_literal("raw_socket_redundant") do
+    primary_iface = SimulatorConfig.redundant_simulator_primary_interface()
+    secondary_iface = SimulatorConfig.redundant_simulator_secondary_interface()
+
+    Source.multiline([
+      "{:ok, _supervisor} = Simulator.start(\n",
+      "  devices: devices,\n",
+      "  topology: :redundant,\n",
+      "  raw: [primary: [interface: #{inspect(primary_iface)}], secondary: [interface: #{inspect(secondary_iface)}]]\n",
+      ")"
     ])
   end
 
