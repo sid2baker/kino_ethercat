@@ -15,6 +15,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
   def init(attrs, ctx) do
     config = normalize_attrs(attrs)
     status = if config.slaves == [], do: :idle, else: :discovered
+
     if should_auto_scan?(attrs, config), do: Process.send_after(self(), :auto_scan, 0)
     Process.send_after(self(), :poll_state, 500)
 
@@ -116,7 +117,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
   end
 
   def handle_info(:auto_scan, ctx) do
-    if ctx.assigns.status == :idle and ctx.assigns.slaves == [] do
+    if ctx.assigns.status == :idle and ctx.assigns.slaves == [] and simulator_running?() do
       {:noreply, begin_scan(ctx)}
     else
       {:noreply, ctx}
@@ -173,8 +174,9 @@ defmodule KinoEtherCAT.SmartCells.Setup do
   end
 
   @doc false
-  def should_auto_scan?(attrs, %{slaves: slaves}) when is_map(attrs) and is_list(slaves) do
-    map_size(attrs) == 0 and slaves == []
+  def should_auto_scan?(attrs, %{slaves: slaves}, simulator_running? \\ &simulator_running?/0)
+      when is_map(attrs) and is_list(slaves) and is_function(simulator_running?, 0) do
+    map_size(attrs) == 0 and slaves == [] and simulator_running?.()
   end
 
   defp begin_scan(ctx) do
@@ -567,6 +569,12 @@ defmodule KinoEtherCAT.SmartCells.Setup do
       host: transport.host,
       port: transport.port
     )
+  end
+
+  defp simulator_running? do
+    match?({:ok, _}, EtherCAT.Simulator.info())
+  rescue
+    _ -> false
   end
 
   defp simulator_matches_start_opts?(%{udp: %{ip: host, port: port}}, start_opts) do

@@ -28,11 +28,12 @@ defmodule KinoEtherCAT.SmartCells.SetupCellTest do
     refute Setup.retryable_scan_reason?({:configuration_failed, :missing_interface})
   end
 
-  test "should_auto_scan? only enables auto scan for a brand-new empty cell" do
-    assert Setup.should_auto_scan?(%{}, %{slaves: []})
+  test "should_auto_scan? only enables auto scan for a brand-new empty cell when simulator is running" do
+    assert Setup.should_auto_scan?(%{}, %{slaves: []}, fn -> true end)
 
-    refute Setup.should_auto_scan?(%{"transport" => "udp"}, %{slaves: []})
-    refute Setup.should_auto_scan?(%{}, %{slaves: [%{"name" => "inputs"}]})
+    refute Setup.should_auto_scan?(%{}, %{slaves: []}, fn -> false end)
+    refute Setup.should_auto_scan?(%{"transport" => "udp"}, %{slaves: []}, fn -> true end)
+    refute Setup.should_auto_scan?(%{}, %{slaves: [%{"name" => "inputs"}]}, fn -> true end)
   end
 
   test "discovered_slave_entry inherits simulator/runtime names on first discovery" do
