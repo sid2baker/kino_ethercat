@@ -1,9 +1,9 @@
 defmodule KinoEtherCAT.RuntimeTest do
   use ExUnit.Case, async: false
 
-  alias EtherCAT.Bus.Link.SinglePort
   alias EtherCAT.Domain.Config, as: DomainConfig
-  alias EtherCAT.{Bus, Domain, Master, Slave}
+  alias EtherCAT.{Domain, Master, Slave}
+  alias KinoEtherCAT.Runtime.BusResource
   alias KinoEtherCAT.{Runtime, StartConfig}
 
   setup_all do
@@ -19,11 +19,11 @@ defmodule KinoEtherCAT.RuntimeTest do
     :ok
   end
 
-  test "resource accessors always return EtherCAT structs" do
+  test "resource accessors always return renderable runtime resources" do
     assert %Master{} = KinoEtherCAT.master()
     assert %Slave{name: :rack_1} = KinoEtherCAT.slave(:rack_1)
     assert %Domain{id: :main} = KinoEtherCAT.domain(:main)
-    assert %Bus{} = KinoEtherCAT.bus()
+    assert %BusResource{} = KinoEtherCAT.bus()
     assert dc_resource?(KinoEtherCAT.dc())
   end
 
@@ -84,7 +84,7 @@ defmodule KinoEtherCAT.RuntimeTest do
              controls: %{submit: %{id: "set_frame_timeout"}},
              log_controls: bus_log_controls
            } =
-             Runtime.payload(struct(Bus))
+             Runtime.payload(%BusResource{})
 
     assert bus_log_controls.select.value == "all"
 
@@ -115,15 +115,14 @@ defmodule KinoEtherCAT.RuntimeTest do
       base_station: 0x1000
     }
 
-    bus = %Bus{
-      idx: 0,
-      link: %SinglePort{
-        open_opts: [transport: :udp, host: {127, 0, 0, 2}, port: 34_980]
-      },
-      link_mod: SinglePort
+    bus_info = %{
+      circuit_info: %{
+        type: :single,
+        port: %{name: "127.0.0.2:34980", interface: nil}
+      }
     }
 
-    assert {:ok, opts} = Runtime.start_options_from_runtime(master, bus)
+    assert {:ok, opts} = Runtime.start_options_from_runtime(master, bus_info)
     assert opts[:transport] == :udp
     assert opts[:host] == {127, 0, 0, 2}
     assert opts[:port] == 34_980
@@ -132,7 +131,7 @@ defmodule KinoEtherCAT.RuntimeTest do
   end
 
   test "runtime actions validate numeric inputs before touching EtherCAT" do
-    bus = struct(Bus)
+    bus = %BusResource{}
 
     assert {:error, ^bus, %{level: "error", text: ":invalid_integer"}} =
              Runtime.perform(bus, "set_frame_timeout", %{"value" => "abc"})

@@ -6,7 +6,6 @@ import { createRoot } from "react-dom/client";
 import {
   EmptyState,
   MessageLine,
-  Mono,
   Panel,
   PropertyList,
   Shell,
@@ -43,7 +42,7 @@ function IntroductionPanel({ ctx, data }) {
 
   return (
     <Shell title={snapshot.title} subtitle={snapshot.kind} status={status}>
-      <Stack className="ke95-intro-panel">
+      <Stack>
         <MessageLine tone={snapshot.message?.level === "error" ? "error" : "info"}>
           {snapshot.message?.text ?? null}
         </MessageLine>
@@ -82,16 +81,16 @@ function LearningPath({ steps }) {
   }
 
   return (
-    <div className="ke95-intro-panel__steps">
+    <Stack compact>
       {steps.map((step) => (
-        <div key={step.title} className="ke95-intro-panel__step">
-          <div className="ke95-intro-panel__step-header">
-            <Mono className="ke95-intro-panel__step-title">{step.title}</Mono>
-            <StatusBadge tone={stepTone(step.state)}>{step.state}</StatusBadge>
-          </div>
-          <div className="ke95-intro-panel__step-body">{step.body}</div>
-        </div>
+        <Panel
+          key={step.title}
+          title={step.title}
+          actions={<StatusBadge tone={stepTone(step.state)}>{step.state}</StatusBadge>}
+        >
+          {step.body}
+        </Panel>
       ))}
-    </div>
+    </Stack>
   );
 }

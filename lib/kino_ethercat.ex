@@ -33,7 +33,7 @@ defmodule KinoEtherCAT do
   @spec dc() :: struct()
   def dc, do: Runtime.dc()
 
-  @spec bus() :: %EtherCAT.Bus{}
+  @spec bus() :: KinoEtherCAT.Runtime.BusResource.t()
   def bus, do: Runtime.bus()
 
   @doc """

@@ -1,0 +1,787 @@
+# Redundant Replug Watch
+
+```elixir
+Mix.install([
+  {:kino_ethercat, "~> 0.3.3"}
+])
+```
+
+## Purpose
+
+Use this notebook on the real `eth1|eth0` redundant ring to watch what
+happens while you unplug and reconnect the **primary** cable.
+
+Expected bench:
+
+- slaves: `coupler -> inputs -> outputs`
+- drivers: `EK1100`, `EL1809`, `EL2809`
+- digital signals: `:ch1 .. :ch8`
+- loopback wiring: `outputs.ch1..ch8 -> inputs.ch1..ch8`
+- primary interface: `eth1`
+- secondary interface: `eth0`
+
+The watcher continuously writes an 8-bit counter to `outputs.ch1..ch8`, waits
+for `inputs.ch1..ch8` to match, and only prints a **focused trace** around:
+
+- manual notes such as `PRIMARY DOWN` and `PRIMARY UP`
+- link down / reconnect telemetry
+- domain invalid / transport-miss telemetry
+- late matches
+- stale input timestamps
+- timeouts
+
+Healthy cycles stay buffered and silent unless they are close to one of those
+events.
+
+## Start Or Reuse The Master
+
+If the master is already running in this notebook runtime, skip to the watcher
+cells.
+
+Otherwise use the preconfigured setup cell below and evaluate the generated
+setup code.
+
+<!-- livebook:{"attrs":"eyJhd2FpdF9sb2NrIjpmYWxzZSwiZGNfY3ljbGVfbnMiOjEwMDAwMDAwLCJkY19lbmFibGVkIjpmYWxzZSwiZG9tYWlucyI6W3siY3ljbGVfdGltZV9tcyI6MTAsImN5Y2xlX3RpbWVfdXMiOjEwMDAwLCJpZCI6Im1haW4iLCJtaXNzX3RocmVzaG9sZCI6MTAwMH1dLCJob3N0IjoiMTI3LjAuMC4yIiwiaW50ZXJmYWNlIjoiZXRoMSIsImJhY2t1cF9pbnRlcmZhY2UiOiJldGgwIiwibG9ja190aHJlc2hvbGRfbnMiOjEwMCwibG9ja190aW1lb3V0X21zIjo1MDAwLCJwb3J0IjozNDk4MCwic2xhdmVzIjpbeyJkaXNjb3ZlcmVkX25hbWUiOiJjb3VwbGVyIiwiZG9tYWluX2lkIjoiIiwiZHJpdmVyIjoiIiwibmFtZSI6ImNvdXBsZXIiLCJwcm9kdWN0X2NvZGUiOjcyMTAwOTQ2LCJzdGF0aW9uIjo0MDk2LCJ2ZW5kb3JfaWQiOjJ9LHsiZGlzY292ZXJlZF9uYW1lIjoiaW5wdXRzIiwiZG9tYWluX2lkIjoibWFpbiIsImRyaXZlciI6Iktpbm9FdGhlckNBVC5Ecml2ZXIuRUwxODA5IiwibmFtZSI6ImlucHV0cyIsInByb2R1Y3RfY29kZSI6MTE4NTY2OTk0LCJzdGF0aW9uIjo0MDk3LCJ2ZW5kb3JfaWQiOjJ9LHsiZGlzY292ZXJlZF9uYW1lIjoib3V0cHV0cyIsImRvbWFpbl9pZCI6Im1haW4iLCJkcml2ZXIiOiJLaW5vRXRoZXJDQVQuRHJpdmVyLkVMMjgwOSIsIm5hbWUiOiJvdXRwdXRzIiwicHJvZHVjdF9jb2RlIjoxODQxMDI5OTQsInN0YXRpb24iOjQwOTgsInZlbmRvcl9pZCI6Mn1dLCJ0cmFuc3BvcnQiOiJyYXdfcmVkdW5kYW50IiwidHJhbnNwb3J0X21vZGUiOiJtYW51YWwiLCJ3YXJtdXBfY3ljbGVzIjowfQ==","chunks":null,"kind":"Elixir.KinoEtherCAT.SmartCells.Setup","livebook_object":"smart_cell"} -->
+
+```elixir
+start_opts = [
+  interface: "eth1",
+  backup_interface: "eth0",
+  domains: [%EtherCAT.Domain.Config{id: :main, cycle_time_us: 10_000, miss_threshold: 1_000}],
+  dc: nil,
+  slaves: [
+    %EtherCAT.Slave.Config{name: :coupler, target_state: :op},
+    %EtherCAT.Slave.Config{
+      name: :inputs,
+      driver: KinoEtherCAT.Driver.EL1809,
+      process_data: {:all, :main},
+      target_state: :op
+    },
+    %EtherCAT.Slave.Config{
+      name: :outputs,
+      driver: KinoEtherCAT.Driver.EL2809,
+      process_data: {:all, :main},
+      target_state: :op
+    }
+  ]
+]
+
+_ = EtherCAT.stop()
+
+setup_result =
+  with :ok <- EtherCAT.start(start_opts),
+       :ok <- EtherCAT.await_running(),
+       :ok <- EtherCAT.await_operational() do
+    :ok
+  end
+
+case setup_result do
+  :ok ->
+    Kino.Layout.tabs(
+      Master: KinoEtherCAT.master(),
+      Bus: KinoEtherCAT.bus(),
+      Diagnostics: KinoEtherCAT.diagnostics()
+    )
+
+  {:error, reason} ->
+    _ = EtherCAT.stop()
+
+    Kino.Markdown.new("""
+    ## EtherCAT setup failed
+
+    `#{inspect(reason)}`
+
+    Re-run the setup cell once the bus is stable.
+    """)
+end
+```
+
+## Define The Watcher
+
+```elixir
+for module <- [EtherCAT.Notebooks.RedundantReplugWatch] do
+  :code.purge(module)
+  :code.delete(module)
+end
+
+defmodule EtherCAT.Notebooks.RedundantReplugWatch do
+  @telemetry_events [
+    [:ethercat, :bus, :link, :down],
+    [:ethercat, :bus, :link, :reconnected],
+    [:ethercat, :master, :state, :changed],
+    [:ethercat, :master, :slave_fault, :changed],
+    [:ethercat, :domain, :cycle, :invalid],
+    [:ethercat, :domain, :cycle, :transport_miss],
+    [:ethercat, :slave, :down],
+    [:ethercat, :slave, :health, :fault]
+  ]
+
+  @channels [:ch1, :ch2, :ch3, :ch4, :ch5, :ch6, :ch7, :ch8]
+
+  def start(opts \\ %{}) do
+    opts =
+      Map.merge(
+        %{
+          primary_interface: "eth1",
+          backup_interface: "eth0",
+          step_ms: 20,
+          match_timeout_ms: 200,
+          poll_ms: 1,
+          steps: nil,
+          late_cycle_delta: 2,
+          pre_samples: 12,
+          post_samples: 24
+        },
+        Enum.into(opts, %{})
+      )
+
+    spawn_link(fn -> run(opts) end)
+  end
+
+  def note(pid, label) when is_pid(pid) and is_binary(label) do
+    send(pid, {:mark, label})
+    :ok
+  end
+
+  def stop(pid) when is_pid(pid) do
+    send(pid, :stop)
+    :ok
+  end
+
+  def run(opts) do
+    ensure_operational_master!(opts)
+
+    start_ms = System.monotonic_time(:millisecond)
+    handler_id = "replug-watch-#{System.unique_integer([:positive, :monotonic])}"
+    sink =
+      start_sink(%{
+        start_ms: start_ms,
+        pre_samples: opts.pre_samples,
+        post_samples: opts.post_samples,
+        late_cycle_delta: opts.late_cycle_delta
+      })
+
+    :ok =
+      :telemetry.attach_many(handler_id, @telemetry_events, &__MODULE__.handle_telemetry/4, %{
+        sink: sink
+      })
+
+    send(sink, {:log, :info, startup_summary(opts)})
+
+    try do
+      loop(1, 1, opts, sink)
+    catch
+      :stop -> :ok
+    after
+      :telemetry.detach(handler_id)
+      stop_sink(sink)
+    end
+  end
+
+  def handle_telemetry(event, measurements, metadata, %{sink: sink}) do
+    send(
+      sink,
+      {:telemetry, event, measurements, metadata, format_telemetry(event, measurements, metadata)}
+    )
+  end
+
+  defp loop(step, pattern, opts, sink) do
+    handle_control_messages(sink)
+
+    started_us = System.monotonic_time(:microsecond)
+    written_cycle = current_domain_cycle()
+
+    case write_pattern(pattern) do
+      :ok ->
+        case wait_for_match(pattern, opts.match_timeout_ms, opts.poll_ms) do
+          {:ok, observed, matched_at_us, values} ->
+            latency_us = matched_at_us - started_us
+
+            send(
+              sink,
+              {:sample,
+               sample_ok(
+                 step,
+                 pattern,
+                 observed,
+                 values,
+                 latency_us,
+                 written_cycle,
+                 matched_at_us
+               )}
+            )
+
+          {:error, last_observation} ->
+            send(
+              sink,
+              {:sample,
+               sample_timeout(
+                 step,
+                 pattern,
+                 last_observation,
+                 opts.match_timeout_ms,
+                 written_cycle
+               )}
+            )
+        end
+
+      {:error, reason} ->
+        send(
+          sink,
+          {:sample,
+           %{
+             status: :write_error,
+             step: step,
+             expected: pattern,
+             reason: reason,
+             written_cycle: written_cycle,
+             matched_cycle: current_domain_cycle(),
+             snapshot: snapshot()
+           }}
+        )
+    end
+
+    Process.sleep(opts.step_ms)
+
+    if is_integer(opts.steps) and step >= opts.steps do
+      :ok
+    else
+      next_pattern = rem(pattern + 1, 256)
+      next_pattern = if next_pattern == 0, do: 1, else: next_pattern
+      loop(step + 1, next_pattern, opts, sink)
+    end
+  end
+
+  defp ensure_operational_master!(opts) do
+    with {:ok, :operational} <- EtherCAT.state(),
+         {:ok, bus_info} <- EtherCAT.Bus.info(EtherCAT.Bus) do
+      expected_link = "#{opts.primary_interface}|#{opts.backup_interface}"
+
+      cond do
+        bus_info.link != expected_link ->
+          raise "unexpected bus link #{inspect(bus_info.link)}; expected #{inspect(expected_link)}"
+
+        bus_info.topology_state not in [:healthy, :broken_primary, :broken_secondary, :healing] ->
+          raise "unexpected topology state #{inspect(bus_info.topology_state)}"
+
+        true ->
+          :ok
+      end
+    else
+      {:ok, state} -> raise "master not operational: #{inspect(state)}"
+      {:error, reason} -> raise "could not inspect running master: #{inspect(reason)}"
+    end
+  end
+
+  defp startup_summary(opts) do
+    {:ok, bus_info} = EtherCAT.Bus.info(EtherCAT.Bus)
+    {:ok, domain_info} = EtherCAT.domain_info(:main)
+
+    "attached link=#{inspect(bus_info.link)} topology=#{inspect(bus_info.topology_state)} " <>
+      "cycle_time_us=#{domain_info.cycle_time_us} step_ms=#{opts.step_ms} " <>
+      "match_timeout_ms=#{opts.match_timeout_ms} poll_ms=#{opts.poll_ms}"
+  end
+
+  defp write_pattern(byte) when is_integer(byte) and byte >= 0 and byte <= 255 do
+    @channels
+    |> Enum.zip(channel_values(byte))
+    |> Enum.reduce_while(:ok, fn {channel, value}, :ok ->
+      case EtherCAT.write_output(:outputs, channel, value) do
+        :ok -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, {channel, reason}}}
+      end
+    end)
+  end
+
+  defp wait_for_match(expected, timeout_ms, poll_ms) do
+    deadline_ms = System.monotonic_time(:millisecond) + timeout_ms
+    do_wait_for_match(expected, deadline_ms, poll_ms, nil)
+  end
+
+  defp do_wait_for_match(expected, deadline_ms, poll_ms, last_observation) do
+    observation = read_pattern()
+
+    case observation do
+      {:ok, ^expected, matched_at_us, values} ->
+        {:ok, expected, matched_at_us, values}
+
+      _ ->
+        if System.monotonic_time(:millisecond) >= deadline_ms do
+          {:error, observation || last_observation}
+        else
+          Process.sleep(poll_ms)
+          do_wait_for_match(expected, deadline_ms, poll_ms, observation)
+        end
+    end
+  end
+
+  defp read_pattern do
+    @channels
+    |> Enum.with_index(1)
+    |> Enum.reduce_while({:ok, []}, fn {channel, index}, {:ok, values} ->
+      case EtherCAT.read_input(:inputs, channel) do
+        {:ok, {value, updated_at_us}} when value in [0, 1] and is_integer(updated_at_us) ->
+          {:cont, {:ok, [{index, value, updated_at_us} | values]}}
+
+        {:ok, other} ->
+          {:halt, {:error, {channel, {:unexpected_value, other}}}}
+
+        {:error, reason} ->
+          {:halt, {:error, {channel, reason}}}
+      end
+    end)
+    |> case do
+      {:ok, values} ->
+        values = Enum.reverse(values)
+
+        [b1, b2, b3, b4, b5, b6, b7, b8] =
+          Enum.map(values, fn {_index, value, _updated_at_us} -> value end)
+
+        <<byte::little-unsigned-integer-size(8)>> =
+          <<b1::1, b2::1, b3::1, b4::1, b5::1, b6::1, b7::1, b8::1>>
+
+        matched_at_us =
+          Enum.max(Enum.map(values, fn {_index, _value, updated_at_us} -> updated_at_us end))
+
+        {:ok, byte, matched_at_us, values}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp snapshot do
+    %{
+      master_state: unwrap_ok(EtherCAT.state()),
+      domain: unwrap_ok(EtherCAT.domain_info(:main)),
+      bus: unwrap_ok(EtherCAT.Bus.info(EtherCAT.Bus))
+    }
+  end
+
+  defp current_domain_cycle do
+    case EtherCAT.domain_info(:main) do
+      {:ok, %{cycle_count: cycle_count}} -> cycle_count
+      _ -> nil
+    end
+  end
+
+  defp unwrap_ok({:ok, value}), do: value
+  defp unwrap_ok(other), do: other
+
+  defp format_snapshot(%{master_state: master_state, domain: domain, bus: bus}) do
+    state_part = "master=#{inspect(master_state)}"
+
+    domain_part =
+      case domain do
+        %{cycle_count: cycle_count, miss_count: miss_count, total_miss_count: total_miss_count} = info ->
+          "domain_cycle=#{cycle_count} miss=#{miss_count}/#{total_miss_count} " <>
+            "cycle_health=#{inspect(Map.get(info, :cycle_health))}"
+
+        other ->
+          "domain=#{inspect(other)}"
+      end
+
+    bus_part =
+      case bus do
+        %{topology_state: topology_state, carrier_up: carrier_up} = info ->
+          "topology=#{inspect(topology_state)} carrier_up=#{carrier_up} " <>
+            "last_down_reason=#{inspect(Map.get(info, :last_down_reason))}"
+
+        other ->
+          "bus=#{inspect(other)}"
+      end
+
+    "#{state_part} #{domain_part} #{bus_part}"
+  end
+
+  defp format_telemetry([:ethercat, :bus, :link, :down], _measurements, metadata) do
+    "bus.link.down endpoint=#{metadata.endpoint} reason=#{inspect(metadata.reason)} link=#{inspect(metadata.link)}"
+  end
+
+  defp format_telemetry([:ethercat, :bus, :link, :reconnected], _measurements, metadata) do
+    "bus.link.reconnected endpoint=#{metadata.endpoint} link=#{inspect(metadata.link)}"
+  end
+
+  defp format_telemetry([:ethercat, :master, :state, :changed], _measurements, metadata) do
+    "master.state #{inspect(metadata.from)} -> #{inspect(metadata.to)} public=#{inspect(metadata.public_state)} target=#{inspect(metadata.runtime_target)}"
+  end
+
+  defp format_telemetry([:ethercat, :master, :slave_fault, :changed], _measurements, metadata) do
+    "master.slave_fault slave=#{inspect(metadata.slave)} #{inspect(metadata.from)}/#{inspect(metadata.from_detail)} -> #{inspect(metadata.to)}/#{inspect(metadata.to_detail)}"
+  end
+
+  defp format_telemetry([:ethercat, :domain, :cycle, :invalid], measurements, metadata) do
+    "domain.invalid domain=#{inspect(metadata.domain)} reason=#{inspect(metadata.reason)} expected_wkc=#{inspect(metadata.expected_wkc)} actual_wkc=#{inspect(metadata.actual_wkc)} total_invalid=#{measurements.total_invalid_count}"
+  end
+
+  defp format_telemetry([:ethercat, :domain, :cycle, :transport_miss], measurements, metadata) do
+    "domain.transport_miss domain=#{inspect(metadata.domain)} reason=#{inspect(metadata.reason)} consecutive=#{measurements.consecutive_miss_count} total_invalid=#{measurements.total_invalid_count}"
+  end
+
+  defp format_telemetry([:ethercat, :slave, :down], _measurements, metadata) do
+    "slave.down slave=#{inspect(metadata.slave)} station=0x#{Integer.to_string(metadata.station, 16)} reason=#{inspect(metadata.reason)}"
+  end
+
+  defp format_telemetry([:ethercat, :slave, :health, :fault], measurements, metadata) do
+    "slave.health_fault slave=#{inspect(metadata.slave)} station=0x#{Integer.to_string(metadata.station, 16)} al_state=#{inspect(measurements.al_state)} error_code=#{inspect(measurements.error_code)}"
+  end
+
+  defp format_telemetry(event, measurements, metadata) do
+    "#{Enum.join(Enum.map(event, &to_string/1), ".")} measurements=#{inspect(measurements)} metadata=#{inspect(metadata)}"
+  end
+
+  defp sample_ok(step, expected, observed, values, latency_us, written_cycle, matched_at_us) do
+    matched_cycle = current_domain_cycle()
+    latest_input_at_us = latest_input_at_us(values)
+
+    %{
+      status: :ok,
+      step: step,
+      expected: expected,
+      observed: observed,
+      values: values,
+      latency_us: latency_us,
+      written_cycle: written_cycle,
+      matched_cycle: matched_cycle,
+      cycle_delta: cycle_delta(written_cycle, matched_cycle),
+      matched_at_us: matched_at_us,
+      latest_input_at_us: latest_input_at_us,
+      snapshot: snapshot()
+    }
+  end
+
+  defp sample_timeout(step, expected, observation, timeout_ms, written_cycle) do
+    matched_cycle = current_domain_cycle()
+
+    {detail, latest_input_at_us} =
+      case observation do
+        {:ok, observed, matched_at_us, values} ->
+          {%{
+             observed: observed,
+             matched_at_us: matched_at_us,
+             values: values
+           }, latest_input_at_us(values)}
+
+        {:error, {channel, reason}} ->
+          {%{read_error: {channel, reason}}, nil}
+
+        nil ->
+          {%{observed: nil}, nil}
+      end
+
+    %{
+      status: :timeout,
+      step: step,
+      expected: expected,
+      timeout_ms: timeout_ms,
+      detail: detail,
+      written_cycle: written_cycle,
+      matched_cycle: matched_cycle,
+      cycle_delta: cycle_delta(written_cycle, matched_cycle),
+      latest_input_at_us: latest_input_at_us,
+      snapshot: snapshot()
+    }
+  end
+
+  defp latest_input_at_us(values) when is_list(values) do
+    values
+    |> Enum.map(fn {_index, _value, updated_at_us} -> updated_at_us end)
+    |> Enum.max()
+  end
+
+  defp latest_input_at_us(_), do: nil
+
+  defp cycle_delta(nil, _matched_cycle), do: nil
+  defp cycle_delta(_written_cycle, nil), do: nil
+  defp cycle_delta(written_cycle, matched_cycle), do: matched_cycle - written_cycle
+
+  defp start_sink(config) do
+    spawn_link(fn ->
+      sink_loop(%{
+        start_ms: config.start_ms,
+        pre_samples: config.pre_samples,
+        post_samples: config.post_samples,
+        late_cycle_delta: config.late_cycle_delta,
+        focus_remaining: 0,
+        samples: [],
+        last_latest_input_at_us: nil
+      })
+    end)
+  end
+
+  defp stop_sink(pid) when is_pid(pid) do
+    send(pid, :stop)
+    :ok
+  end
+
+  defp sink_loop(state) do
+    receive do
+      :stop ->
+        :ok
+
+      {:log, level, message} ->
+        emit(state.start_ms, level, message)
+        sink_loop(state)
+
+      {:mark, label} ->
+        state
+        |> dump_recent("mark #{label}")
+        |> enter_focus()
+        |> sink_loop()
+
+      {:telemetry, event, measurements, metadata, message} ->
+        trigger? = telemetry_triggers_focus?(event)
+        next_state = if trigger?, do: state |> dump_recent(message) |> enter_focus(), else: state
+        emit(state.start_ms, :telemetry, message)
+        sink_loop(next_state)
+
+      {:sample, sample} ->
+        sink_loop(handle_sample(state, sample))
+    end
+  end
+
+  defp handle_sample(state, sample) do
+    stale_input? =
+      sample[:latest_input_at_us] &&
+        state.last_latest_input_at_us &&
+        sample.latest_input_at_us <= state.last_latest_input_at_us
+
+    late_match? =
+      sample[:status] == :ok &&
+        is_integer(sample[:cycle_delta]) &&
+        sample.cycle_delta > state.late_cycle_delta
+
+    trigger_label =
+      cond do
+        sample.status == :timeout -> "timeout"
+        sample.status == :write_error -> "write_error"
+        late_match? -> "late match cycle_delta=#{sample.cycle_delta}"
+        stale_input? -> "stale input timestamp"
+        true -> nil
+      end
+
+    next_state =
+      Map.put(state, :last_latest_input_at_us, sample[:latest_input_at_us] || state.last_latest_input_at_us)
+
+    cond do
+      trigger_label ->
+        next_state
+        |> dump_recent(trigger_label)
+        |> emit_sample(sample, trigger_label)
+        |> enter_focus()
+
+      next_state.focus_remaining > 0 ->
+        next_state
+        |> push_sample(sample)
+        |> emit_sample(sample, nil)
+        |> dec_focus()
+
+      true ->
+        push_sample(next_state, sample)
+    end
+  end
+
+  defp push_sample(state, sample) do
+    samples =
+      (state.samples ++ [sample])
+      |> Enum.take(-state.pre_samples)
+
+    %{state | samples: samples}
+  end
+
+  defp dump_recent(state, label) do
+    emit(state.start_ms, :note, "---- focus start: #{label} ----")
+
+    Enum.each(state.samples, fn sample ->
+      emit(state.start_ms, :trace, format_sample(sample))
+    end)
+
+    %{state | samples: []}
+  end
+
+  defp emit_sample(state, sample, reason) do
+    level =
+      case sample.status do
+        :ok -> if(reason, do: :warn, else: :trace)
+        :timeout -> :error
+        :write_error -> :error
+      end
+
+    message =
+      if reason do
+        "#{format_sample(sample)} reason=#{reason}"
+      else
+        format_sample(sample)
+      end
+
+    emit(state.start_ms, level, message)
+    state
+  end
+
+  defp enter_focus(state), do: %{state | focus_remaining: state.post_samples}
+
+  defp dec_focus(state) do
+    %{state | focus_remaining: max(state.focus_remaining - 1, 0)}
+  end
+
+  defp telemetry_triggers_focus?([:ethercat, :bus, :link, _]), do: true
+  defp telemetry_triggers_focus?([:ethercat, :domain, :cycle, _]), do: true
+  defp telemetry_triggers_focus?([:ethercat, :master, :state, :changed]), do: true
+  defp telemetry_triggers_focus?([:ethercat, :master, :slave_fault, :changed]), do: true
+  defp telemetry_triggers_focus?([:ethercat, :slave, :down]), do: true
+  defp telemetry_triggers_focus?([:ethercat, :slave, :health, :fault]), do: true
+  defp telemetry_triggers_focus?(_event), do: false
+
+  defp handle_control_messages(sink) do
+    receive do
+      :stop ->
+        throw(:stop)
+
+      {:mark, label} ->
+        send(sink, {:mark, label})
+        handle_control_messages(sink)
+    after
+      0 ->
+        :ok
+    end
+  end
+
+  defp emit(start_ms, level, message) do
+    delta_ms = System.monotonic_time(:millisecond) - start_ms
+    IO.puts("[t+#{delta_ms}ms] #{level} #{message}")
+  end
+
+  defp format_sample(%{
+         status: :ok,
+         step: step,
+         expected: expected,
+         observed: observed,
+         latency_us: latency_us,
+         values: values,
+         written_cycle: written_cycle,
+         matched_cycle: matched_cycle,
+         cycle_delta: cycle_delta,
+         latest_input_at_us: latest_input_at_us,
+         snapshot: snapshot
+       }) do
+    "step=#{step} pattern=#{format_byte(expected)} observed=#{format_byte(observed)} " <>
+      "latency_us=#{latency_us} written_cycle=#{inspect(written_cycle)} " <>
+      "matched_cycle=#{inspect(matched_cycle)} cycle_delta=#{inspect(cycle_delta)} " <>
+      "latest_input_at_us=#{inspect(latest_input_at_us)} inputs=#{format_values(values)} " <>
+      "#{format_snapshot(snapshot)}"
+  end
+
+  defp format_sample(%{
+         status: :timeout,
+         step: step,
+         expected: expected,
+         timeout_ms: timeout_ms,
+         detail: detail,
+         written_cycle: written_cycle,
+         matched_cycle: matched_cycle,
+         cycle_delta: cycle_delta,
+         snapshot: snapshot
+       }) do
+    "timeout step=#{step} pattern=#{format_byte(expected)} timeout_ms=#{timeout_ms} " <>
+      "written_cycle=#{inspect(written_cycle)} matched_cycle=#{inspect(matched_cycle)} " <>
+      "cycle_delta=#{inspect(cycle_delta)} detail=#{inspect(detail)} #{format_snapshot(snapshot)}"
+  end
+
+  defp format_sample(%{
+         status: :write_error,
+         step: step,
+         expected: expected,
+         reason: reason,
+         written_cycle: written_cycle,
+         matched_cycle: matched_cycle,
+         snapshot: snapshot
+       }) do
+    "write_error step=#{step} pattern=#{format_byte(expected)} reason=#{inspect(reason)} " <>
+      "written_cycle=#{inspect(written_cycle)} matched_cycle=#{inspect(matched_cycle)} " <>
+      "#{format_snapshot(snapshot)}"
+  end
+
+  defp channel_values(byte) do
+    <<b1::1, b2::1, b3::1, b4::1, b5::1, b6::1, b7::1, b8::1>> =
+      <<byte::little-unsigned-integer-size(8)>>
+
+    [b1, b2, b3, b4, b5, b6, b7, b8]
+  end
+
+  defp format_byte(byte) when is_integer(byte) do
+    hex =
+      byte
+      |> Integer.to_string(16)
+      |> String.upcase()
+      |> String.pad_leading(2, "0")
+
+    "0x#{hex} ch1..8=#{inspect(channel_values(byte))}"
+  end
+
+  defp format_values(values) do
+    values
+    |> Enum.map(fn {index, value, updated_at_us} -> "ch#{index}=#{value}@#{updated_at_us}" end)
+    |> Enum.join(" ")
+  end
+end
+```
+
+## Start The Watcher
+
+Run this cell, then use the `note` cells around the physical unplug/replug.
+
+```elixir
+watcher =
+  EtherCAT.Notebooks.RedundantReplugWatch.start(%{
+    primary_interface: "eth1",
+    backup_interface: "eth0",
+    step_ms: 20,
+    match_timeout_ms: 200,
+    poll_ms: 1,
+    steps: nil,
+    late_cycle_delta: 2,
+    pre_samples: 12,
+    post_samples: 24
+  })
+```
+
+## Mark Primary Down
+
+Run this immediately before or after you unplug the primary cable.
+
+```elixir
+EtherCAT.Notebooks.RedundantReplugWatch.note(watcher, "PRIMARY DOWN")
+```
+
+## Mark Primary Up
+
+Run this immediately before or after you reconnect the primary cable.
+
+```elixir
+EtherCAT.Notebooks.RedundantReplugWatch.note(watcher, "PRIMARY UP")
+```
+
+## Stop The Watcher
+
+```elixir
+EtherCAT.Notebooks.RedundantReplugWatch.stop(watcher)
+```
+
+## Short Bounded Run
+
+Useful for a finite sample after a reconnect.
+
+```elixir
+bounded_watcher =
+  EtherCAT.Notebooks.RedundantReplugWatch.start(%{
+    primary_interface: "eth1",
+    backup_interface: "eth0",
+    step_ms: 20,
+    match_timeout_ms: 200,
+    poll_ms: 1,
+    steps: 200,
+    late_cycle_delta: 2,
+    pre_samples: 12,
+    post_samples: 24
+  })
+```

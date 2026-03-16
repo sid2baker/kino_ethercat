@@ -20,6 +20,8 @@ import {
   Stack,
   StatusBadge,
   SummaryGrid,
+  Tab,
+  Tabs,
   TextArea,
 } from "../../ui/react95";
 
@@ -155,7 +157,33 @@ function ScheduledFaultTable({ faults }) {
 
 function SectionCopy({ children }) {
   if (!children) return null;
-  return <div className="ke95-simulator-faults-panel__copy">{children}</div>;
+  return <div>{children}</div>;
+}
+
+function WatchList({ items = [] }) {
+  if (!items.length) return null;
+
+  return (
+    <Stack compact>
+      {items.map((item) => (
+        <MessageLine key={item} tone="info">
+          {item}
+        </MessageLine>
+      ))}
+    </Stack>
+  );
+}
+
+function DrillGroup({ title, copy, watch = [], children }) {
+  return (
+    <Panel title={title}>
+      <Stack compact>
+        <SectionCopy>{copy}</SectionCopy>
+        <WatchList items={watch} />
+        {children}
+      </Stack>
+    </Panel>
+  );
 }
 
 function SimulatorFaultsPanel({ ctx, data }) {
@@ -182,6 +210,7 @@ function SimulatorFaultsPanel({ ctx, data }) {
   const [udpPlan, setUdpPlan] = useState("next");
   const [udpCount, setUdpCount] = useState("3");
   const [udpScript, setUdpScript] = useState("truncate, wrong_idx");
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   useEffect(() => {
     ctx.handleEvent("snapshot", (next) => {
@@ -245,13 +274,58 @@ function SimulatorFaultsPanel({ ctx, data }) {
   ];
 
   const selectedSlaveDisabled = disabled || !selectedSlave;
+  const lifecycleItems = [
+    {
+      label: "Active now",
+      value: (
+        <span>
+          <StatusBadge tone={(runtimeFaults.sticky_count ?? 0) > 0 ? "danger" : "neutral"}>
+            {String(runtimeFaults.sticky_count ?? 0)}
+          </StatusBadge>
+        </span>
+      ),
+    },
+    {
+      label: "Queued next",
+      value: (
+        <span>
+          <StatusBadge tone={(runtimeFaults.pending_count ?? 0) > 0 ? "warn" : "neutral"}>
+            {String(runtimeFaults.pending_count ?? 0)}
+          </StatusBadge>
+        </span>
+      ),
+    },
+    {
+      label: "Scheduled later",
+      value: (
+        <span>
+          <StatusBadge tone={(runtimeFaults.scheduled_count ?? 0) > 0 ? "warn" : "neutral"}>
+            {String(runtimeFaults.scheduled_count ?? 0)}
+          </StatusBadge>
+        </span>
+      ),
+    },
+  ];
   const runtimeApplyLabel = runtimePlan === "immediate" ? "Apply runtime fault" : "Queue runtime fault";
   const udpApplyLabel = udpPlan === "next" ? "Queue UDP fault" : "Apply UDP fault";
   const pushAction = (id, params = {}) => ctx.pushEvent("action", { id, ...params });
 
+  if (udpEnabled) {
+    lifecycleItems.push({
+      label: "Transport queued",
+      value: (
+        <span>
+          <StatusBadge tone={(udpFaults.active_count ?? 0) > 0 ? "warn" : "neutral"}>
+            {String(udpFaults.active_count ?? 0)}
+          </StatusBadge>
+        </span>
+      ),
+    });
+  }
+
   return (
     <Shell title="Simulator faults" subtitle={snapshot.kind} status={status}>
-      <Stack className="ke95-simulator-faults-panel">
+      <Stack>
         <MessageLine tone={snapshot.message?.level === "error" ? "error" : "info"}>
           {snapshot.message?.text ?? null}
         </MessageLine>
@@ -259,7 +333,7 @@ function SimulatorFaultsPanel({ ctx, data }) {
         <SummaryGrid items={snapshot.summary ?? []} />
 
         <Panel
-          title="Quick faults"
+          title="Quick drills"
           actions={
             <InlineButtons>
               <Button
@@ -287,26 +361,18 @@ function SimulatorFaultsPanel({ ctx, data }) {
         >
           <Stack compact>
             <SectionCopy>
-              Start here. These drills cover the common recovery cases without making you build a fault by hand.
+              Start here. Each drill is meant to teach one recovery pattern without making you build the fault by hand.
             </SectionCopy>
 
             <Columns minWidth="18rem">
-              <Stack compact className="ke95-simulator-faults-panel__quick-group">
-                <div className="ke95-kicker">Runtime</div>
-                <SectionCopy>Use these when you want to disturb the EtherCAT cycle itself.</SectionCopy>
-                <ControlField label="Target slave">
-                  <Dropdown
-                    disabled={!snapshot.slave_options?.length}
-                    value={selectedSlave}
-                    onChange={(event) => setSelectedSlave(event.target.value)}
-                  >
-                    {(snapshot.slave_options ?? []).map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </Dropdown>
-                </ControlField>
+              <DrillGroup
+                title="Cycle recovery"
+                copy="Disturb the exchange itself without targeting a specific slave first."
+                watch={[
+                  "Task Manager -> Runtime shows invalid cycles or WKC mismatches.",
+                  "Task Manager -> Events shows the recovery start and recovery success.",
+                ]}
+              >
                 <InlineButtons>
                   <Button
                     disabled={disabled}
@@ -332,6 +398,31 @@ function SimulatorFaultsPanel({ ctx, data }) {
                   >
                     WKC -1 for 3 cycles
                   </Button>
+                </InlineButtons>
+              </DrillGroup>
+
+              <DrillGroup
+                title="Slave recovery"
+                copy="Use these when you want one slave to fall out of the healthy path."
+                watch={[
+                  "Task Manager -> Slaves shows one device leaving OP.",
+                  "Task Manager -> Overview shows the master entering recovery.",
+                ]}
+              >
+                <ControlField label="Target slave">
+                  <Dropdown
+                    disabled={!snapshot.slave_options?.length}
+                    value={selectedSlave}
+                    onChange={(event) => setSelectedSlave(event.target.value)}
+                  >
+                    {(snapshot.slave_options ?? []).map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </Dropdown>
+                </ControlField>
+                <InlineButtons>
                   <Button
                     disabled={selectedSlaveDisabled}
                     onClick={() => pushAction("inject_disconnect", { slave: selectedSlave })}
@@ -344,24 +435,18 @@ function SimulatorFaultsPanel({ ctx, data }) {
                   >
                     Send slave to SAFEOP
                   </Button>
-                  <Button
-                    disabled={selectedSlaveDisabled}
-                    onClick={() =>
-                      pushAction("inject_al_error", {
-                        slave: selectedSlave,
-                        code: "0x001B",
-                      })
-                    }
-                  >
-                    Latch AL error
-                  </Button>
                 </InlineButtons>
-              </Stack>
+              </DrillGroup>
 
               {udpEnabled ? (
-                <Stack compact className="ke95-simulator-faults-panel__quick-group">
-                  <div className="ke95-kicker">UDP</div>
-                  <SectionCopy>Use these when you only want to disturb the transport replies.</SectionCopy>
+                <DrillGroup
+                  title="Transport replies"
+                  copy="Only disturb the UDP reply path. The simulator state itself stays healthy."
+                  watch={[
+                    "Task Manager -> Runtime shows transport misses instead of slave faults.",
+                    "Task Manager -> Bus shows reply anomalies and queue activity.",
+                  ]}
+                >
                   <InlineButtons>
                     <Button
                       disabled={udpDisabled}
@@ -398,349 +483,662 @@ function SimulatorFaultsPanel({ ctx, data }) {
                       Replay previous reply
                     </Button>
                   </InlineButtons>
-                </Stack>
+                </DrillGroup>
               ) : null}
             </Columns>
           </Stack>
         </Panel>
 
-        <Panel title="Current fault state">
-          <Stack compact>
-            <Columns minWidth="18rem">
-              <Stack compact>
-                <div className="ke95-kicker">Runtime</div>
-                <SectionCopy>{runtimeFaults.summary ?? "No runtime faults."}</SectionCopy>
-                <PropertyList items={runtimeProperties} />
-              </Stack>
-
-              {udpEnabled ? (
-                <Stack compact>
-                  <div className="ke95-kicker">UDP</div>
-                  <SectionCopy>{udpFaults.summary ?? "UDP disabled."}</SectionCopy>
-                  <PropertyList items={udpProperties} />
-                </Stack>
-              ) : null}
-            </Columns>
-
-            <Stack compact className="ke95-simulator-faults-panel__tables">
-              <div className="ke95-simulator-faults-panel__table-section">
-                <div className="ke95-kicker">Sticky runtime faults</div>
-                <SectionCopy>These are active now and stay active until you clear them.</SectionCopy>
-                <FaultTable
-                  labels={runtimeFaults.sticky_labels}
-                  emptyText="No sticky runtime faults are active."
-                />
-              </div>
-
-              <div className="ke95-simulator-faults-panel__table-section">
-                <div className="ke95-kicker">Queued exchange faults</div>
-                <SectionCopy>These will run on the next exchanges that match your plan.</SectionCopy>
-                <FaultTable
-                  labels={runtimeFaults.pending_labels}
-                  emptyText="No runtime exchange faults are queued."
-                />
-              </div>
-
-              <div className="ke95-simulator-faults-panel__table-section">
-                <div className="ke95-kicker">Scheduled runtime faults</div>
-                <SectionCopy>These are waiting for a delay or milestone before they become active.</SectionCopy>
-                <ScheduledFaultTable faults={runtimeFaults.scheduled_faults} />
-              </div>
-
-              {udpEnabled ? (
-                <div className="ke95-simulator-faults-panel__table-section">
-                  <div className="ke95-kicker">Queued UDP reply faults</div>
-                  <SectionCopy>These affect future UDP replies without changing simulator state directly.</SectionCopy>
-                  <FaultTable
-                    labels={udpFaults.pending_labels}
-                    emptyText="No UDP reply faults are queued."
-                  />
-                </div>
-              ) : null}
-            </Stack>
-          </Stack>
-        </Panel>
-
-        <Panel title="Advanced runtime builder">
+        <Panel title="Fault lifecycle">
           <Stack compact>
             <SectionCopy>
-              Use this when the quick drills are not enough. It maps closely to the simulator fault API.
+              Read this left to right: active now, queued for the next exchanges, then delayed for later.
             </SectionCopy>
 
-            <Columns minWidth="12rem">
-              <ControlField label="Fault">
-                <Dropdown value={runtimeKind} onChange={(event) => setRuntimeKind(event.target.value)}>
-                  {RUNTIME_FAULTS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </Dropdown>
-              </ControlField>
+            <SummaryGrid items={lifecycleItems} />
 
-              <ControlField label="Plan">
-                <Dropdown value={runtimePlan} onChange={(event) => setRuntimePlan(event.target.value)}>
-                  {runtimePlanOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </Dropdown>
-              </ControlField>
+            {udpEnabled ? (
+              <Tabs defaultActiveTab="Runtime">
+                <Tab title="Runtime">
+                  <Stack compact>
+                    <SectionCopy>{runtimeFaults.summary ?? "No runtime faults."}</SectionCopy>
+                    <PropertyList items={runtimeProperties} />
 
-              {runtimeKind === "command_wkc_offset" ? (
-                <ControlField label="Command">
-                  <Dropdown value={runtimeCommand} onChange={(event) => setRuntimeCommand(event.target.value)}>
-                    {EXCHANGE_COMMANDS.map((command) => (
-                      <option key={command} value={command}>
-                        {command}
-                      </option>
-                    ))}
-                  </Dropdown>
-                </ControlField>
-              ) : null}
+                    <Panel title="Sticky runtime faults">
+                      <Stack compact>
+                        <SectionCopy>These are active now and stay active until you clear them.</SectionCopy>
+                        <FaultTable
+                          labels={runtimeFaults.sticky_labels}
+                          emptyText="No sticky runtime faults are active."
+                        />
+                      </Stack>
+                    </Panel>
 
-              {[
-                "logical_wkc_offset",
-                "disconnect",
-                "retreat_to_safeop",
-                "latch_al_error",
-                "mailbox_abort",
-                "mailbox_protocol_fault",
-              ].includes(runtimeKind) ? (
-                <ControlField label="Slave">
-                  <Dropdown value={selectedSlave} onChange={(event) => setSelectedSlave(event.target.value)}>
-                    {(snapshot.slave_options ?? []).map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </Dropdown>
-                </ControlField>
-              ) : null}
+                    <Panel title="Queued exchange faults">
+                      <Stack compact>
+                        <SectionCopy>These will run on the next exchanges that match your plan.</SectionCopy>
+                        <FaultTable
+                          labels={runtimeFaults.pending_labels}
+                          emptyText="No runtime exchange faults are queued."
+                        />
+                      </Stack>
+                    </Panel>
 
-              {["wkc_offset", "command_wkc_offset", "logical_wkc_offset"].includes(runtimeKind) ? (
-                <ControlField label="Offset">
-                  <Input value={runtimeValue} onChange={(event) => setRuntimeValue(event.target.value)} />
-                </ControlField>
-              ) : null}
+                    <Panel title="Scheduled runtime faults">
+                      <Stack compact>
+                        <SectionCopy>
+                          These are waiting for a delay or milestone before they become active.
+                        </SectionCopy>
+                        <ScheduledFaultTable faults={runtimeFaults.scheduled_faults} />
+                      </Stack>
+                    </Panel>
+                  </Stack>
+                </Tab>
 
-              {runtimeKind === "latch_al_error" ? (
-                <ControlField label="AL error code">
-                  <Input value={alErrorCode} onChange={(event) => setAlErrorCode(event.target.value)} />
-                </ControlField>
-              ) : null}
+                <Tab title="Transport">
+                  <Stack compact>
+                    <SectionCopy>{udpFaults.summary ?? "No UDP faults queued."}</SectionCopy>
+                    <PropertyList items={udpProperties} />
 
-              {["mailbox_abort", "mailbox_protocol_fault"].includes(runtimeKind) ? (
-                <ControlField label="Mailbox index">
-                  <Input value={mailboxIndex} onChange={(event) => setMailboxIndex(event.target.value)} />
-                </ControlField>
-              ) : null}
+                    <Panel title="Queued UDP reply faults">
+                      <Stack compact>
+                        <SectionCopy>
+                          These affect future UDP replies without changing simulator state directly.
+                        </SectionCopy>
+                        <FaultTable
+                          labels={udpFaults.pending_labels}
+                          emptyText="No UDP reply faults are queued."
+                        />
+                      </Stack>
+                    </Panel>
+                  </Stack>
+                </Tab>
+              </Tabs>
+            ) : (
+              <Stack compact>
+                <SectionCopy>{runtimeFaults.summary ?? "No runtime faults."}</SectionCopy>
+                <PropertyList items={runtimeProperties} />
 
-              {["mailbox_abort", "mailbox_protocol_fault"].includes(runtimeKind) ? (
-                <ControlField label="Subindex">
-                  <Input value={mailboxSubindex} onChange={(event) => setMailboxSubindex(event.target.value)} />
-                </ControlField>
-              ) : null}
+                <Panel title="Sticky runtime faults">
+                  <Stack compact>
+                    <SectionCopy>These are active now and stay active until you clear them.</SectionCopy>
+                    <FaultTable
+                      labels={runtimeFaults.sticky_labels}
+                      emptyText="No sticky runtime faults are active."
+                    />
+                  </Stack>
+                </Panel>
 
-              {runtimeKind === "mailbox_abort" ? (
-                <ControlField label="Abort code">
-                  <Input value={mailboxAbortCode} onChange={(event) => setMailboxAbortCode(event.target.value)} />
-                </ControlField>
-              ) : null}
+                <Panel title="Queued exchange faults">
+                  <Stack compact>
+                    <SectionCopy>These will run on the next exchanges that match your plan.</SectionCopy>
+                    <FaultTable
+                      labels={runtimeFaults.pending_labels}
+                      emptyText="No runtime exchange faults are queued."
+                    />
+                  </Stack>
+                </Panel>
 
-              {runtimeKind === "mailbox_abort" ? (
-                <ControlField label="Abort stage">
-                  <Dropdown value={mailboxAbortStage} onChange={(event) => setMailboxAbortStage(event.target.value)}>
-                    {MAILBOX_ABORT_STAGES.map((stage) => (
-                      <option key={stage || "any"} value={stage}>
-                        {stage || "any"}
-                      </option>
-                    ))}
-                  </Dropdown>
-                </ControlField>
-              ) : null}
-
-              {runtimeKind === "mailbox_protocol_fault" ? (
-                <ControlField label="Mailbox stage">
-                  <Dropdown value={mailboxStage} onChange={(event) => setMailboxStage(event.target.value)}>
-                    {MAILBOX_STAGES.map((stage) => (
-                      <option key={stage} value={stage}>
-                        {stage}
-                      </option>
-                    ))}
-                  </Dropdown>
-                </ControlField>
-              ) : null}
-
-              {runtimeKind === "mailbox_protocol_fault" ? (
-                <ControlField label="Protocol fault">
-                  <Dropdown value={mailboxFaultKind} onChange={(event) => setMailboxFaultKind(event.target.value)}>
-                    {MAILBOX_PROTOCOL_FAULTS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </Dropdown>
-                </ControlField>
-              ) : null}
-
-              {runtimeKind === "mailbox_protocol_fault" &&
-              ["mailbox_type", "coe_service", "sdo_command", "segment_command"].includes(mailboxFaultKind) ? (
-                <ControlField label="Protocol value">
-                  <Input value={mailboxFaultValue} onChange={(event) => setMailboxFaultValue(event.target.value)} />
-                </ControlField>
-              ) : null}
-
-              {runtimePlan === "count" ? (
-                <ControlField label="Count">
-                  <Input value={runtimeCount} onChange={(event) => setRuntimeCount(event.target.value)} />
-                </ControlField>
-              ) : null}
-
-              {runtimePlan === "after_ms" ? (
-                <ControlField label="Delay ms">
-                  <Input value={runtimeDelay} onChange={(event) => setRuntimeDelay(event.target.value)} />
-                </ControlField>
-              ) : null}
-
-              {runtimePlan === "after_milestone" ? (
-                <ControlField label="Milestone">
-                  <Dropdown value={milestoneKind} onChange={(event) => setMilestoneKind(event.target.value)}>
-                    {MILESTONE_KINDS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </Dropdown>
-                </ControlField>
-              ) : null}
-
-              {runtimePlan === "after_milestone" ? (
-                <ControlField label="Milestone count">
-                  <Input value={milestoneCount} onChange={(event) => setMilestoneCount(event.target.value)} />
-                </ControlField>
-              ) : null}
-
-              {runtimePlan === "after_milestone" && milestoneKind !== "healthy_exchanges" ? (
-                <ControlField label="Milestone slave">
-                  <Dropdown value={selectedSlave} onChange={(event) => setSelectedSlave(event.target.value)}>
-                    {(snapshot.slave_options ?? []).map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </Dropdown>
-                </ControlField>
-              ) : null}
-
-              {runtimePlan === "after_milestone" && milestoneKind === "mailbox_step" ? (
-                <ControlField label="Milestone stage">
-                  <Dropdown value={milestoneStage} onChange={(event) => setMilestoneStage(event.target.value)}>
-                    {MAILBOX_STAGES.map((stage) => (
-                      <option key={stage} value={stage}>
-                        {stage}
-                      </option>
-                    ))}
-                  </Dropdown>
-                </ControlField>
-              ) : null}
-
-              <InlineButtons className="ke95-simulator-faults-panel__row-actions">
-                <Button
-                  disabled={disabled}
-                  onClick={() =>
-                    pushAction("apply_runtime_fault", {
-                      kind: runtimeKind,
-                      plan: runtimePlan,
-                      command: runtimeCommand,
-                      slave: selectedSlave,
-                      value: runtimeValue,
-                      count: runtimeCount,
-                      delay_ms: runtimeDelay,
-                      code: alErrorCode,
-                      index: mailboxIndex,
-                      subindex: mailboxSubindex,
-                      abort_code: mailboxAbortCode,
-                      stage: runtimeKind === "mailbox_abort" ? mailboxAbortStage : mailboxStage,
-                      mailbox_fault_kind: mailboxFaultKind,
-                      mailbox_fault_value: mailboxFaultValue,
-                      milestone_kind: milestoneKind,
-                      milestone_count: milestoneCount,
-                      milestone_slave: selectedSlave,
-                      milestone_stage: milestoneStage,
-                    })
-                  }
-                >
-                  {runtimeApplyLabel}
-                </Button>
-              </InlineButtons>
-            </Columns>
+                <Panel title="Scheduled runtime faults">
+                  <Stack compact>
+                    <SectionCopy>
+                      These are waiting for a delay or milestone before they become active.
+                    </SectionCopy>
+                    <ScheduledFaultTable faults={runtimeFaults.scheduled_faults} />
+                  </Stack>
+                </Panel>
+              </Stack>
+            )}
           </Stack>
         </Panel>
 
-        {udpEnabled ? (
-          <Panel title="Advanced UDP builder">
+        <Panel
+          title="Advanced builders"
+          actions={
+            <InlineButtons>
+              <Button onClick={() => setShowAdvanced((current) => !current)}>
+                {showAdvanced ? "Hide advanced" : "Show advanced"}
+              </Button>
+            </InlineButtons>
+          }
+        >
+          {showAdvanced ? (
+            udpEnabled ? (
+              <Tabs defaultActiveTab="Runtime">
+                <Tab title="Runtime">
+                  <Stack compact>
+                    <SectionCopy>
+                      Use this when the quick drills are not enough. It maps closely to the simulator fault API.
+                    </SectionCopy>
+
+                    <Columns minWidth="12rem">
+                      <ControlField label="Fault">
+                        <Dropdown value={runtimeKind} onChange={(event) => setRuntimeKind(event.target.value)}>
+                          {RUNTIME_FAULTS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </Dropdown>
+                      </ControlField>
+
+                      <ControlField label="Plan">
+                        <Dropdown value={runtimePlan} onChange={(event) => setRuntimePlan(event.target.value)}>
+                          {runtimePlanOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </Dropdown>
+                      </ControlField>
+
+                      {runtimeKind === "command_wkc_offset" ? (
+                        <ControlField label="Command">
+                          <Dropdown value={runtimeCommand} onChange={(event) => setRuntimeCommand(event.target.value)}>
+                            {EXCHANGE_COMMANDS.map((command) => (
+                              <option key={command} value={command}>
+                                {command}
+                              </option>
+                            ))}
+                          </Dropdown>
+                        </ControlField>
+                      ) : null}
+
+                      {[
+                        "logical_wkc_offset",
+                        "disconnect",
+                        "retreat_to_safeop",
+                        "latch_al_error",
+                        "mailbox_abort",
+                        "mailbox_protocol_fault",
+                      ].includes(runtimeKind) ? (
+                        <ControlField label="Slave">
+                          <Dropdown value={selectedSlave} onChange={(event) => setSelectedSlave(event.target.value)}>
+                            {(snapshot.slave_options ?? []).map((name) => (
+                              <option key={name} value={name}>
+                                {name}
+                              </option>
+                            ))}
+                          </Dropdown>
+                        </ControlField>
+                      ) : null}
+
+                      {["wkc_offset", "command_wkc_offset", "logical_wkc_offset"].includes(runtimeKind) ? (
+                        <ControlField label="Offset">
+                          <Input value={runtimeValue} onChange={(event) => setRuntimeValue(event.target.value)} />
+                        </ControlField>
+                      ) : null}
+
+                      {runtimeKind === "latch_al_error" ? (
+                        <ControlField label="AL error code">
+                          <Input value={alErrorCode} onChange={(event) => setAlErrorCode(event.target.value)} />
+                        </ControlField>
+                      ) : null}
+
+                      {["mailbox_abort", "mailbox_protocol_fault"].includes(runtimeKind) ? (
+                        <ControlField label="Mailbox index">
+                          <Input value={mailboxIndex} onChange={(event) => setMailboxIndex(event.target.value)} />
+                        </ControlField>
+                      ) : null}
+
+                      {["mailbox_abort", "mailbox_protocol_fault"].includes(runtimeKind) ? (
+                        <ControlField label="Subindex">
+                          <Input
+                            value={mailboxSubindex}
+                            onChange={(event) => setMailboxSubindex(event.target.value)}
+                          />
+                        </ControlField>
+                      ) : null}
+
+                      {runtimeKind === "mailbox_abort" ? (
+                        <ControlField label="Abort code">
+                          <Input
+                            value={mailboxAbortCode}
+                            onChange={(event) => setMailboxAbortCode(event.target.value)}
+                          />
+                        </ControlField>
+                      ) : null}
+
+                      {runtimeKind === "mailbox_abort" ? (
+                        <ControlField label="Abort stage">
+                          <Dropdown
+                            value={mailboxAbortStage}
+                            onChange={(event) => setMailboxAbortStage(event.target.value)}
+                          >
+                            {MAILBOX_ABORT_STAGES.map((stage) => (
+                              <option key={stage || "any"} value={stage}>
+                                {stage || "any"}
+                              </option>
+                            ))}
+                          </Dropdown>
+                        </ControlField>
+                      ) : null}
+
+                      {runtimeKind === "mailbox_protocol_fault" ? (
+                        <ControlField label="Mailbox stage">
+                          <Dropdown value={mailboxStage} onChange={(event) => setMailboxStage(event.target.value)}>
+                            {MAILBOX_STAGES.map((stage) => (
+                              <option key={stage} value={stage}>
+                                {stage}
+                              </option>
+                            ))}
+                          </Dropdown>
+                        </ControlField>
+                      ) : null}
+
+                      {runtimeKind === "mailbox_protocol_fault" ? (
+                        <ControlField label="Protocol fault">
+                          <Dropdown
+                            value={mailboxFaultKind}
+                            onChange={(event) => setMailboxFaultKind(event.target.value)}
+                          >
+                            {MAILBOX_PROTOCOL_FAULTS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </Dropdown>
+                        </ControlField>
+                      ) : null}
+
+                      {runtimeKind === "mailbox_protocol_fault" &&
+                      ["mailbox_type", "coe_service", "sdo_command", "segment_command"].includes(
+                        mailboxFaultKind
+                      ) ? (
+                        <ControlField label="Protocol value">
+                          <Input
+                            value={mailboxFaultValue}
+                            onChange={(event) => setMailboxFaultValue(event.target.value)}
+                          />
+                        </ControlField>
+                      ) : null}
+
+                      {runtimePlan === "count" ? (
+                        <ControlField label="Count">
+                          <Input value={runtimeCount} onChange={(event) => setRuntimeCount(event.target.value)} />
+                        </ControlField>
+                      ) : null}
+
+                      {runtimePlan === "after_ms" ? (
+                        <ControlField label="Delay ms">
+                          <Input value={runtimeDelay} onChange={(event) => setRuntimeDelay(event.target.value)} />
+                        </ControlField>
+                      ) : null}
+
+                      {runtimePlan === "after_milestone" ? (
+                        <ControlField label="Milestone">
+                          <Dropdown value={milestoneKind} onChange={(event) => setMilestoneKind(event.target.value)}>
+                            {MILESTONE_KINDS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </Dropdown>
+                        </ControlField>
+                      ) : null}
+
+                      {runtimePlan === "after_milestone" ? (
+                        <ControlField label="Milestone count">
+                          <Input
+                            value={milestoneCount}
+                            onChange={(event) => setMilestoneCount(event.target.value)}
+                          />
+                        </ControlField>
+                      ) : null}
+
+                      {runtimePlan === "after_milestone" && milestoneKind !== "healthy_exchanges" ? (
+                        <ControlField label="Milestone slave">
+                          <Dropdown value={selectedSlave} onChange={(event) => setSelectedSlave(event.target.value)}>
+                            {(snapshot.slave_options ?? []).map((name) => (
+                              <option key={name} value={name}>
+                                {name}
+                              </option>
+                            ))}
+                          </Dropdown>
+                        </ControlField>
+                      ) : null}
+
+                      {runtimePlan === "after_milestone" && milestoneKind === "mailbox_step" ? (
+                        <ControlField label="Milestone stage">
+                          <Dropdown value={milestoneStage} onChange={(event) => setMilestoneStage(event.target.value)}>
+                            {MAILBOX_STAGES.map((stage) => (
+                              <option key={stage} value={stage}>
+                                {stage}
+                              </option>
+                            ))}
+                          </Dropdown>
+                        </ControlField>
+                      ) : null}
+
+                      <InlineButtons>
+                        <Button
+                          disabled={disabled}
+                          onClick={() =>
+                            pushAction("apply_runtime_fault", {
+                              kind: runtimeKind,
+                              plan: runtimePlan,
+                              command: runtimeCommand,
+                              slave: selectedSlave,
+                              value: runtimeValue,
+                              count: runtimeCount,
+                              delay_ms: runtimeDelay,
+                              code: alErrorCode,
+                              index: mailboxIndex,
+                              subindex: mailboxSubindex,
+                              abort_code: mailboxAbortCode,
+                              stage: runtimeKind === "mailbox_abort" ? mailboxAbortStage : mailboxStage,
+                              mailbox_fault_kind: mailboxFaultKind,
+                              mailbox_fault_value: mailboxFaultValue,
+                              milestone_kind: milestoneKind,
+                              milestone_count: milestoneCount,
+                              milestone_slave: selectedSlave,
+                              milestone_stage: milestoneStage,
+                            })
+                          }
+                        >
+                          {runtimeApplyLabel}
+                        </Button>
+                      </InlineButtons>
+                    </Columns>
+                  </Stack>
+                </Tab>
+
+                <Tab title="Transport">
+                  <Stack compact>
+                    <SectionCopy>
+                      Keep this for transport-specific cases like scripts, truncation, and wrong datagram indexes.
+                    </SectionCopy>
+
+                    <Columns minWidth="12rem">
+                      <ControlField label="Reply fault">
+                        <Dropdown value={udpMode} onChange={(event) => setUdpMode(event.target.value)}>
+                          {UDP_MODES.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </Dropdown>
+                      </ControlField>
+
+                      <ControlField label="Plan">
+                        <Dropdown value={udpPlan} onChange={(event) => setUdpPlan(event.target.value)}>
+                          <option value="next">Next reply</option>
+                          <option value="count">Next N replies</option>
+                          <option value="script">Script</option>
+                        </Dropdown>
+                      </ControlField>
+
+                      {udpPlan === "count" ? (
+                        <ControlField label="Count">
+                          <Input value={udpCount} onChange={(event) => setUdpCount(event.target.value)} />
+                        </ControlField>
+                      ) : null}
+
+                      {udpPlan === "script" ? (
+                        <ControlField label="Script">
+                          <TextArea rows={3} value={udpScript} onChange={(event) => setUdpScript(event.target.value)} />
+                        </ControlField>
+                      ) : null}
+
+                      <InlineButtons>
+                        <Button
+                          disabled={udpDisabled}
+                          onClick={() =>
+                            pushAction("apply_udp_fault", {
+                              mode: udpMode,
+                              plan: udpPlan,
+                              count: udpCount,
+                              script: udpScript,
+                            })
+                          }
+                        >
+                          {udpApplyLabel}
+                        </Button>
+                      </InlineButtons>
+                    </Columns>
+                  </Stack>
+                </Tab>
+              </Tabs>
+            ) : (
+              <Stack compact>
+                <SectionCopy>
+                  Use this when the quick drills are not enough. It maps closely to the simulator fault API.
+                </SectionCopy>
+
+                <Columns minWidth="12rem">
+                  <ControlField label="Fault">
+                    <Dropdown value={runtimeKind} onChange={(event) => setRuntimeKind(event.target.value)}>
+                      {RUNTIME_FAULTS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </Dropdown>
+                  </ControlField>
+
+                  <ControlField label="Plan">
+                    <Dropdown value={runtimePlan} onChange={(event) => setRuntimePlan(event.target.value)}>
+                      {runtimePlanOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </Dropdown>
+                  </ControlField>
+
+                  {runtimeKind === "command_wkc_offset" ? (
+                    <ControlField label="Command">
+                      <Dropdown value={runtimeCommand} onChange={(event) => setRuntimeCommand(event.target.value)}>
+                        {EXCHANGE_COMMANDS.map((command) => (
+                          <option key={command} value={command}>
+                            {command}
+                          </option>
+                        ))}
+                      </Dropdown>
+                    </ControlField>
+                  ) : null}
+
+                  {[
+                    "logical_wkc_offset",
+                    "disconnect",
+                    "retreat_to_safeop",
+                    "latch_al_error",
+                    "mailbox_abort",
+                    "mailbox_protocol_fault",
+                  ].includes(runtimeKind) ? (
+                    <ControlField label="Slave">
+                      <Dropdown value={selectedSlave} onChange={(event) => setSelectedSlave(event.target.value)}>
+                        {(snapshot.slave_options ?? []).map((name) => (
+                          <option key={name} value={name}>
+                            {name}
+                          </option>
+                        ))}
+                      </Dropdown>
+                    </ControlField>
+                  ) : null}
+
+                  {["wkc_offset", "command_wkc_offset", "logical_wkc_offset"].includes(runtimeKind) ? (
+                    <ControlField label="Offset">
+                      <Input value={runtimeValue} onChange={(event) => setRuntimeValue(event.target.value)} />
+                    </ControlField>
+                  ) : null}
+
+                  {runtimeKind === "latch_al_error" ? (
+                    <ControlField label="AL error code">
+                      <Input value={alErrorCode} onChange={(event) => setAlErrorCode(event.target.value)} />
+                    </ControlField>
+                  ) : null}
+
+                  {["mailbox_abort", "mailbox_protocol_fault"].includes(runtimeKind) ? (
+                    <ControlField label="Mailbox index">
+                      <Input value={mailboxIndex} onChange={(event) => setMailboxIndex(event.target.value)} />
+                    </ControlField>
+                  ) : null}
+
+                  {["mailbox_abort", "mailbox_protocol_fault"].includes(runtimeKind) ? (
+                    <ControlField label="Subindex">
+                      <Input value={mailboxSubindex} onChange={(event) => setMailboxSubindex(event.target.value)} />
+                    </ControlField>
+                  ) : null}
+
+                  {runtimeKind === "mailbox_abort" ? (
+                    <ControlField label="Abort code">
+                      <Input
+                        value={mailboxAbortCode}
+                        onChange={(event) => setMailboxAbortCode(event.target.value)}
+                      />
+                    </ControlField>
+                  ) : null}
+
+                  {runtimeKind === "mailbox_abort" ? (
+                    <ControlField label="Abort stage">
+                      <Dropdown
+                        value={mailboxAbortStage}
+                        onChange={(event) => setMailboxAbortStage(event.target.value)}
+                      >
+                        {MAILBOX_ABORT_STAGES.map((stage) => (
+                          <option key={stage || "any"} value={stage}>
+                            {stage || "any"}
+                          </option>
+                        ))}
+                      </Dropdown>
+                    </ControlField>
+                  ) : null}
+
+                  {runtimeKind === "mailbox_protocol_fault" ? (
+                    <ControlField label="Mailbox stage">
+                      <Dropdown value={mailboxStage} onChange={(event) => setMailboxStage(event.target.value)}>
+                        {MAILBOX_STAGES.map((stage) => (
+                          <option key={stage} value={stage}>
+                            {stage}
+                          </option>
+                        ))}
+                      </Dropdown>
+                    </ControlField>
+                  ) : null}
+
+                  {runtimeKind === "mailbox_protocol_fault" ? (
+                    <ControlField label="Protocol fault">
+                      <Dropdown
+                        value={mailboxFaultKind}
+                        onChange={(event) => setMailboxFaultKind(event.target.value)}
+                      >
+                        {MAILBOX_PROTOCOL_FAULTS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </Dropdown>
+                    </ControlField>
+                  ) : null}
+
+                  {runtimeKind === "mailbox_protocol_fault" &&
+                  ["mailbox_type", "coe_service", "sdo_command", "segment_command"].includes(
+                    mailboxFaultKind
+                  ) ? (
+                    <ControlField label="Protocol value">
+                      <Input
+                        value={mailboxFaultValue}
+                        onChange={(event) => setMailboxFaultValue(event.target.value)}
+                      />
+                    </ControlField>
+                  ) : null}
+
+                  {runtimePlan === "count" ? (
+                    <ControlField label="Count">
+                      <Input value={runtimeCount} onChange={(event) => setRuntimeCount(event.target.value)} />
+                    </ControlField>
+                  ) : null}
+
+                  {runtimePlan === "after_ms" ? (
+                    <ControlField label="Delay ms">
+                      <Input value={runtimeDelay} onChange={(event) => setRuntimeDelay(event.target.value)} />
+                    </ControlField>
+                  ) : null}
+
+                  {runtimePlan === "after_milestone" ? (
+                    <ControlField label="Milestone">
+                      <Dropdown value={milestoneKind} onChange={(event) => setMilestoneKind(event.target.value)}>
+                        {MILESTONE_KINDS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </Dropdown>
+                    </ControlField>
+                  ) : null}
+
+                  {runtimePlan === "after_milestone" ? (
+                    <ControlField label="Milestone count">
+                      <Input value={milestoneCount} onChange={(event) => setMilestoneCount(event.target.value)} />
+                    </ControlField>
+                  ) : null}
+
+                  {runtimePlan === "after_milestone" && milestoneKind !== "healthy_exchanges" ? (
+                    <ControlField label="Milestone slave">
+                      <Dropdown value={selectedSlave} onChange={(event) => setSelectedSlave(event.target.value)}>
+                        {(snapshot.slave_options ?? []).map((name) => (
+                          <option key={name} value={name}>
+                            {name}
+                          </option>
+                        ))}
+                      </Dropdown>
+                    </ControlField>
+                  ) : null}
+
+                  {runtimePlan === "after_milestone" && milestoneKind === "mailbox_step" ? (
+                    <ControlField label="Milestone stage">
+                      <Dropdown value={milestoneStage} onChange={(event) => setMilestoneStage(event.target.value)}>
+                        {MAILBOX_STAGES.map((stage) => (
+                          <option key={stage} value={stage}>
+                            {stage}
+                          </option>
+                        ))}
+                      </Dropdown>
+                    </ControlField>
+                  ) : null}
+
+                  <InlineButtons>
+                    <Button
+                      disabled={disabled}
+                      onClick={() =>
+                        pushAction("apply_runtime_fault", {
+                          kind: runtimeKind,
+                          plan: runtimePlan,
+                          command: runtimeCommand,
+                          slave: selectedSlave,
+                          value: runtimeValue,
+                          count: runtimeCount,
+                          delay_ms: runtimeDelay,
+                          code: alErrorCode,
+                          index: mailboxIndex,
+                          subindex: mailboxSubindex,
+                          abort_code: mailboxAbortCode,
+                          stage: runtimeKind === "mailbox_abort" ? mailboxAbortStage : mailboxStage,
+                          mailbox_fault_kind: mailboxFaultKind,
+                          mailbox_fault_value: mailboxFaultValue,
+                          milestone_kind: milestoneKind,
+                          milestone_count: milestoneCount,
+                          milestone_slave: selectedSlave,
+                          milestone_stage: milestoneStage,
+                        })
+                      }
+                    >
+                      {runtimeApplyLabel}
+                    </Button>
+                  </InlineButtons>
+                </Columns>
+              </Stack>
+            )
+          ) : (
             <Stack compact>
               <SectionCopy>
-                Keep this for transport-specific cases like scripts, truncation, and wrong datagram indexes.
+                The advanced builders expose mailbox faults, delayed schedules, milestones, and UDP scripts.
               </SectionCopy>
-
-              <Columns minWidth="12rem">
-                <ControlField label="Reply fault">
-                  <Dropdown value={udpMode} onChange={(event) => setUdpMode(event.target.value)}>
-                    {UDP_MODES.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </Dropdown>
-                </ControlField>
-
-                <ControlField label="Plan">
-                  <Dropdown value={udpPlan} onChange={(event) => setUdpPlan(event.target.value)}>
-                    <option value="next">Next reply</option>
-                    <option value="count">Next N replies</option>
-                    <option value="script">Script</option>
-                  </Dropdown>
-                </ControlField>
-
-                {udpPlan === "count" ? (
-                  <ControlField label="Count">
-                    <Input value={udpCount} onChange={(event) => setUdpCount(event.target.value)} />
-                  </ControlField>
-                ) : null}
-
-                {udpPlan === "script" ? (
-                  <ControlField label="Script">
-                    <TextArea
-                      rows={3}
-                      className="ke95-simulator-faults-panel__script"
-                      value={udpScript}
-                      onChange={(event) => setUdpScript(event.target.value)}
-                    />
-                  </ControlField>
-                ) : null}
-
-                <InlineButtons className="ke95-simulator-faults-panel__row-actions">
-                  <Button
-                    disabled={udpDisabled}
-                    onClick={() =>
-                      pushAction("apply_udp_fault", {
-                        mode: udpMode,
-                        plan: udpPlan,
-                        count: udpCount,
-                        script: udpScript,
-                      })
-                    }
-                  >
-                    {udpApplyLabel}
-                  </Button>
-                </InlineButtons>
-              </Columns>
+              <SectionCopy>Use this only when the quick drills are not enough.</SectionCopy>
             </Stack>
-          </Panel>
-        ) : null}
+          )}
+        </Panel>
       </Stack>
     </Shell>
   );

@@ -4,7 +4,7 @@ defmodule KinoEtherCAT.WidgetLogs do
   use GenServer
   require Logger
 
-  alias EtherCAT.{Bus, Domain, Master, Slave}
+  alias EtherCAT.{Domain, Master, Slave}
 
   @handler_id :kino_ethercat_widget_logs
   @default_filter_id :kino_ethercat_widget_logs
@@ -163,7 +163,7 @@ defmodule KinoEtherCAT.WidgetLogs do
 
   @spec scope(struct() | scope()) :: {:ok, scope()} | :error
   def scope(%Master{}), do: {:ok, :master}
-  def scope(%Bus{}), do: {:ok, :bus}
+  def scope(%KinoEtherCAT.Runtime.BusResource{}), do: {:ok, :bus}
   def scope(%Slave{name: name}) when is_atom(name), do: {:ok, {:slave, name}}
   def scope(%Domain{id: id}) when is_atom(id), do: {:ok, {:domain, id}}
   def scope(resource) when is_struct(resource, EtherCAT.DC), do: {:ok, :dc}

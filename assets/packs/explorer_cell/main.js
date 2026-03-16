@@ -147,7 +147,7 @@ function SectionBlock({ section }) {
     return (
       <Panel title={section.title}>
         {section.items?.length ? (
-          <ul className="ke95-explorer__list">
+          <ul>
             {section.items.map((item, index) => (
               <li key={`${item}-${index}`}>{item}</li>
             ))}
@@ -201,7 +201,8 @@ function Field({ field, value, onChange }) {
     return (
       <ControlField label={field.label} help={field.help}>
         <TextArea
-          className="ke95-fill ke95-explorer__textarea"
+          className="ke95-fill"
+          rows={4}
           placeholder={field.placeholder ?? ""}
           value={value}
           onChange={(event) => onChange(event.target.value)}

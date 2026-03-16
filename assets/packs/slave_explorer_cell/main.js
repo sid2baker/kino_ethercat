@@ -139,11 +139,7 @@ function SlaveExplorerCell({ ctx, payload }) {
                   const selected = slave.value === selectedSlave;
 
                   return (
-                    <tr
-                      key={slave.value}
-                      className={selected ? "ke95-slave-explorer__slave-row--selected" : ""}
-                      onClick={() => selectSlave(slave.value)}
-                    >
+                    <tr key={slave.value} onClick={() => selectSlave(slave.value)}>
                       <td>
                         <input
                           type="radio"
@@ -261,7 +257,8 @@ function ConfigurationTab({ state, values, update }) {
 
           <ControlField label="SDOs" help="Optional object entries to include in the capture and scaffold.">
             <BufferedTextArea
-              className="ke95-fill ke95-slave-explorer__textarea"
+              className="ke95-fill"
+              rows={4}
               placeholder="0x1008:0x00&#10;0x1009:0x00"
               value={values.capture_sdos ?? state.scaffold.capture_sdos ?? ""}
               onCommit={(capture_sdos) => update({ capture_sdos })}
@@ -385,7 +382,8 @@ function InspectionTab({ ctx, state, values, update, selectedSlave }) {
                 ) : (
                   <ControlField label="Write Data">
                     <BufferedTextArea
-                      className="ke95-fill ke95-slave-explorer__textarea"
+                      className="ke95-fill"
+                      rows={4}
                       value={values.write_data ?? state.inspection.register.write_data}
                       onCommit={(write_data) => update({ write_data })}
                     />
@@ -435,7 +433,8 @@ function InspectionTab({ ctx, state, values, update, selectedSlave }) {
             {String(values.sdo_operation ?? state.inspection.sdo.operation) === "download" ? (
               <ControlField label="Write Data">
                 <BufferedTextArea
-                  className="ke95-fill ke95-slave-explorer__textarea"
+                  className="ke95-fill"
+                  rows={4}
                   value={values.sdo_write_data ?? state.inspection.sdo.write_data}
                   onCommit={(sdo_write_data) => update({ sdo_write_data })}
                 />
@@ -491,7 +490,8 @@ function InspectionTab({ ctx, state, values, update, selectedSlave }) {
                 ) : (
                   <ControlField label="Write Data">
                     <BufferedTextArea
-                      className="ke95-fill ke95-slave-explorer__textarea"
+                      className="ke95-fill"
+                      rows={4}
                       value={values.sii_write_data ?? state.inspection.sii.write_data}
                       onCommit={(sii_write_data) => update({ sii_write_data })}
                     />
@@ -540,7 +540,7 @@ function SectionBlock({ section }) {
     return (
       <Panel title={section.title}>
         {section.items?.length ? (
-          <ul className="ke95-slave-explorer__list">
+          <ul>
             {section.items.map((item, index) => (
               <li key={`${item}-${index}`}>{item}</li>
             ))}

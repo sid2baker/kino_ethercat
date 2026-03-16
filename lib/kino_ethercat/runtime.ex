@@ -6,11 +6,11 @@ defmodule KinoEtherCAT.Runtime do
   for `Kino.Render` protocol implementations to build rich Livebook views.
   """
 
-  alias EtherCAT.Bus.Link.{Redundant, SinglePort}
   alias EtherCAT.Domain.Config, as: DomainConfig
   alias EtherCAT.Domain.API, as: DomainAPI
   alias EtherCAT.Slave.API, as: SlaveAPI
-  alias EtherCAT.{Bus, Domain, Master, Slave}
+  alias EtherCAT.{Domain, Master, Slave}
+  alias KinoEtherCAT.Runtime.BusResource
   alias KinoEtherCAT.{StartConfig, WidgetLogs}
 
   @type log_scope :: :master | :bus | :dc | {:slave, atom()} | {:domain, atom()}
@@ -50,11 +50,11 @@ defmodule KinoEtherCAT.Runtime do
     end
   end
 
-  @spec bus() :: %Bus{}
+  @spec bus() :: BusResource.t()
   def bus do
-    case fetch_bus_state() do
-      {:ok, _state_name, %Bus{} = bus} -> bus
-      _ -> struct(Bus)
+    case current_bus_server() do
+      {:ok, bus_server} -> %BusResource{ref: bus_server}
+      _ -> %BusResource{ref: nil}
     end
   end
 
@@ -62,7 +62,7 @@ defmodule KinoEtherCAT.Runtime do
   def refresh(%Master{}), do: master()
   def refresh(%Slave{name: name}), do: slave(name)
   def refresh(%Domain{id: id}), do: domain(id)
-  def refresh(%Bus{}), do: bus()
+  def refresh(%BusResource{}), do: bus()
   def refresh(resource) when is_struct(resource, EtherCAT.DC), do: dc()
   def refresh(resource) when is_struct(resource, EtherCAT.DC.Status), do: dc()
 
@@ -290,9 +290,12 @@ defmodule KinoEtherCAT.Runtime do
     end
   end
 
-  def payload(%Bus{} = bus, message) do
-    state_name = fetch_state_name(bus)
-    queue_depths = queue_depths(bus)
+  def payload(%BusResource{} = bus, message) do
+    info = current_bus_info(bus)
+    state_name = Map.get(info, :state, :not_started)
+    queue_depths = queue_depths(info)
+    frame_timeout_ms = Map.get(info, :frame_timeout_ms, 25)
+    timeout_count = Map.get(info, :timeout_count, 0)
 
     %{
       kind: "bus",
@@ -302,21 +305,32 @@ defmodule KinoEtherCAT.Runtime do
       logs: payload_logs(bus),
       log_controls: log_controls(bus),
       summary: [
-        %{label: "Frame timeout", value: "#{bus.frame_timeout_ms || 25} ms"},
-        %{label: "Timeouts", value: Integer.to_string(bus.timeout_count || 0)},
+        %{label: "Frame timeout", value: "#{frame_timeout_ms} ms"},
+        %{label: "Timeouts", value: Integer.to_string(timeout_count)},
         %{label: "Realtime queue", value: Integer.to_string(queue_depths.realtime)},
         %{label: "Reliable queue", value: Integer.to_string(queue_depths.reliable)},
-        %{label: "Index", value: Integer.to_string(bus.idx || 0)},
+        %{label: "Link", value: format_term(Map.get(info, :link, "none"))},
         %{label: "Log filter", value: Atom.to_string(current_log_level(bus))}
       ],
       tables: [],
       details: [
-        %{label: "Link module", value: format_term(bus.link_mod || "none")},
-        %{label: "Link", value: format_term(bus.link || "none")},
-        %{label: "In flight", value: format_term(bus.in_flight || "none")}
+        %{label: "Topology", value: format_term(Map.get(info, :topology, "unknown"))},
+        %{label: "Fault", value: format_term(Map.get(info, :fault, "none"))},
+        %{label: "Carrier up", value: format_term(Map.get(info, :carrier_up, "n/a"))},
+        %{label: "Circuit", value: format_term(Map.get(info, :circuit_info, "none"))},
+        %{
+          label: "Last observation",
+          value: format_term(Map.get(info, :last_observation, "none"))
+        },
+        %{label: "In flight", value: format_term(Map.get(info, :in_flight, "none"))},
+        %{label: "Last error", value: format_term(Map.get(info, :last_error_reason, "none"))}
       ],
       controls: %{
-        input: %{id: "frame_timeout_ms", label: "Frame timeout (ms)", value: "25"},
+        input: %{
+          id: "frame_timeout_ms",
+          label: "Frame timeout (ms)",
+          value: Integer.to_string(frame_timeout_ms)
+        },
         submit: %{id: "set_frame_timeout", label: "Apply timeout", tone: "primary"}
       }
     }
@@ -331,9 +345,11 @@ defmodule KinoEtherCAT.Runtime do
   end
 
   @doc false
-  @spec start_options_from_runtime(Master.t(), Bus.t()) :: {:ok, keyword()} | :error
-  def start_options_from_runtime(%Master{} = master, %Bus{} = bus) do
-    with bus_opts when is_list(bus_opts) and bus_opts != [] <- bus_start_opts(bus) do
+  @spec start_options_from_runtime(Master.t(), BusResource.t() | map()) ::
+          {:ok, keyword()} | :error
+  def start_options_from_runtime(%Master{} = master, bus_resource) do
+    with {:ok, bus_info} <- bus_info(bus_resource),
+         bus_opts when is_list(bus_opts) and bus_opts != [] <- bus_start_opts(bus_info) do
       {:ok,
        bus_opts
        |> Keyword.put(:slaves, master.slave_configs || [])
@@ -470,9 +486,9 @@ defmodule KinoEtherCAT.Runtime do
     end
   end
 
-  def perform(%Bus{} = resource, "set_frame_timeout", %{"value" => value}) do
+  def perform(%BusResource{} = resource, "set_frame_timeout", %{"value" => value}) do
     with {:ok, timeout_ms} <- parse_positive_integer(value),
-         {:ok, bus} <- current_bus_server() do
+         {:ok, bus} <- bus_server(resource) do
       run_action(
         resource,
         fn -> EtherCAT.Bus.set_frame_timeout(bus, timeout_ms) end,
@@ -513,16 +529,6 @@ defmodule KinoEtherCAT.Runtime do
 
   defp fetch_domain_state(id) when is_atom(id) do
     fetch_registry_statem_state({:domain, id})
-  end
-
-  defp fetch_bus_state do
-    case safe(fn -> EtherCAT.bus() end, nil) do
-      {:ok, nil} -> {:error, :not_started}
-      {:ok, bus_server} -> fetch_statem_state(bus_server)
-      {:error, _} = error -> error
-      nil -> {:error, :not_started}
-      _ -> {:error, :not_started}
-    end
   end
 
   defp fetch_dc_state do
@@ -570,13 +576,6 @@ defmodule KinoEtherCAT.Runtime do
   defp fetch_state_name(%Domain{id: id}) when is_atom(id) do
     case fetch_domain_state(id) do
       {:ok, state_name, _domain} -> state_name
-      _ -> nil
-    end
-  end
-
-  defp fetch_state_name(%Bus{}) do
-    case fetch_bus_state() do
-      {:ok, state_name, _bus} -> state_name
       _ -> nil
     end
   end
@@ -629,6 +628,30 @@ defmodule KinoEtherCAT.Runtime do
       {:error, _} = error -> error
       nil -> {:error, :not_started}
       _ -> {:error, :not_started}
+    end
+  end
+
+  defp bus_server(%BusResource{ref: ref}) when not is_nil(ref), do: {:ok, ref}
+  defp bus_server(%BusResource{}), do: current_bus_server()
+
+  defp bus_info(%BusResource{} = resource) do
+    with {:ok, bus_server} <- bus_server(resource) do
+      case safe(fn -> EtherCAT.Bus.info(bus_server) end, {:error, :not_started}) do
+        {:ok, info} when is_map(info) -> {:ok, info}
+        _ -> :error
+      end
+    else
+      _ -> :error
+    end
+  end
+
+  defp bus_info(info) when is_map(info), do: {:ok, info}
+  defp bus_info(_resource), do: :error
+
+  defp current_bus_info(%BusResource{} = resource) do
+    case bus_info(resource) do
+      {:ok, info} -> info
+      :error -> %{}
     end
   end
 
@@ -803,39 +826,38 @@ defmodule KinoEtherCAT.Runtime do
   end
 
   defp remember_start_options(%Master{} = master) do
-    case fetch_bus_state() do
-      {:ok, _state_name, %Bus{} = bus} ->
-        case start_options_from_runtime(master, bus) do
-          {:ok, opts} -> StartConfig.remember(opts)
-          :error -> :ok
-        end
+    case start_options_from_runtime(master, bus()) do
+      {:ok, opts} -> StartConfig.remember(opts)
+      :error -> :ok
+    end
+  end
+
+  defp bus_start_opts(%{circuit_info: %{type: :single, port: port_info}})
+       when is_map(port_info) do
+    case port_info do
+      %{interface: interface} when is_binary(interface) and byte_size(interface) > 0 ->
+        [interface: interface]
+
+      %{name: name} ->
+        udp_start_opts(name)
 
       _ ->
-        :ok
+        []
     end
   end
 
-  defp bus_start_opts(%Bus{link: %SinglePort{open_opts: open_opts}}) when is_list(open_opts) do
-    opts = Keyword.drop(open_opts, [:name, :frame_timeout_ms])
-
-    if udp_transport_opts?(opts) do
-      opts
-    else
-      maybe_put_required_bus_opt(opts, :interface, Keyword.get(opts, :interface))
-    end
-  end
-
-  defp bus_start_opts(%Bus{
-         link: %Redundant{primary_opts: primary_opts, secondary_opts: secondary_opts}
+  defp bus_start_opts(%{
+         circuit_info: %{
+           type: :redundant,
+           primary: %{interface: interface},
+           secondary: %{interface: backup_interface}
+         }
        })
-       when is_list(primary_opts) and is_list(secondary_opts) do
-    primary_opts
-    |> Keyword.drop([:name, :frame_timeout_ms, :interface])
-    |> maybe_put_required_bus_opt(:interface, Keyword.get(primary_opts, :interface))
-    |> maybe_put_start_opt(:backup_interface, Keyword.get(secondary_opts, :interface))
+       when is_binary(interface) and is_binary(backup_interface) do
+    [interface: interface, backup_interface: backup_interface]
   end
 
-  defp bus_start_opts(%Bus{}), do: []
+  defp bus_start_opts(_bus_info), do: []
 
   defp domain_configs(domain_plans) do
     Enum.map(domain_plans, fn plan ->
@@ -854,9 +876,6 @@ defmodule KinoEtherCAT.Runtime do
     Keyword.get(opts, :transport) == :udp or
       Keyword.get(opts, :transport_mod) == EtherCAT.Bus.Transport.UdpSocket
   end
-
-  defp maybe_put_required_bus_opt(_opts, _key, nil), do: []
-  defp maybe_put_required_bus_opt(opts, key, value), do: Keyword.put(opts, key, value)
 
   defp master_desired_target(%Master{} = master) do
     case Map.get(master, :desired_runtime_target, :op) do
@@ -884,11 +903,14 @@ defmodule KinoEtherCAT.Runtime do
   defp last_failure_value(value), do: format_term(value)
 
   defp master_transport_label do
-    case fetch_bus_state() do
-      {:ok, _state_name, %Bus{} = bus} ->
-        transport_label(bus_start_opts(bus))
+    case bus_info(bus()) do
+      {:ok, bus_info} ->
+        case bus_start_opts(bus_info) do
+          [] -> transport_label(StartConfig.current() || [])
+          opts -> transport_label(opts)
+        end
 
-      _ ->
+      :error ->
         transport_label(StartConfig.current() || [])
     end
   end
@@ -928,6 +950,23 @@ defmodule KinoEtherCAT.Runtime do
   defp format_ip({_, _, _, _, _, _, _, _} = ip), do: ip |> :inet.ntoa() |> to_string()
   defp format_ip(ip) when is_binary(ip), do: ip
   defp format_ip(_ip), do: nil
+
+  defp udp_start_opts(name) when is_binary(name) do
+    case Regex.run(~r/^(.*):(\d+)$/, String.trim(name), capture: :all_but_first) do
+      [host, port] ->
+        [transport: :udp, host: parse_ip(host), port: String.to_integer(port)]
+
+      _ ->
+        [transport: :udp]
+    end
+  end
+
+  defp parse_ip(host) do
+    case :inet.parse_address(String.to_charlist(host)) do
+      {:ok, ip} -> ip
+      {:error, _} -> host
+    end
+  end
 
   defp master_start_available?(:idle), do: StartConfig.available?()
   defp master_start_available?(_state), do: false
@@ -1083,18 +1122,12 @@ defmodule KinoEtherCAT.Runtime do
   defp hex(value, pad),
     do: "0x" <> String.upcase(String.pad_leading(Integer.to_string(value, 16), pad, "0"))
 
-  defp queue_depths(%Bus{} = bus) do
+  defp queue_depths(%{queue_depths: queue_depths}) when is_map(queue_depths) do
     %{
-      realtime: queue_len(bus.realtime),
-      reliable: queue_len(bus.reliable)
+      realtime: Map.get(queue_depths, :realtime, 0),
+      reliable: Map.get(queue_depths, :reliable, 0)
     }
   end
 
-  defp queue_len(queue) when is_tuple(queue) do
-    :queue.len(queue)
-  rescue
-    _ -> 0
-  end
-
-  defp queue_len(_queue), do: 0
+  defp queue_depths(_info), do: %{realtime: 0, reliable: 0}
 end

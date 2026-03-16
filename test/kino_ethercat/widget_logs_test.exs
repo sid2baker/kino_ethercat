@@ -3,7 +3,8 @@ defmodule KinoEtherCAT.WidgetLogsTest do
 
   require Logger
 
-  alias EtherCAT.{Bus, Domain, Master, Slave}
+  alias EtherCAT.{Domain, Master, Slave}
+  alias KinoEtherCAT.Runtime.BusResource
   alias KinoEtherCAT.{Runtime, WidgetLogs}
 
   setup_all do
@@ -70,7 +71,7 @@ defmodule KinoEtherCAT.WidgetLogsTest do
       master_logs = Runtime.payload(%Master{}).logs
       slave_logs = Runtime.payload(%Slave{name: :rack_1}).logs
       domain_logs = Runtime.payload(%Domain{id: :main}).logs
-      bus_logs = Runtime.payload(struct(Bus)).logs
+      bus_logs = Runtime.payload(%BusResource{}).logs
       dc_logs = Runtime.payload(default_dc_resource()).logs
 
       assert Enum.any?(master_logs, &String.contains?(&1.text, master_token))

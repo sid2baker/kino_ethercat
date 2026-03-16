@@ -188,3 +188,9 @@ mix usage_rules.search_docs "Enum.zip" --query-by title
 
 <!-- usage_rules:otp-end -->
 <!-- usage-rules-end -->
+
+## UI And CSS
+
+- Prefer composing the existing React95 wrapper components over adding custom CSS.
+- Custom CSS should be rare and only used for real layout bugs, browser quirks, or missing component capabilities.
+- Do not restyle React95 components just to create a custom visual language. Use the default look unless there is a concrete product reason not to.

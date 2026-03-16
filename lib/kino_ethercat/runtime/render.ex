@@ -33,7 +33,7 @@ defimpl Kino.Render, for: EtherCAT.Domain do
   end
 end
 
-defimpl Kino.Render, for: EtherCAT.Bus do
+defimpl Kino.Render, for: KinoEtherCAT.Runtime.BusResource do
   def to_livebook(resource) do
     kino = KinoEtherCAT.Runtime.Bus.new(resource)
     KinoEtherCAT.Runtime.Render.to_livebook(kino)
