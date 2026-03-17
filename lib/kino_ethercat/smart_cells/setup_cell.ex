@@ -22,6 +22,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
     {:ok,
      assign(ctx,
        status: status,
+       scan_task: nil,
        error: nil,
        master_state: BusSetup.runtime_state(),
        master_pid: Process.whereis(EtherCAT.Master),
@@ -54,11 +55,13 @@ defmodule KinoEtherCAT.SmartCells.Setup do
   end
 
   def handle_event("stop", _params, ctx) do
+    cancel_scan(ctx.assigns.scan_task)
     _ = EtherCAT.stop()
 
     ctx =
       assign(ctx,
         status: :idle,
+        scan_task: nil,
         error: nil,
         master_state: :idle,
         master_pid: nil
@@ -95,10 +98,16 @@ defmodule KinoEtherCAT.SmartCells.Setup do
   end
 
   @impl true
+  def handle_info({:scan_complete, _result}, %{assigns: %{scan_task: nil}} = ctx) do
+    # Scan was cancelled (e.g. user clicked stop); ignore stale result.
+    {:noreply, ctx}
+  end
+
   def handle_info({:scan_complete, {:ok, slaves}}, ctx) do
     ctx =
       assign(ctx,
         status: :discovered,
+        scan_task: nil,
         slaves: slaves,
         error: nil,
         master_state: BusSetup.runtime_state(),
@@ -111,7 +120,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
   end
 
   def handle_info({:scan_complete, {:error, reason}}, ctx) do
-    ctx = assign(ctx, status: :error, error: reason)
+    ctx = assign(ctx, status: :error, scan_task: nil, error: reason)
     broadcast_event(ctx, "snapshot", payload(ctx.assigns))
     {:noreply, ctx}
   end
@@ -180,18 +189,24 @@ defmodule KinoEtherCAT.SmartCells.Setup do
   end
 
   defp begin_scan(ctx) do
+    cancel_scan(ctx.assigns.scan_task)
+
     server = self()
     transport = ctx.assigns |> BusSetup.transport_assigns() |> SetupTransport.refresh_auto()
     ctx = assign_transport(ctx, transport)
 
-    Task.start(fn ->
-      run_scan(server, transport, ctx.assigns.slaves, ctx.assigns.domains)
-    end)
+    {:ok, pid} =
+      Task.start(fn ->
+        run_scan(server, transport, ctx.assigns.slaves, ctx.assigns.domains)
+      end)
 
-    ctx = assign(ctx, status: :scanning, error: nil)
+    ctx = assign(ctx, status: :scanning, scan_task: pid, error: nil)
     broadcast_event(ctx, "snapshot", payload(ctx.assigns))
     ctx
   end
+
+  defp cancel_scan(pid) when is_pid(pid), do: Process.exit(pid, :kill)
+  defp cancel_scan(nil), do: :ok
 
   defp run_scan(server, transport, existing_slaves, domains) do
     result =
