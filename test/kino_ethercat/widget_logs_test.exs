@@ -34,6 +34,22 @@ defmodule KinoEtherCAT.WidgetLogsTest do
     assert WidgetLogs.silence?(event)
   end
 
+  test "routes link-level bus warnings into the bus scope" do
+    token = unique_token("redundant-link")
+
+    Logger.log(
+      :warning,
+      "[Link.Redundant] #{token}",
+      application: :ethercat,
+      component: :bus
+    )
+
+    assert_eventually(fn ->
+      bus_logs = Runtime.payload(%BusResource{}).logs
+      assert Enum.any?(bus_logs, &String.contains?(&1.text, token))
+    end)
+  end
+
   test "widgets can mount later and read buffered logs for their scope" do
     slave_token = unique_token("buffered-slave")
 

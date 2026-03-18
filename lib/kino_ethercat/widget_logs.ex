@@ -395,7 +395,12 @@ defmodule KinoEtherCAT.WidgetLogs do
     pid_scope = scope_from_pid(Map.get(meta, :pid))
 
     case pid_scope do
-      nil -> scope_from_message(text)
+      nil ->
+        case scope_from_metadata(meta) do
+          nil -> scope_from_message(text)
+          scope -> scope
+        end
+
       scope -> scope
     end
   end
@@ -429,8 +434,16 @@ defmodule KinoEtherCAT.WidgetLogs do
 
   defp scope_from_registry(_pid), do: nil
 
+  defp scope_from_metadata(%{component: :master}), do: :master
+  defp scope_from_metadata(%{component: :bus}), do: :bus
+  defp scope_from_metadata(%{component: :dc}), do: :dc
+  defp scope_from_metadata(%{component: :slave, slave: name}) when is_atom(name), do: {:slave, name}
+  defp scope_from_metadata(%{component: :domain, domain: id}) when is_atom(id), do: {:domain, id}
+  defp scope_from_metadata(_meta), do: nil
+
   defp scope_from_message("[Master]" <> _rest), do: :master
   defp scope_from_message("[Bus]" <> _rest), do: :bus
+  defp scope_from_message("[Link." <> _rest), do: :bus
   defp scope_from_message("[DC]" <> _rest), do: :dc
 
   defp scope_from_message(message) when is_binary(message) do

@@ -7,8 +7,6 @@ defmodule KinoEtherCAT.Runtime do
   """
 
   alias EtherCAT.Domain.Config, as: DomainConfig
-  alias EtherCAT.Domain.API, as: DomainAPI
-  alias EtherCAT.Slave.API, as: SlaveAPI
   alias EtherCAT.{Domain, Master, Slave}
   alias KinoEtherCAT.Runtime.BusResource
   alias KinoEtherCAT.{StartConfig, WidgetLogs}
@@ -19,7 +17,7 @@ defmodule KinoEtherCAT.Runtime do
   def master do
     case fetch_master_state() do
       {:ok, _state_name, %Master{} = master} -> master
-      _ -> struct(Master, activation_phase: :idle)
+      _ -> struct(Master)
     end
   end
 
@@ -458,7 +456,7 @@ defmodule KinoEtherCAT.Runtime do
     with {:ok, target} <- transition_target(target) do
       run_action(
         resource,
-        fn -> SlaveAPI.request(name, target) end,
+        fn -> EtherCAT.Slave.request(name, target) end,
         "Slave transitioned to #{target}"
       )
     else
@@ -467,11 +465,11 @@ defmodule KinoEtherCAT.Runtime do
   end
 
   def perform(%Domain{id: id} = resource, "start_cycling", _params) do
-    run_action(resource, fn -> DomainAPI.start_cycling(id) end, "Domain cycling started")
+    run_action(resource, fn -> EtherCAT.Domain.start_cycling(id) end, "Domain cycling started")
   end
 
   def perform(%Domain{id: id} = resource, "stop_cycling", _params) do
-    run_action(resource, fn -> DomainAPI.stop_cycling(id) end, "Domain cycling stopped")
+    run_action(resource, fn -> EtherCAT.Domain.stop_cycling(id) end, "Domain cycling stopped")
   end
 
   def perform(%Domain{id: id} = resource, "update_cycle_time", %{"value" => value}) do
