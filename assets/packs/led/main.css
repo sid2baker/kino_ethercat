@@ -1,3 +1,5 @@
+/* Layout-only overrides where possible. This widget keeps its lamp colors. */
+
 .ke95-led {
   display: flex;
   align-items: center;

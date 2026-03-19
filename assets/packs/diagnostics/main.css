@@ -1,3 +1,5 @@
+/* Layout-only overrides. Prefer default React95 styling. */
+
 .ke95-diagnostics__chart-panel,
 .ke95-diagnostics__card,
 .ke95-diagnostics__domain,
@@ -10,9 +12,19 @@
   min-width: 0;
 }
 
+.ke95-diagnostics__status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ke95-diagnostics__status-strip .ke95-badge {
+  min-width: 8.5rem;
+  text-align: center;
+}
+
 .ke95-diagnostics__copy {
   line-height: 1.45;
-  color: #444;
 }
 
 .ke95-diagnostics__chart-copy {
@@ -55,6 +67,20 @@
   max-height: 16rem;
 }
 
+.ke95-diagnostics__stable-feed {
+  min-height: 10rem;
+}
+
+.ke95-diagnostics__stable-table {
+  min-height: 12rem;
+}
+
+.ke95-diagnostics .ke95-summary__value,
+.ke95-diagnostics .ke95-property__value,
+.ke95-diagnostics .ke95-mono {
+  font-variant-numeric: tabular-nums;
+}
+
 .ke95-diagnostics .ke95-table-wrap {
   max-height: 24rem;
   scrollbar-gutter: stable;
@@ -74,22 +100,6 @@
 .ke95-diagnostics__port-card {
   display: grid;
   gap: 4px;
-}
-
-.ke95-diagnostics__event--info {
-  background: #d9ecff;
-}
-
-.ke95-diagnostics__event--warn {
-  background: #fff2bf;
-}
-
-.ke95-diagnostics__event--danger {
-  background: #f8d4d4;
-}
-
-.ke95-diagnostics__event--neutral {
-  background: #ececec;
 }
 
 @media (min-width: 1200px) {

@@ -1,4 +1,4 @@
-/* Shared React95 theme and layout styles are imported from ../shared/react95.js. */
+/* Layout-only overrides. Prefer default React95 styling. */
 
 .ke95-runtime-panel {
   display: grid;

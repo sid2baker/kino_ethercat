@@ -282,11 +282,8 @@ defmodule KinoEtherCAT.SmartCells.SetupTransport do
       {:ok, %{udp: %{ip: ip, port: port}}} ->
         {:ok, %{transport: :udp, host: format_ip(ip), port: port}}
 
-      {:ok, %{raw: %{interface: interface}}} ->
-        raw_transport(interface)
-
-      {:ok, %{raw: %{primary: %{interface: primary}, secondary: %{interface: secondary}}}} ->
-        redundant_raw_transport(primary, secondary)
+      {:ok, %{raw: raw}} ->
+        raw_simulator_transport(raw)
 
       _ ->
         :error
@@ -294,6 +291,20 @@ defmodule KinoEtherCAT.SmartCells.SetupTransport do
   rescue
     _ -> :error
   end
+
+  defp raw_simulator_transport(%{mode: :single, primary: %{interface: interface}}) do
+    raw_transport(interface)
+  end
+
+  defp raw_simulator_transport(%{
+         mode: :redundant,
+         primary: %{interface: primary},
+         secondary: %{interface: secondary}
+       }) do
+    redundant_raw_transport(primary, secondary)
+  end
+
+  defp raw_simulator_transport(_raw), do: :error
 
   defp format_ip(ip) do
     ip

@@ -1,3 +1,5 @@
+/* Layout-only overrides. Prefer default React95 styling. */
+
 .ke95-visualizer {
   display: grid;
   gap: 8px;
@@ -54,14 +56,6 @@
 .ke95-visualizer__signal {
   padding: 2px 0;
   min-width: 7rem;
-}
-
-.ke95-visualizer__handle {
-  border: none;
-  background: transparent;
-  cursor: grab;
-  font-family: "ms_sans_serif", "Microsoft Sans Serif", sans-serif;
-  font-weight: 700;
 }
 
 @media (max-width: 720px) {

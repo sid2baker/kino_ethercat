@@ -92,9 +92,9 @@ function SelectedRow({ entry, onRemove }) {
       style={style}
       className={`ke95-visualizer__selected-row${isDragging ? " ke95-visualizer__selected-row--dragging" : ""}`}
     >
-      <button className="ke95-visualizer__handle" title="Reorder" {...attributes} {...listeners}>
+      <Button aria-label={`Reorder ${entry.slave}.${entry.signal}`} title="Reorder" {...attributes} {...listeners}>
         ::
-      </button>
+      </Button>
       <div className="ke95-visualizer__selected-copy">
         <div className="ke95-visualizer__selected-line">
           <Mono>{entry.signal}</Mono>

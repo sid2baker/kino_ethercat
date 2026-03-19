@@ -128,13 +128,14 @@ function masterStateTone(state) {
   const value = String(state ?? "").toLowerCase();
 
   if (["operational", "preop_ready", "active"].includes(value)) return "ok";
-  if (["discovering", "awaiting_preop", "recovering", "scanning"].includes(value)) return "warn";
+  if (["discovering", "awaiting_preop", "recovering", "scanning", "canceling"].includes(value)) return "warn";
   if (["activation_blocked", "error", "down"].includes(value)) return "danger";
   return "neutral";
 }
 
 function headerState(state) {
   if (state.status === "error") return "error";
+  if (state.status === "canceling") return "canceling";
   if (state.status === "scanning" && (!state.master_state || state.master_state === "idle")) {
     return "scanning";
   }
@@ -147,6 +148,13 @@ function SetupCell({ ctx, data }) {
   const [udpPortInput, setUdpPortInput] = useState(String(data.port ?? 34980));
   const stateRef = useRef(state);
   const displayState = headerState(state);
+  const masterRunning = !["idle", "not_started", "", null, undefined].includes(state.master_state);
+  const scanning = state.status === "scanning";
+  const canceling = state.status === "canceling";
+  const configLocked = Boolean(state.config_locked);
+  const canStop = masterRunning && !scanning && !canceling;
+  const hasDiscovery = state.slaves.length > 0;
+  const scanLabel = canceling ? "Canceling..." : scanning ? "Cancel scan" : hasDiscovery ? "Re-scan bus" : "Scan bus";
 
   useEffect(() => {
     stateRef.current = state;
@@ -163,7 +171,7 @@ function SetupCell({ ctx, data }) {
       if (active instanceof HTMLElement && ctx.root.contains(active)) {
         active.dispatchEvent(new Event("change", { bubbles: true }));
         active.dispatchEvent(new Event("blur", { bubbles: true }));
-      } else {
+      } else if (!stateRef.current.config_locked) {
         ctx.pushEvent("update", serialize(stateRef.current));
       }
     });
@@ -174,11 +182,15 @@ function SetupCell({ ctx, data }) {
   }, [state.transport, state.port]);
 
   const updateLocal = (recipe) => {
-    setState((previous) => recipe(previous));
+    setState((previous) => (previous.config_locked ? previous : recipe(previous)));
   };
 
   const commit = (recipe) => {
     setState((previous) => {
+      if (previous.config_locked) {
+        return previous;
+      }
+
       const nextState = recipe(previous);
       ctx.pushEvent("update", serialize(nextState));
       return nextState;
@@ -198,8 +210,6 @@ function SetupCell({ ctx, data }) {
     ...patch,
   });
 
-  const hasDiscovery = state.slaves.length > 0;
-
   const commitUdpPort = (rawValue) => {
     const trimmed = String(rawValue ?? "").trim();
     const parsed = Number.parseInt(trimmed, 10);
@@ -217,15 +227,20 @@ function SetupCell({ ctx, data }) {
       toolbar={
         <>
           <Button
-            disabled={state.status === "scanning"}
+            disabled={canceling ? true : scanning ? false : configLocked}
             onClick={() => {
-              setState((previous) => ({ ...previous, status: "scanning", error: null }));
-              ctx.pushEvent("scan", {});
+              if (scanning) {
+                setState((previous) => ({ ...previous, status: "canceling", error: null }));
+                ctx.pushEvent("cancel_scan", {});
+              } else {
+                setState((previous) => ({ ...previous, status: "scanning", error: null }));
+                ctx.pushEvent("scan", {});
+              }
             }}
           >
-            {hasDiscovery ? "Re-scan bus" : "Scan bus"}
+            {scanLabel}
           </Button>
-          <Button onClick={() => ctx.pushEvent("stop", {})}>Stop master</Button>
+          <Button disabled={!canStop} onClick={() => ctx.pushEvent("stop", {})}>Stop master</Button>
         </>
       }
     >
@@ -240,29 +255,39 @@ function SetupCell({ ctx, data }) {
           ]}
         />
 
+        {configLocked ? (
+          <MessageLine tone="info">
+            Stop the master before changing transport, domains, distributed clocks, or slave assignments.
+          </MessageLine>
+        ) : null}
+
         <Panel title="Bus">
-          <BusSetupFields
-            state={state}
-            udpPortInput={udpPortInput}
-            onUdpPortInputChange={setUdpPortInput}
-            onUdpPortCommit={commitUdpPort}
-            onLocalPatch={(patch) => updateLocal((previous) => markTransportManual(previous, patch))}
-            onPatch={(patch) => commit((previous) => markTransportManual(previous, patch))}
-          />
+          <div className={configLocked ? "ke95-disabled-group" : ""}>
+            <BusSetupFields
+              state={state}
+              udpPortInput={udpPortInput}
+              disabled={configLocked}
+              onUdpPortInputChange={setUdpPortInput}
+              onUdpPortCommit={commitUdpPort}
+              onLocalPatch={(patch) => updateLocal((previous) => markTransportManual(previous, patch))}
+              onPatch={(patch) => commit((previous) => markTransportManual(previous, patch))}
+            />
+          </div>
         </Panel>
 
         {state.error ? <MessageLine tone="error">{state.error}</MessageLine> : null}
 
         <Panel
           title="Domains"
-          actions={<Button onClick={addDomain}>Add domain</Button>}
+          actions={<Button disabled={configLocked} onClick={addDomain}>Add domain</Button>}
         >
-          <Stack>
+          <Stack className={configLocked ? "ke95-disabled-group" : ""}>
             {state.domains.map((domain, index) => (
               <DomainCard
                 key={`domain-${index}`}
                 domain={domain}
                 index={index}
+                disabled={configLocked}
                 canRemove={state.domains.length > 1}
                 onChange={(patch) => updateLocal((previous) => applyDomainUpdate(previous, index, patch))}
                 onCommit={(patch) => commit((previous) => applyDomainUpdate(previous, index, patch))}
@@ -273,18 +298,19 @@ function SetupCell({ ctx, data }) {
         </Panel>
 
         <Panel title="Distributed clocks">
-          <Stack compact>
+          <Stack compact className={configLocked ? "ke95-disabled-group" : ""}>
             <Checkbox
               checked={state.dc_enabled}
+              disabled={configLocked}
               label="Enable DC runtime"
               onChange={(event) => commit((previous) => ({ ...previous, dc_enabled: event.target.checked }))}
             />
 
-            <div className={!state.dc_enabled ? "ke95-disabled-group" : ""}>
+            <div className={!state.dc_enabled || configLocked ? "ke95-disabled-group" : ""}>
               <Columns minWidth="15rem">
                 <Checkbox
                   checked={state.await_lock}
-                  disabled={!state.dc_enabled}
+                  disabled={!state.dc_enabled || configLocked}
                   label="Gate startup on lock"
                   onChange={(event) => commit((previous) => ({ ...previous, await_lock: event.target.checked }))}
                 />
@@ -294,7 +320,7 @@ function SetupCell({ ctx, data }) {
                     type="number"
                     min="1000000"
                     step="1000000"
-                    disabled={!state.dc_enabled}
+                    disabled={!state.dc_enabled || configLocked}
                     className="ke95-fill"
                     value={state.dc_cycle_ns}
                     onChange={(event) =>
@@ -311,7 +337,7 @@ function SetupCell({ ctx, data }) {
                     type="number"
                     min="1"
                     step="1"
-                    disabled={!state.dc_enabled}
+                    disabled={!state.dc_enabled || configLocked}
                     className="ke95-fill"
                     value={state.lock_threshold_ns}
                     onChange={(event) =>
@@ -334,7 +360,7 @@ function SetupCell({ ctx, data }) {
                     type="number"
                     min="1"
                     step="1"
-                    disabled={!state.dc_enabled}
+                    disabled={!state.dc_enabled || configLocked}
                     className="ke95-fill"
                     value={state.lock_timeout_ms}
                     onChange={(event) =>
@@ -387,6 +413,7 @@ function SetupCell({ ctx, data }) {
                   key={`${slave.discovered_name}-${index}`}
                   slave={slave}
                   index={index}
+                  disabled={configLocked}
                   domains={state.domains}
                   availableDrivers={state.available_drivers}
                   updateLocal={(rowIndex, patch) =>
@@ -405,18 +432,19 @@ function SetupCell({ ctx, data }) {
   );
 }
 
-function DomainCard({ domain, index, canRemove, onChange, onCommit, onRemove }) {
+function DomainCard({ domain, index, disabled, canRemove, onChange, onCommit, onRemove }) {
   return (
     <Inset>
       <div className="ke95-toolbar">
         <div className="ke95-kicker">Domain {index + 1}</div>
-        {canRemove ? <Button onClick={onRemove}>Remove</Button> : null}
+        {canRemove ? <Button disabled={disabled} onClick={onRemove}>Remove</Button> : null}
       </div>
 
       <Columns minWidth="12rem">
         <ControlField label="ID">
           <Input
             className="ke95-fill"
+            disabled={disabled}
             value={domain.id}
             onChange={(event) => onChange({ id: event.target.value })}
             onBlur={(event) => onCommit({ id: event.target.value })}
@@ -429,6 +457,7 @@ function DomainCard({ domain, index, canRemove, onChange, onCommit, onRemove }) 
             type="number"
             min="1"
             step="1"
+            disabled={disabled}
             value={domain.cycle_time_ms}
             onChange={(event) => onChange({ cycle_time_ms: Number(event.target.value) || 10 })}
             onBlur={(event) => onCommit({ cycle_time_ms: Number(event.target.value) || 10 })}
@@ -441,6 +470,7 @@ function DomainCard({ domain, index, canRemove, onChange, onCommit, onRemove }) 
             type="number"
             min="1"
             step="1"
+            disabled={disabled}
             value={domain.miss_threshold}
             onChange={(event) => onChange({ miss_threshold: Number(event.target.value) || 1 })}
             onBlur={(event) => onCommit({ miss_threshold: Number(event.target.value) || 1 })}
@@ -451,7 +481,7 @@ function DomainCard({ domain, index, canRemove, onChange, onCommit, onRemove }) 
   );
 }
 
-function SlaveRow({ slave, index, domains, availableDrivers, updateLocal, commit }) {
+function SlaveRow({ slave, index, domains, availableDrivers, updateLocal, commit, disabled }) {
   const selectValue = driverSelectValue(slave, availableDrivers);
 
   return (
@@ -464,6 +494,7 @@ function SlaveRow({ slave, index, domains, availableDrivers, updateLocal, commit
       <td>
         <Input
           className="ke95-fill"
+          disabled={disabled}
           value={slave.name}
           onChange={(event) => updateLocal(index, { name: event.target.value })}
           onBlur={(event) => commit(index, { name: event.target.value })}
@@ -474,6 +505,7 @@ function SlaveRow({ slave, index, domains, availableDrivers, updateLocal, commit
         <div className="ke95-grid">
           <Dropdown
             className="ke95-fill"
+            disabled={disabled}
             value={selectValue}
             onChange={(event) => {
               if (event.target.value === CUSTOM) {
@@ -496,6 +528,7 @@ function SlaveRow({ slave, index, domains, availableDrivers, updateLocal, commit
           {selectValue === CUSTOM ? (
             <Input
               className="ke95-fill"
+              disabled={disabled}
               value={slave.driver}
               placeholder="MyApp.Driver.Module"
               onChange={(event) => updateLocal(index, { driver: event.target.value })}
@@ -507,7 +540,7 @@ function SlaveRow({ slave, index, domains, availableDrivers, updateLocal, commit
       <td>
         <Dropdown
           className="ke95-fill"
-          disabled={!slave.driver}
+          disabled={disabled || !slave.driver}
           value={slave.domain_id || ""}
           onChange={(event) => commit(index, { domain_id: event.target.value })}
         >

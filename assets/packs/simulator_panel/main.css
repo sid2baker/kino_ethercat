@@ -1,3 +1,5 @@
+/* Layout-only overrides. Prefer default React95 styling. */
+
 .ke95-simulator-panel {
   display: grid;
   gap: 0.75rem;

@@ -1,3 +1,5 @@
+/* Layout-only overrides. Prefer default React95 styling. */
+
 .ke95-slave-panel__domain,
 .ke95-slave-panel__signal {
   display: grid;

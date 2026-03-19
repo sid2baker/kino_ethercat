@@ -401,7 +401,8 @@ defmodule KinoEtherCAT.WidgetLogs do
           scope -> scope
         end
 
-      scope -> scope
+      scope ->
+        scope
     end
   end
 
@@ -437,7 +438,10 @@ defmodule KinoEtherCAT.WidgetLogs do
   defp scope_from_metadata(%{component: :master}), do: :master
   defp scope_from_metadata(%{component: :bus}), do: :bus
   defp scope_from_metadata(%{component: :dc}), do: :dc
-  defp scope_from_metadata(%{component: :slave, slave: name}) when is_atom(name), do: {:slave, name}
+
+  defp scope_from_metadata(%{component: :slave, slave: name}) when is_atom(name),
+    do: {:slave, name}
+
   defp scope_from_metadata(%{component: :domain, domain: id}) when is_atom(id), do: {:domain, id}
   defp scope_from_metadata(_meta), do: nil
 

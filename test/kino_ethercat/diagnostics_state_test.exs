@@ -77,6 +77,35 @@ defmodule KinoEtherCAT.DiagnosticsStateTest do
     assert payload.dc.consecutive_failures == 2
   end
 
+  test "annotates recovery transitions with the most recent trigger" do
+    state =
+      State.new(event_limit: 5)
+      |> State.apply_telemetry(
+        [:ethercat, :domain, :cycle, :invalid],
+        %{total_invalid_count: 1, invalid_at_us: 2_000},
+        %{domain: :main, reason: :wkc_mismatch, expected_wkc: 3, actual_wkc: 2, reply_count: 1}
+      )
+      |> State.apply_telemetry(
+        [:ethercat, :master, :state, :changed],
+        %{},
+        %{from: :operational, to: :recovering, public_state: :operational, runtime_target: :op}
+      )
+
+    payload = State.payload(state)
+    [change] = payload.master.state_changes
+
+    assert change.cause == "Domain invalid: main • wkc_mismatch • WKC 2/3 • replies 1 • invalid 1"
+
+    assert [
+             %{
+               title: "Master entered recovering",
+               detail:
+                 "operational -> recovering • target op • cause Domain invalid: main • wkc_mismatch • WKC 2/3 • replies 1 • invalid 1"
+             }
+             | _
+           ] = payload.timeline
+  end
+
   test "builds cycle, invalid, and transport miss slices for domains" do
     state =
       State.new(history_limit: 4)

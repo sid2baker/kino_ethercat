@@ -33,6 +33,32 @@ defmodule KinoEtherCAT.SmartCells.SetupTransportTest do
     assert config.port == port
   end
 
+  test "auto mode switches redundant defaults back to single raw when the simulator is single raw" do
+    if transport_available?("raw_socket") do
+      devices = [
+        Slave.from_driver(KinoEtherCAT.Driver.EK1100, name: :coupler),
+        Slave.from_driver(KinoEtherCAT.Driver.EL1809, name: :inputs),
+        Slave.from_driver(KinoEtherCAT.Driver.EL2809, name: :outputs)
+      ]
+
+      {:ok, _supervisor} = Simulator.start(devices: devices, raw: [interface: "veth-s0"])
+
+      config =
+        SetupTransport.normalize(%{
+          "transport_mode" => "auto",
+          "transport" => "raw_redundant",
+          "interface" => "eth0",
+          "backup_interface" => "eth1"
+        })
+
+      assert config.transport_mode == :auto
+      assert config.transport == :raw
+      assert config.interface == "veth-m0"
+    else
+      assert true
+    end
+  end
+
   test "manual mode keeps the user transport selection even with a running simulator" do
     devices = [
       Slave.from_driver(KinoEtherCAT.Driver.EK1100, name: :coupler),
@@ -102,5 +128,10 @@ defmodule KinoEtherCAT.SmartCells.SetupTransportTest do
              host: "127.0.0.2",
              port: 0x88A4
            }) == "eth0 + eth1"
+  end
+
+  defp transport_available?(value) do
+    KinoEtherCAT.SmartCells.SimulatorConfig.available_transports()
+    |> Enum.any?(&(&1.value == value and &1.available))
   end
 end

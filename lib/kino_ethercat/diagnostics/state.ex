@@ -400,15 +400,17 @@ defmodule KinoEtherCAT.Diagnostics.State do
   end
 
   def apply_telemetry(state, [:ethercat, :master, :state, :changed], _measurements, metadata) do
-    event = %{
-      from: to_string(metadata.from),
-      to: to_string(metadata.to),
-      public_state: to_string(metadata.public_state),
-      runtime_target: to_string(metadata.runtime_target),
-      at_ms: now_ms()
-    }
+    event =
+      %{
+        from: to_string(metadata.from),
+        to: to_string(metadata.to),
+        public_state: to_string(metadata.public_state),
+        runtime_target: to_string(metadata.runtime_target),
+        at_ms: now_ms()
+      }
+      |> Map.put(:cause, master_state_change_cause(state, metadata.to))
 
-    detail = "#{event.from} -> #{event.to} • target #{event.runtime_target}"
+    detail = master_state_change_detail(event)
 
     state
     |> put_in([:snapshot, :state], event.public_state)
@@ -416,8 +418,8 @@ defmodule KinoEtherCAT.Diagnostics.State do
     |> put_in([:master_metrics, :runtime_target], event.runtime_target)
     |> update_history([:master_metrics, :state_changes], event, 12)
     |> record_event(
-      master_state_level(metadata.public_state),
-      "Master #{event.public_state}",
+      master_state_level(metadata.to),
+      master_state_change_title(event),
       detail
     )
   end
@@ -1099,6 +1101,76 @@ defmodule KinoEtherCAT.Diagnostics.State do
     update_in(state, [:timeline], fn timeline ->
       [event | timeline] |> Enum.take(state.event_limit)
     end)
+  end
+
+  defp master_state_change_title(%{from: state, to: state}), do: "Master stayed #{state}"
+
+  defp master_state_change_title(%{from: "recovering", to: "operational"}),
+    do: "Master recovered to operational"
+
+  defp master_state_change_title(%{to: state}), do: "Master entered #{state}"
+
+  defp master_state_change_detail(event) do
+    [
+      "#{event.from} -> #{event.to}",
+      runtime_target_detail(event.runtime_target),
+      cause_detail(event.cause)
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" • ")
+  end
+
+  defp runtime_target_detail(nil), do: nil
+  defp runtime_target_detail(""), do: nil
+  defp runtime_target_detail(runtime_target), do: "target #{runtime_target}"
+
+  defp cause_detail(nil), do: nil
+  defp cause_detail(cause), do: "cause #{cause}"
+
+  defp master_state_change_cause(state, to) when to in [:recovering, :activation_blocked] do
+    change_at_ms = now_ms()
+
+    state.timeline
+    |> Enum.find_value(fn event -> relevant_master_state_cause(event, change_at_ms) end)
+  end
+
+  defp master_state_change_cause(_state, _to), do: nil
+
+  defp relevant_master_state_cause(%{at_ms: at_ms}, change_at_ms)
+       when is_integer(at_ms) and change_at_ms - at_ms > 2_000,
+       do: nil
+
+  defp relevant_master_state_cause(%{title: title, detail: detail}, _change_at_ms) do
+    cond do
+      title in [
+        "Domain invalid",
+        "Domain stopped",
+        "Domain crashed",
+        "DC runtime failing",
+        "Master DC lock decision",
+        "Link down",
+        "Bus exception",
+        "Realtime submission expired",
+        "Slave down",
+        "Slave crashed",
+        "Slave fault"
+      ] ->
+        state_change_cause_detail(title, detail)
+
+      String.starts_with?(title, "Slave fault ") ->
+        state_change_cause_detail(title, detail)
+
+      true ->
+        nil
+    end
+  end
+
+  defp relevant_master_state_cause(_event, _change_at_ms), do: nil
+
+  defp state_change_cause_detail(title, detail) when detail in [nil, ""], do: title
+
+  defp state_change_cause_detail(title, detail) do
+    "#{title}: #{detail}"
   end
 
   defp lock_level(:locked), do: "info"

@@ -39,6 +39,7 @@ export function BusSetupFields({
   onPatch,
   onLocalPatch = onPatch,
   labels = {},
+  disabled = false,
 }) {
   const interfaces = interfaceOptions(state);
   const transportLabelText = labels.transport ?? "Transport";
@@ -52,6 +53,7 @@ export function BusSetupFields({
       <ControlField label={transportLabelText}>
         <Dropdown
           className="ke95-fill"
+          disabled={disabled}
           value={state.transport}
           onChange={(event) => onPatch({ transport: event.target.value })}
         >
@@ -66,6 +68,7 @@ export function BusSetupFields({
           <ControlField label={hostLabel}>
             <Input
               className="ke95-fill"
+              disabled={disabled}
               placeholder="127.0.0.2"
               value={state.host}
               onChange={(event) => onLocalPatch({ host: event.target.value })}
@@ -79,6 +82,7 @@ export function BusSetupFields({
               type="number"
               min="1"
               step="1"
+              disabled={disabled}
               value={udpPortInput}
               onChange={(event) => onUdpPortInputChange(event.target.value)}
               onBlur={(event) => onUdpPortCommit(event.target.value)}
@@ -91,6 +95,7 @@ export function BusSetupFields({
           <ControlField label={interfaceLabel} className="ke95-fill">
             <Dropdown
               className="ke95-fill"
+              disabled={disabled}
               value={state.interface}
               onChange={(event) => onPatch({ interface: event.target.value })}
             >
@@ -106,6 +111,7 @@ export function BusSetupFields({
             <ControlField label={backupInterfaceLabel} className="ke95-fill">
               <Dropdown
                 className="ke95-fill"
+                disabled={disabled}
                 value={state.backup_interface}
                 onChange={(event) => onPatch({ backup_interface: event.target.value })}
               >

@@ -16,13 +16,13 @@ defmodule KinoEtherCAT.SmartCells.Setup do
     config = normalize_attrs(attrs)
     status = if config.slaves == [], do: :idle, else: :discovered
 
-    if should_auto_scan?(attrs, config), do: Process.send_after(self(), :auto_scan, 0)
     Process.send_after(self(), :poll_state, 500)
 
     {:ok,
      assign(ctx,
        status: status,
        scan_task: nil,
+       stop_task: nil,
        error: nil,
        master_state: BusSetup.runtime_state(),
        master_pid: Process.whereis(EtherCAT.Master),
@@ -51,55 +51,85 @@ defmodule KinoEtherCAT.SmartCells.Setup do
 
   @impl true
   def handle_event("scan", _params, ctx) do
-    {:noreply, begin_scan(ctx)}
+    case config_locked?(ctx.assigns) do
+      true ->
+        broadcast_event(ctx, "snapshot", payload(ctx.assigns))
+        {:noreply, ctx}
+
+      false ->
+        {:noreply, begin_scan(ctx)}
+    end
   end
 
   def handle_event("stop", _params, ctx) do
-    cancel_scan(ctx.assigns.scan_task)
-    _ = EtherCAT.stop()
+    ctx = begin_stop(ctx)
 
-    ctx =
-      assign(ctx,
-        status: :idle,
-        scan_task: nil,
-        error: nil,
-        master_state: :idle,
-        master_pid: nil
-      )
+    broadcast_event(ctx, "snapshot", payload(ctx.assigns))
+    {:noreply, ctx}
+  end
+
+  def handle_event("cancel_scan", _params, ctx) do
+    ctx = begin_stop(ctx)
 
     broadcast_event(ctx, "snapshot", payload(ctx.assigns))
     {:noreply, ctx}
   end
 
   def handle_event("update", params, ctx) do
-    config = normalize_attrs(params)
+    case config_locked?(ctx.assigns) do
+      true ->
+        broadcast_event(ctx, "snapshot", payload(ctx.assigns))
+        {:noreply, ctx}
 
-    ctx =
-      assign(ctx,
-        available_interfaces: BusSetup.available_interfaces(),
-        transport_mode: config.transport_mode,
-        transport: config.transport,
-        interface: config.interface,
-        backup_interface: config.backup_interface,
-        host: config.host,
-        port: config.port,
-        slaves: config.slaves,
-        domains: config.domains,
-        dc_enabled: config.dc_enabled,
-        dc_cycle_ns: config.dc_cycle_ns,
-        await_lock: config.await_lock,
-        lock_threshold_ns: config.lock_threshold_ns,
-        lock_timeout_ms: config.lock_timeout_ms,
-        warmup_cycles: config.warmup_cycles
-      )
+      false ->
+        config = normalize_attrs(params)
 
-    broadcast_event(ctx, "snapshot", payload(ctx.assigns))
-    {:noreply, ctx}
+        ctx =
+          assign(ctx,
+            available_interfaces: BusSetup.available_interfaces(),
+            transport_mode: config.transport_mode,
+            transport: config.transport,
+            interface: config.interface,
+            backup_interface: config.backup_interface,
+            host: config.host,
+            port: config.port,
+            slaves: config.slaves,
+            domains: config.domains,
+            dc_enabled: config.dc_enabled,
+            dc_cycle_ns: config.dc_cycle_ns,
+            await_lock: config.await_lock,
+            lock_threshold_ns: config.lock_threshold_ns,
+            lock_timeout_ms: config.lock_timeout_ms,
+            warmup_cycles: config.warmup_cycles
+          )
+
+        broadcast_event(ctx, "snapshot", payload(ctx.assigns))
+        {:noreply, ctx}
+    end
   end
 
   @impl true
   def handle_info({:scan_complete, _result}, %{assigns: %{scan_task: nil}} = ctx) do
     # Scan was cancelled (e.g. user clicked stop); ignore stale result.
+    {:noreply, ctx}
+  end
+
+  def handle_info({:stop_complete, _result}, %{assigns: %{stop_task: nil}} = ctx) do
+    {:noreply, ctx}
+  end
+
+  def handle_info({:stop_complete, result}, ctx) do
+    ctx =
+      assign(ctx,
+        status: stopped_status(ctx.assigns),
+        stop_task: nil,
+        error: stop_error(result),
+        master_state: :idle,
+        master_pid: Process.whereis(EtherCAT.Master),
+        available_interfaces: BusSetup.available_interfaces()
+      )
+
+    broadcast_event(ctx, "snapshot", payload(ctx.assigns))
     {:noreply, ctx}
   end
 
@@ -125,21 +155,13 @@ defmodule KinoEtherCAT.SmartCells.Setup do
     {:noreply, ctx}
   end
 
-  def handle_info(:auto_scan, ctx) do
-    if ctx.assigns.status == :idle and ctx.assigns.slaves == [] and simulator_running?() do
-      {:noreply, begin_scan(ctx)}
-    else
-      {:noreply, ctx}
-    end
-  end
-
   def handle_info(:poll_state, ctx) do
     Process.send_after(self(), :poll_state, 2_000)
 
-    state = BusSetup.runtime_state()
     pid = Process.whereis(EtherCAT.Master)
     interfaces = BusSetup.available_interfaces()
     transport = ctx.assigns |> BusSetup.transport_assigns() |> SetupTransport.refresh_auto()
+    state = polled_master_state(ctx.assigns, pid)
 
     if state != ctx.assigns.master_state or
          pid != ctx.assigns.master_pid or
@@ -185,7 +207,18 @@ defmodule KinoEtherCAT.SmartCells.Setup do
   @doc false
   def should_auto_scan?(attrs, %{slaves: slaves}, simulator_running? \\ &simulator_running?/0)
       when is_map(attrs) and is_list(slaves) and is_function(simulator_running?, 0) do
-    map_size(attrs) == 0 and slaves == [] and simulator_running?.()
+    false
+  end
+
+  @doc false
+  def config_locked?(assigns) when is_map(assigns) do
+    Map.get(assigns, :status) in [:scanning, :canceling] or
+      Map.get(assigns, :master_state) not in [:idle, :not_started, nil]
+  end
+
+  @doc false
+  def stopped_status(assigns) when is_map(assigns) do
+    if Map.get(assigns, :slaves, []) == [], do: :idle, else: :discovered
   end
 
   defp begin_scan(ctx) do
@@ -205,8 +238,79 @@ defmodule KinoEtherCAT.SmartCells.Setup do
     ctx
   end
 
-  defp cancel_scan(pid) when is_pid(pid), do: Process.exit(pid, :kill)
+  defp begin_stop(%{assigns: %{stop_task: pid}} = ctx) when is_pid(pid), do: ctx
+
+  defp begin_stop(ctx) do
+    cancel_scan(ctx.assigns.scan_task)
+    server = self()
+
+    {:ok, pid} =
+      Task.start(fn ->
+        send(server, {:stop_complete, stop_master_session()})
+      end)
+
+    assign(ctx, status: :canceling, scan_task: nil, stop_task: pid, error: nil)
+  end
+
+  defp cancel_scan(pid) when is_pid(pid) do
+    ref = Process.monitor(pid)
+    Process.exit(pid, :kill)
+
+    receive do
+      {:DOWN, ^ref, :process, ^pid, _reason} -> :ok
+    after
+      500 ->
+        Process.demonitor(ref, [:flush])
+        :ok
+    end
+  end
+
   defp cancel_scan(nil), do: :ok
+
+  defp stop_master_session do
+    case EtherCAT.stop() do
+      :ok ->
+        :ok
+
+      {:error, _reason} = error ->
+        _ = restart_master_child()
+        error
+    end
+  end
+
+  defp restart_master_child do
+    case Supervisor.terminate_child(EtherCAT.Supervisor, EtherCAT.Master) do
+      :ok ->
+        restart_terminated_master_child()
+
+      {:error, :not_found} ->
+        :ok
+    end
+  end
+
+  defp restart_terminated_master_child do
+    case Supervisor.restart_child(EtherCAT.Supervisor, EtherCAT.Master) do
+      {:ok, _pid} -> :ok
+      {:ok, _pid, _info} -> :ok
+      {:error, :running} -> :ok
+      {:error, :restarting} -> :ok
+      {:error, :not_found} -> :ok
+    end
+  end
+
+  defp stop_error(:ok), do: nil
+  defp stop_error({:error, reason}), do: "master stop returned #{inspect(reason)}"
+
+  defp polled_master_state(%{status: status, master_state: master_state}, pid)
+       when status in [:scanning, :canceling] do
+    cond do
+      status == :canceling -> master_state || :idle
+      is_pid(pid) -> master_state || :discovering
+      true -> master_state || :idle
+    end
+  end
+
+  defp polled_master_state(_assigns, _pid), do: BusSetup.runtime_state()
 
   defp run_scan(server, transport, existing_slaves, domains) do
     result =
@@ -394,6 +498,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
 
   defp payload(assigns) do
     transport = BusSetup.transport_assigns(assigns)
+    config_locked = config_locked?(assigns)
 
     %{
       transport_mode: Atom.to_string(assigns.transport_mode),
@@ -416,6 +521,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
       warmup_cycles: assigns.warmup_cycles,
       master_state: to_string(assigns.master_state),
       master_pid: BusSetup.format_pid(assigns.master_pid),
+      config_locked: config_locked,
       available_drivers:
         Enum.map(KinoEtherCAT.Driver.all(), fn %{module: mod, name: name} ->
           %{module: inspect(mod), name: name}
@@ -598,13 +704,26 @@ defmodule KinoEtherCAT.SmartCells.Setup do
       Keyword.get(start_opts, :port) == port
   end
 
-  defp simulator_matches_start_opts?(%{raw: %{interface: interface}}, start_opts) do
+  defp simulator_matches_start_opts?(%{raw: raw}, start_opts),
+    do: raw_simulator_matches_start_opts?(raw, start_opts)
+
+  defp simulator_matches_start_opts?(_info, _start_opts), do: false
+
+  defp raw_simulator_matches_start_opts?(
+         %{mode: :single, primary: %{interface: interface}},
+         start_opts
+       ) do
     interface == SimulatorConfig.raw_simulator_interface() and
-      Keyword.get(start_opts, :interface) == SimulatorConfig.raw_master_interface()
+      Keyword.get(start_opts, :interface) == SimulatorConfig.raw_master_interface() and
+      not Keyword.has_key?(start_opts, :backup_interface)
   end
 
-  defp simulator_matches_start_opts?(
-         %{raw: %{primary: %{interface: primary}, secondary: %{interface: secondary}}},
+  defp raw_simulator_matches_start_opts?(
+         %{
+           mode: :redundant,
+           primary: %{interface: primary},
+           secondary: %{interface: secondary}
+         },
          start_opts
        ) do
     primary == SimulatorConfig.redundant_simulator_primary_interface() and
@@ -614,7 +733,7 @@ defmodule KinoEtherCAT.SmartCells.Setup do
         SimulatorConfig.redundant_master_secondary_interface()
   end
 
-  defp simulator_matches_start_opts?(_info, _start_opts), do: false
+  defp raw_simulator_matches_start_opts?(_raw, _start_opts), do: false
 
   defp positive_integer(value, _default) when is_integer(value) and value > 0, do: value
 

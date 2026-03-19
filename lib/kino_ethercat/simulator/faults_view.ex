@@ -663,7 +663,10 @@ defmodule KinoEtherCAT.Simulator.FaultsView do
 
   defp transport_error(:invalid_count), do: "Transport fault counts must be positive integers."
   defp transport_error(:invalid_fault_type), do: "Select a valid transport fault."
-  defp transport_error(:invalid_integer), do: "Transport values must be decimal or 0x-prefixed hex."
+
+  defp transport_error(:invalid_integer),
+    do: "Transport values must be decimal or 0x-prefixed hex."
+
   defp transport_error(:invalid_plan), do: "Select a valid transport fault plan."
   defp transport_error(:invalid_selector), do: "Select a valid raw transport endpoint or ingress."
   defp transport_error(:invalid_transport), do: "Select a known simulator transport."

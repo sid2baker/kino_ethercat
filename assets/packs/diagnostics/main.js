@@ -123,19 +123,52 @@ function formatTime(atMs) {
   return new Date(atMs).toLocaleTimeString();
 }
 
+function formatSnapshotTime(atMs) {
+  if (!atMs) return "n/a";
+
+  return new Date(atMs).toLocaleTimeString([], {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
 function formatBoolean(value) {
   if (value == null) return "n/a";
   return value ? "yes" : "no";
 }
 
 function formatResult(result) {
-  if (!result) return "n/a";
+  if (!result) return "not run";
   return result.status ?? "n/a";
 }
 
 function formatLinkTime(atMs) {
   if (!atMs) return "never";
   return formatTime(atMs);
+}
+
+function masterStateEventLevel(state) {
+  if (state === "activation_blocked") return "danger";
+  if (state === "recovering") return "warn";
+  return "info";
+}
+
+function masterStateChangeTitle(change) {
+  if (change.from === change.to) return `Stayed ${change.to}`;
+  if (change.from === "recovering" && change.to === "operational") return "Recovered to operational";
+  return `Entered ${change.to}`;
+}
+
+function masterStateChangeDetail(change) {
+  return [
+    `${change.from} -> ${change.to}`,
+    change.runtime_target ? `target ${change.runtime_target}` : null,
+    change.cause ? `cause ${change.cause}` : null,
+  ]
+    .filter(Boolean)
+    .join(" • ");
 }
 
 function cycleHealthState(cycleHealth) {
@@ -387,7 +420,7 @@ function EventFeed({ items, emptyLabel = "No events yet", compact = false }) {
   return (
     <Stack compact className={`ke95-diagnostics__feed${compact ? " ke95-diagnostics__feed--overview" : ""}`}>
       {items.map((item, index) => (
-        <Inset key={item.id ?? `${item.title}-${item.at_ms ?? index}-${index}`} className={`ke95-diagnostics__event ke95-diagnostics__event--${item.level ?? "info"}`}>
+        <Inset key={item.id ?? `${item.title}-${item.at_ms ?? index}-${index}`} className="ke95-diagnostics__event">
           <div className="ke95-toolbar">
             <div>{item.title}</div>
             <Mono>{formatTime(item.at_ms)}</Mono>
@@ -399,27 +432,324 @@ function EventFeed({ items, emptyLabel = "No events yet", compact = false }) {
   );
 }
 
-function domainAlertCount(domains) {
-  return domains.filter(
-    (domain) =>
-      domain.state !== "cycling" ||
-      cycleHealthState(domain.cycle_health) !== "healthy" ||
-      domain.invalid_events > 0 ||
-      domain.transport_miss_events > 0 ||
-      domain.stop_reason ||
-      domain.crash_reason
-  ).length;
+function latestSliceValue(slices = []) {
+  return slices.length ? slices[slices.length - 1].value ?? 0 : 0;
 }
 
-function busAlertCount(bus) {
-  const linksDown = bus.links.filter((link) => link.status === "down").length;
-  return linksDown + (bus.exceptions > 0 ? 1 : 0) + (bus.expired_realtime > 0 ? 1 : 0) + (bus.frames.dropped > 0 ? 1 : 0);
+function issueRank(level) {
+  switch (level) {
+    case "danger":
+      return 3;
+    case "warn":
+      return 2;
+    case "info":
+      return 1;
+    default:
+      return 0;
+  }
 }
 
-function nonOperationalSlaveCount(slaves) {
-  return slaves.filter(
-    (slave) => slave.al_state !== "op" || slave.al_error != null || slave.configuration_error || slave.fault
-  ).length;
+function sortIssues(items) {
+  return [...items].sort(
+    (left, right) =>
+      issueRank(right.level) - issueRank(left.level) ||
+      (right.at_ms ?? 0) - (left.at_ms ?? 0) ||
+      left.title.localeCompare(right.title)
+  );
+}
+
+function formatWkcPair(actual, expected) {
+  if (actual == null && expected == null) return null;
+  return `WKC ${actual ?? "?"}/${expected ?? "?"}`;
+}
+
+function domainIssueDetail(domain) {
+  const parts = [];
+  const transportMiss = domain.last_transport_miss;
+  const invalid = domain.last_invalid;
+  const latestIssue = transportMiss ?? invalid;
+  const health = formatCycleHealth(domain.cycle_health);
+
+  if (health !== "healthy") {
+    parts.push(health);
+  }
+
+  const wkc = latestIssue ? formatWkcPair(latestIssue.actual_wkc, latestIssue.expected_wkc) : null;
+  if (wkc) parts.push(wkc);
+  if (transportMiss?.consecutive_miss_count != null) parts.push(`misses ${transportMiss.consecutive_miss_count}`);
+  if (domain.last_cycle_us != null) parts.push(`cycle ${formatUs(domain.last_cycle_us)}`);
+
+  return parts.join(" • ") || "current domain issue";
+}
+
+function domainCurrentIssue(domain) {
+  if (domain.crash_reason) {
+    return {
+      id: `domain-${domain.id}-crash`,
+      scope: "domain",
+      level: "danger",
+      title: `Domain ${domain.id} crashed`,
+      detail: domain.crash_reason,
+    };
+  }
+
+  if (domain.stop_reason || domain.state === "stopped") {
+    return {
+      id: `domain-${domain.id}-stop`,
+      scope: "domain",
+      level: "danger",
+      title: `Domain ${domain.id} stopped`,
+      detail: domain.stop_reason ?? domainIssueDetail(domain),
+    };
+  }
+
+  const health = cycleHealthState(domain.cycle_health);
+
+  if (health.startsWith("transport_miss")) {
+    return {
+      id: `domain-${domain.id}-transport-miss`,
+      scope: "domain",
+      level: "danger",
+      title: `Domain ${domain.id} transport miss`,
+      detail: domainIssueDetail(domain),
+      at_ms: domain.last_transport_miss?.at_ms,
+    };
+  }
+
+  if (health !== "healthy" && health !== "unknown") {
+    return {
+      id: `domain-${domain.id}-invalid`,
+      scope: "domain",
+      level: "warn",
+      title: `Domain ${domain.id} invalid`,
+      detail: domainIssueDetail(domain),
+      at_ms: domain.last_invalid?.at_ms,
+    };
+  }
+
+  if (domain.state !== "cycling" && domain.state !== "unknown") {
+    return {
+      id: `domain-${domain.id}-state`,
+      scope: "domain",
+      level: "warn",
+      title: `Domain ${domain.id} is ${domain.state}`,
+      detail: domainIssueDetail(domain),
+    };
+  }
+
+  return null;
+}
+
+function slaveCurrentIssue(slave) {
+  if (slave.configuration_error) {
+    return {
+      id: `slave-${slave.name}-config`,
+      scope: "slave",
+      level: "danger",
+      title: `Slave ${slave.name} configuration error`,
+      detail: slave.configuration_error,
+      at_ms: slave.last_event?.at_ms,
+    };
+  }
+
+  if (slave.fault) {
+    return {
+      id: `slave-${slave.name}-fault`,
+      scope: "slave",
+      level: "danger",
+      title: `Slave ${slave.name} fault`,
+      detail: slave.fault,
+      at_ms: slave.last_event?.at_ms,
+    };
+  }
+
+  if (slave.al_error != null) {
+    return {
+      id: `slave-${slave.name}-al-error`,
+      scope: "slave",
+      level: "warn",
+      title: `Slave ${slave.name} AL error`,
+      detail: `${formatHex(slave.al_error)} • state ${slave.al_state ?? "unknown"}`,
+      at_ms: slave.last_event?.at_ms,
+    };
+  }
+
+  if (slave.al_state !== "op" && slave.al_state !== "unknown") {
+    return {
+      id: `slave-${slave.name}-state`,
+      scope: "slave",
+      level: "warn",
+      title: `Slave ${slave.name} is ${slave.al_state}`,
+      detail: slave.last_event?.detail ?? "not in OP",
+      at_ms: slave.last_event?.at_ms,
+    };
+  }
+
+  return null;
+}
+
+function masterCurrentIssues(snapshot) {
+  const issues = [];
+
+  if (snapshot.state === "recovering") {
+    issues.push({
+      id: "master-recovering",
+      scope: "master",
+      level: "danger",
+      title: "Master recovering",
+      detail: [`target ${snapshot.master.runtime_target ?? "n/a"}`, snapshot.last_failure].filter(Boolean).join(" • "),
+    });
+  } else if (snapshot.state === "activation_blocked") {
+    issues.push({
+      id: "master-activation-blocked",
+      scope: "master",
+      level: "danger",
+      title: "Master activation blocked",
+      detail: [`target ${snapshot.master.runtime_target ?? "n/a"}`, snapshot.master.activation_result?.reason].filter(Boolean).join(" • "),
+    });
+  } else if (!["operational", "idle"].includes(snapshot.state)) {
+    issues.push({
+      id: `master-${snapshot.state}`,
+      scope: "master",
+      level: "warn",
+      title: `Master ${snapshot.state}`,
+      detail: [`target ${snapshot.master.runtime_target ?? "n/a"}`, snapshot.last_failure].filter(Boolean).join(" • "),
+    });
+  }
+
+  if (snapshot.master.configuration_result?.status === "error") {
+    issues.push({
+      id: "master-configuration-error",
+      scope: "master",
+      level: "danger",
+      title: "Configuration failed",
+      detail: [formatMs(snapshot.master.configuration_result.duration_ms), snapshot.master.configuration_result.reason].filter(Boolean).join(" • "),
+      at_ms: snapshot.master.configuration_result.at_ms,
+    });
+  }
+
+  if (snapshot.master.activation_result?.status === "error") {
+    issues.push({
+      id: "master-activation-error",
+      scope: "master",
+      level: "danger",
+      title: "Activation failed",
+      detail: [formatMs(snapshot.master.activation_result.duration_ms), snapshot.master.activation_result.reason].filter(Boolean).join(" • "),
+      at_ms: snapshot.master.activation_result.at_ms,
+    });
+  } else if (snapshot.master.activation_result?.status === "blocked") {
+    issues.push({
+      id: "master-activation-blocked-result",
+      scope: "master",
+      level: "warn",
+      title: "Activation blocked",
+      detail: [`blocked ${formatCount(snapshot.master.activation_result.blocked_count)}`, snapshot.master.activation_result.reason].filter(Boolean).join(" • "),
+      at_ms: snapshot.master.activation_result.at_ms,
+    });
+  }
+
+  return issues;
+}
+
+function dcCurrentIssues(dc) {
+  if (!dc) return [];
+
+  const issues = [];
+
+  if (dc.runtime_state === "failing") {
+    issues.push({
+      id: "dc-runtime-failing",
+      scope: "dc",
+      level: "danger",
+      title: "Distributed clocks failing",
+      detail: [dc.runtime_reason, `failures ${formatCount(dc.consecutive_failures)}`, formatNs(dc.max_sync_diff_ns)].filter((value) => value && value !== "n/a").join(" • "),
+    });
+  }
+
+  if (dc.configured && dc.active && !["locked", "disabled"].includes(dc.lock_state)) {
+    issues.push({
+      id: "dc-lock-not-locked",
+      scope: "dc",
+      level: "warn",
+      title: `DC lock ${dc.lock_state}`,
+      detail: [formatNs(dc.max_sync_diff_ns), dc.reference_clock, dc.reference_station != null ? formatHex(dc.reference_station) : null].filter((value) => value && value !== "n/a").join(" • "),
+    });
+  }
+
+  return issues;
+}
+
+function busCurrentIssues(bus, sliceMs) {
+  const issues = [];
+  const droppedNow = latestSliceValue(bus.frames.dropped_slices);
+  const exceptionsNow = latestSliceValue(bus.frames.exception_slices);
+  const expiredNow = latestSliceValue(bus.frames.expired_slices);
+  const sliceLabel = sliceWindowLabel(sliceMs);
+
+  bus.links
+    .filter((link) => link.status === "down")
+    .forEach((link) => {
+      issues.push({
+        id: `link-${link.name}-down`,
+        scope: "bus",
+        level: "danger",
+        title: `Link ${link.name} down`,
+        detail: [link.endpoint, link.reason, formatLinkTime(link.at_ms)].filter(Boolean).join(" • "),
+        at_ms: link.at_ms,
+      });
+    });
+
+  if (droppedNow > 0) {
+    issues.push({
+      id: "bus-dropped-now",
+      scope: "bus",
+      level: "danger",
+      title: "Frames dropped recently",
+      detail: [`${formatCount(droppedNow)} in latest ${sliceLabel}`, bus.frames.dropped_reasons?.[0]?.reason].filter(Boolean).join(" • "),
+    });
+  }
+
+  if (expiredNow > 0) {
+    issues.push({
+      id: "bus-expired-now",
+      scope: "bus",
+      level: "warn",
+      title: "Realtime submissions expired",
+      detail: `${formatCount(expiredNow)} in latest ${sliceLabel}`,
+    });
+  }
+
+  if (exceptionsNow > 0) {
+    issues.push({
+      id: "bus-exceptions-now",
+      scope: "bus",
+      level: "warn",
+      title: "Bus exceptions observed",
+      detail: `${formatCount(exceptionsNow)} in latest ${sliceLabel}`,
+    });
+  }
+
+  return issues;
+}
+
+function decorateDomains(domains) {
+  return [...domains]
+    .map((domain) => ({ ...domain, current_issue: domainCurrentIssue(domain) }))
+    .sort(
+      (left, right) =>
+        issueRank(right.current_issue?.level) - issueRank(left.current_issue?.level) ||
+        left.id.localeCompare(right.id)
+    );
+}
+
+function decorateSlaves(slaves) {
+  return [...slaves]
+    .map((slave) => ({ ...slave, current_issue: slaveCurrentIssue(slave) }))
+    .sort(
+      (left, right) =>
+        issueRank(right.current_issue?.level) - issueRank(left.current_issue?.level) ||
+        left.name.localeCompare(right.name)
+    );
 }
 
 function slaveSummaryItems(slaves) {
@@ -446,28 +776,98 @@ function slaveSummaryItems(slaves) {
   ];
 }
 
+function domainSummaryItems(domains) {
+  const counts = domains.reduce(
+    (acc, domain) => {
+      const issue = domain.current_issue;
+      acc.total += 1;
+
+      if (!issue) {
+        acc.healthy += 1;
+      } else if (issue.level === "danger") {
+        acc.danger += 1;
+      } else {
+        acc.warn += 1;
+      }
+
+      if (cycleHealthState(domain.cycle_health).startsWith("transport_miss")) acc.transport += 1;
+      if (cycleHealthState(domain.cycle_health) === "invalid") acc.invalid += 1;
+      if (domain.stop_reason || domain.crash_reason || domain.state === "stopped") acc.stopped += 1;
+
+      return acc;
+    },
+    { total: 0, healthy: 0, warn: 0, danger: 0, invalid: 0, transport: 0, stopped: 0 }
+  );
+
+  return [
+    { label: "Healthy", value: formatCount(counts.healthy) },
+    { label: "Warn", value: formatCount(counts.warn) },
+    { label: "Danger", value: formatCount(counts.danger) },
+    { label: "Invalid", value: formatCount(counts.invalid) },
+    { label: "Transport miss", value: formatCount(counts.transport) },
+    { label: "Stopped", value: formatCount(counts.stopped) },
+  ];
+}
+
+function IssueList({ items, emptyLabel = "No active issues", className = "" }) {
+  if (!items.length) {
+    return <EmptyState>{emptyLabel}</EmptyState>;
+  }
+
+  return (
+    <Stack compact className={`ke95-diagnostics__feed ke95-diagnostics__feed--overview ${className}`.trim()}>
+      {items.map((item) => (
+        <Inset key={item.id} className="ke95-diagnostics__event">
+          <div className="ke95-toolbar">
+            <div className="ke95-toolbar">
+              <StatusBadge tone={item.level ?? "neutral"}>{item.scope ?? "issue"}</StatusBadge>
+              <Mono>{item.title}</Mono>
+            </div>
+            {item.at_ms ? <Mono>{formatTime(item.at_ms)}</Mono> : null}
+          </div>
+          <Mono as="div">{item.detail}</Mono>
+        </Inset>
+      ))}
+    </Stack>
+  );
+}
+
 function Diagnostics({ ctx, data }) {
-  const [snapshot, setSnapshot] = useState(data);
-  const runtimeAlerts =
-    domainAlertCount(snapshot.domains) +
-    (snapshot.dc.runtime_state === "failing" ? 1 : 0) +
-    (snapshot.master.configuration_result?.status === "error" ? 1 : 0) +
-    (snapshot.master.activation_result?.status && snapshot.master.activation_result.status !== "ok" ? 1 : 0);
-  const slaveAlerts = nonOperationalSlaveCount(snapshot.slaves);
-  const busAlerts = busAlertCount(snapshot.bus);
+  const [viewState, setViewState] = useState({ snapshot: data, receivedAtMs: Date.now() });
+  const snapshot = viewState.snapshot;
+  const snapshotAt = formatSnapshotTime(viewState.receivedAtMs);
+  const domains = useMemo(() => decorateDomains(snapshot.domains), [snapshot.domains]);
+  const slaves = useMemo(() => decorateSlaves(snapshot.slaves), [snapshot.slaves]);
+  const busIssues = useMemo(() => busCurrentIssues(snapshot.bus, snapshot.slice_ms), [snapshot.bus, snapshot.slice_ms]);
+  const currentIssues = useMemo(
+    () =>
+      sortIssues([
+        ...masterCurrentIssues(snapshot),
+        ...dcCurrentIssues(snapshot.dc),
+        ...busIssues,
+        ...domains.flatMap((domain) => (domain.current_issue ? [domain.current_issue] : [])),
+        ...slaves.flatMap((slave) => (slave.current_issue ? [slave.current_issue] : [])),
+      ]),
+    [snapshot, busIssues, domains, slaves]
+  );
+  const degradedDomains = domains.filter((domain) => domain.current_issue);
+  const degradedSlaves = slaves.filter((slave) => slave.current_issue);
+  const downLinks = snapshot.bus.links.filter((link) => link.status === "down").length;
 
   useEffect(() => {
     ctx.handleEvent("snapshot", (next) => {
-      startTransition(() => setSnapshot(next));
+      startTransition(() => {
+        setViewState({ snapshot: next, receivedAtMs: Date.now() });
+      });
     });
   }, [ctx]);
 
   return (
     <ModalShell
       title="Task Manager"
-      subtitle={snapshot.last_failure ? `last failure ${snapshot.last_failure}` : "telemetry and runtime state"}
+      subtitle={snapshot.last_failure ? `live master overview • last failure ${snapshot.last_failure}` : "live master overview"}
       status={
-        <>
+        <div className="ke95-diagnostics__status-strip">
           <StatusBadge tone={badgeTone(STATE_TONES, snapshot.state)}>{snapshot.state}</StatusBadge>
           <StatusBadge tone={badgeTone(LOCK_TONES, snapshot.dc?.lock_state ?? "disabled")}>
             {snapshot.dc?.lock_state ?? "disabled"}
@@ -475,7 +875,8 @@ function Diagnostics({ ctx, data }) {
           <StatusBadge tone={badgeTone(DC_RUNTIME_TONES, snapshot.dc?.runtime_state ?? "healthy")}>
             DC {snapshot.dc?.runtime_state ?? "healthy"}
           </StatusBadge>
-        </>
+          <StatusBadge tone="neutral">snapshot {snapshotAt}</StatusBadge>
+        </div>
       }
     >
       {({ layoutVersion }) => (
@@ -485,27 +886,37 @@ function Diagnostics({ ctx, data }) {
               items={[
                 { label: "State", value: snapshot.state },
                 { label: "Target", value: snapshot.master.runtime_target ?? "n/a" },
-                { label: "Bus alerts", value: formatCount(busAlerts) },
-                { label: "Runtime alerts", value: formatCount(runtimeAlerts) },
-                { label: "Slave alerts", value: formatCount(slaveAlerts) },
-                { label: "Domains", value: String(snapshot.domains.length) },
-                { label: "Slaves", value: String(snapshot.slaves.length) },
+                { label: "Current issues", value: formatCount(currentIssues.length) },
+                { label: "Domains needing attention", value: formatCount(degradedDomains.length) },
+                { label: "Slaves needing attention", value: formatCount(degradedSlaves.length) },
+                { label: "Links down", value: formatCount(downLinks) },
+                { label: "Snapshot", value: snapshotAt },
+                { label: "Events tracked", value: formatCount(snapshot.timeline.length) },
                 { label: "Window", value: sliceWindowLabel(snapshot.slice_ms) },
               ]}
             />
 
             <Tabs defaultActiveTab="Overview">
               <Tab title="Overview">
-                <OverviewSection snapshot={snapshot} runtimeAlerts={runtimeAlerts} slaveAlerts={slaveAlerts} busAlerts={busAlerts} />
+                <OverviewSection
+                  snapshot={snapshot}
+                  snapshotAt={snapshotAt}
+                  currentIssues={currentIssues}
+                  domains={domains}
+                  slaves={slaves}
+                />
+              </Tab>
+              <Tab title="Runtime">
+                <RuntimeSection master={snapshot.master} dc={snapshot.dc} lastFailure={snapshot.last_failure} />
+              </Tab>
+              <Tab title="Domains">
+                <DomainsSection domains={domains} />
+              </Tab>
+              <Tab title="Slaves">
+                <SlavesSection slaves={slaves} />
               </Tab>
               <Tab title="Bus">
                 <BusSection bus={snapshot.bus} />
-              </Tab>
-              <Tab title="Runtime">
-                <RuntimeSection master={snapshot.master} dc={snapshot.dc} domains={snapshot.domains} lastFailure={snapshot.last_failure} />
-              </Tab>
-              <Tab title="Slaves">
-                <SlavesSection slaves={snapshot.slaves} />
               </Tab>
               <Tab title="Events">
                 <TimelineSection timeline={snapshot.timeline} />
@@ -518,17 +929,34 @@ function Diagnostics({ ctx, data }) {
   );
 }
 
-function OverviewSection({ snapshot, runtimeAlerts, slaveAlerts, busAlerts }) {
+function OverviewSection({ snapshot, snapshotAt, currentIssues, domains, slaves }) {
   const latestEvents = snapshot.timeline.slice(0, 6);
+  const domainFocus = domains.slice(0, 6);
+  const slaveFocus = slaves.slice(0, 8);
   const downLinks = snapshot.bus.links.filter((link) => link.status === "down").length;
+  const droppedNow = latestSliceValue(snapshot.bus.frames.dropped_slices);
+  const expiredNow = latestSliceValue(snapshot.bus.frames.expired_slices);
+  const exceptionsNow = latestSliceValue(snapshot.bus.frames.exception_slices);
+  const syncLabel =
+    snapshot.dc?.configured && snapshot.dc?.active ? formatNs(snapshot.dc?.max_sync_diff_ns) : "inactive";
 
   return (
     <Stack>
       <Panel title="Current picture">
         <Stack compact>
           <SectionCopy>
-            Start here. This tab keeps the current operating picture compact: master intent, bus pressure, runtime health, and the most recent story from telemetry.
+            Start here. This tab is the live operator view: what state the master is in now, what currently needs attention, and where the pressure is coming from.
           </SectionCopy>
+          <div className="ke95-toolbar ke95-diagnostics__status-strip">
+            <StatusBadge tone={badgeTone(STATE_TONES, snapshot.state)}>{snapshot.state}</StatusBadge>
+            <StatusBadge tone={badgeTone(LOCK_TONES, snapshot.dc?.lock_state ?? "disabled")}>
+              DC {snapshot.dc?.lock_state ?? "disabled"}
+            </StatusBadge>
+            <StatusBadge tone={badgeTone(DC_RUNTIME_TONES, snapshot.dc?.runtime_state ?? "healthy")}>
+              runtime {snapshot.dc?.runtime_state ?? "healthy"}
+            </StatusBadge>
+            <StatusBadge tone="neutral">snapshot {snapshotAt}</StatusBadge>
+          </div>
           <SummaryGrid
             items={[
               { label: "Master", value: snapshot.state },
@@ -536,38 +964,101 @@ function OverviewSection({ snapshot, runtimeAlerts, slaveAlerts, busAlerts }) {
               { label: "Bus stable", value: snapshot.master.startup_slave_count != null ? `${snapshot.master.startup_slave_count} slaves` : "n/a" },
               { label: "Configuration", value: formatResult(snapshot.master.configuration_result) },
               { label: "Activation", value: formatResult(snapshot.master.activation_result) },
+              { label: "Current issues", value: formatCount(currentIssues.length) },
+              { label: "Links down", value: formatCount(downLinks) },
               { label: "Last failure", value: snapshot.last_failure ?? "none" },
             ]}
           />
-          <Columns minWidth="16rem">
-            <PropertyList
-              minWidth="12rem"
-              items={[
-                { label: "Realtime latency", value: formatUs(snapshot.bus.transactions.realtime.last_latency_us) },
-                { label: "Reliable latency", value: formatUs(snapshot.bus.transactions.reliable.last_latency_us) },
-                { label: "RT queue peak", value: formatCount(snapshot.bus.queues.realtime.peak_depth) },
-                { label: "Bus exceptions", value: formatCount(snapshot.bus.exceptions) },
-              ]}
-            />
-            <PropertyList
-              minWidth="12rem"
-              items={[
-                { label: "Payload sent", value: formatBytes(snapshot.bus.frames.sent_bytes) },
-                { label: "Payload received", value: formatBytes(snapshot.bus.frames.received_bytes) },
-                { label: "Links down", value: formatCount(downLinks) },
-                { label: "Events", value: formatCount(snapshot.timeline.length) },
-              ]}
-            />
-            <PropertyList
-              minWidth="12rem"
-              items={[
-                { label: "Bus alerts", value: formatCount(busAlerts) },
-                { label: "Runtime alerts", value: formatCount(runtimeAlerts) },
-                { label: "Slave alerts", value: formatCount(slaveAlerts) },
-                { label: "DC runtime", value: snapshot.dc.runtime_state ?? "healthy" },
-              ]}
-            />
-          </Columns>
+          <PropertyList
+            minWidth="12rem"
+            items={[
+              { label: "Realtime latency", value: `${formatUs(snapshot.bus.transactions.realtime.avg_latency_us)} avg • ${formatUs(snapshot.bus.transactions.realtime.last_latency_us)} last` },
+              { label: "Reliable latency", value: `${formatUs(snapshot.bus.transactions.reliable.avg_latency_us)} avg • ${formatUs(snapshot.bus.transactions.reliable.last_latency_us)} last` },
+              { label: "Realtime queue", value: `${formatCount(snapshot.bus.queues.realtime.peak_depth)} peak • ${formatCount(snapshot.bus.queues.realtime.last_depth)} last` },
+              { label: "Sync diff", value: syncLabel },
+              { label: "Dropped burst", value: `${formatCount(droppedNow)} latest • ${formatCount(snapshot.bus.frames.dropped)} total` },
+              { label: "Expired RT burst", value: `${formatCount(expiredNow)} latest • ${formatCount(snapshot.bus.expired_realtime)} total` },
+              { label: "Exceptions burst", value: `${formatCount(exceptionsNow)} latest • ${formatCount(snapshot.bus.exceptions)} total` },
+              {
+                label: "Traffic totals",
+                value: `${formatBytes(snapshot.bus.frames.sent_bytes)} outbound • ${formatBytes(snapshot.bus.frames.received_bytes)} inbound`,
+              },
+            ]}
+          />
+        </Stack>
+      </Panel>
+
+      <Panel title="Needs attention now">
+        {currentIssues.length ? (
+          <IssueList items={currentIssues.slice(0, 12)} className="ke95-diagnostics__stable-feed" />
+        ) : (
+          <Inset className="ke95-diagnostics__event ke95-diagnostics__stable-feed">
+            <Mono>The master currently looks clean: no active bus, runtime, domain, or slave issues are being reported.</Mono>
+          </Inset>
+        )}
+      </Panel>
+
+      <Panel title="Domain focus">
+        <Stack compact>
+          <SectionCopy>Worst domains first. Use the Domains tab for the full timing and fault history.</SectionCopy>
+          <SummaryGrid items={domainSummaryItems(domains)} />
+          {domainFocus.length ? (
+            <div className="ke95-diagnostics__stable-table">
+              <DataTable headers={["Domain", "State", "Health", "Cycle", "WKC", "Current issue"]}>
+                {domainFocus.map((domain) => (
+                  <tr key={domain.id}>
+                    <td><Mono>{domain.id}</Mono></td>
+                    <td><StatusBadge tone={badgeTone(DOMAIN_TONES, domain.state)}>{domain.state}</StatusBadge></td>
+                    <td><StatusBadge tone={healthTone(domain.cycle_health)}>{formatCycleHealth(domain.cycle_health)}</StatusBadge></td>
+                    <td><Mono>{formatUs(domain.last_cycle_us)}</Mono></td>
+                    <td><Mono>{formatWkcContext(domain)}</Mono></td>
+                    <td>
+                      <div className="ke95-diagnostics__table-event">
+                        <Mono>{domain.current_issue?.title ?? "healthy"}</Mono>
+                        <Mono>{domain.current_issue?.detail ?? "healthy"}</Mono>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </DataTable>
+            </div>
+          ) : (
+            <Inset className="ke95-diagnostics__event ke95-diagnostics__stable-table">
+              <Mono>No domains are running yet.</Mono>
+            </Inset>
+          )}
+        </Stack>
+      </Panel>
+
+      <Panel title="Slave focus">
+        <Stack compact>
+          <SectionCopy>Worst slaves first. This view stays stable even when everything is healthy.</SectionCopy>
+          <SummaryGrid items={slaveSummaryItems(slaves)} />
+          {slaveFocus.length ? (
+            <div className="ke95-diagnostics__stable-table">
+              <DataTable headers={["Slave", "Station", "State", "Current issue", "Fault", "AL"]}>
+                {slaveFocus.map((slave) => (
+                  <tr key={slave.name}>
+                    <td><Mono>{slave.name}</Mono></td>
+                    <td><Mono>{slave.station != null ? formatHex(slave.station) : "n/a"}</Mono></td>
+                    <td><StatusBadge tone={badgeTone(SLAVE_TONES, slave.al_state)}>{slave.al_state}</StatusBadge></td>
+                    <td>
+                      <div className="ke95-diagnostics__table-event">
+                        <Mono>{slave.current_issue?.title ?? "healthy"}</Mono>
+                        <Mono>{slave.current_issue?.detail ?? "healthy"}</Mono>
+                      </div>
+                    </td>
+                    <td><Mono>{slave.fault ?? "none"}</Mono></td>
+                    <td><Mono>{slave.al_error != null ? formatHex(slave.al_error) : "n/a"}</Mono></td>
+                  </tr>
+                ))}
+              </DataTable>
+            </div>
+          ) : (
+            <Inset className="ke95-diagnostics__event ke95-diagnostics__stable-table">
+              <Mono>No slaves are running yet.</Mono>
+            </Inset>
+          )}
         </Stack>
       </Panel>
 
@@ -598,12 +1089,11 @@ function BusSection({ bus }) {
   );
 }
 
-function RuntimeSection({ master, dc, domains, lastFailure }) {
+function RuntimeSection({ master, dc, lastFailure }) {
   return (
     <Stack>
       <MasterSection master={master} lastFailure={lastFailure} />
       <DcSection dc={dc} />
-      <DomainsSection domains={domains} />
     </Stack>
   );
 }
@@ -648,11 +1138,14 @@ function FrameSection({ frames, links, expiredRealtime, exceptions }) {
     <Stack>
       <Panel title="Bus frames">
         <Stack compact>
+          <SectionCopy>
+            Sent and received are independent traffic totals across the active bus links and ports. Redundant links can observe multiple arrivals for one exchange. Dropped counts local frame drops such as decode, index, or passthrough-copy rejection.
+          </SectionCopy>
           <Mono as="div">RTT last {formatNs(frames.last_rtt_ns)} • peak {formatNs(frames.peak_rtt_ns)}</Mono>
           <Columns minWidth="22rem">
             <ChartPanel
               title="Traffic"
-              subtitle={`sent ${formatCount(frames.sent)} • received ${formatCount(frames.received)} • dropped ${formatCount(frames.dropped)}`}
+              subtitle={`outbound ${formatCount(frames.sent)} • inbound ${formatCount(frames.received)} • local drops ${formatCount(frames.dropped)}`}
               series={[
                 { label: "Sent", slices: frames.sent_slices, stroke: "#0f766e", fill: "#0f766e20" },
                 { label: "Received", slices: frames.received_slices, stroke: "#2563eb", fill: "#2563eb20" },
@@ -662,7 +1155,7 @@ function FrameSection({ frames, links, expiredRealtime, exceptions }) {
             />
             <ChartPanel
               title="Payload throughput"
-              subtitle={`sent ${formatBytes(frames.sent_bytes)} • received ${formatBytes(frames.received_bytes)} • dropped ${formatBytes(frames.dropped_bytes)}`}
+              subtitle={`outbound ${formatBytes(frames.sent_bytes)} • inbound ${formatBytes(frames.received_bytes)} • local drops ${formatBytes(frames.dropped_bytes)}`}
               series={[
                 { label: "Sent", slices: frames.sent_bandwidth_slices, stroke: "#0f766e", fill: "#0f766e20" },
                 { label: "Received", slices: frames.received_bandwidth_slices, stroke: "#2563eb", fill: "#2563eb20" },
@@ -693,10 +1186,10 @@ function FrameSection({ frames, links, expiredRealtime, exceptions }) {
           </Columns>
           <SummaryGrid
             items={[
-              { label: "Sent payload", value: formatBytes(frames.sent_bytes) },
-              { label: "Received payload", value: formatBytes(frames.received_bytes) },
-              { label: "Dropped payload", value: formatBytes(frames.dropped_bytes) },
-              { label: "Drop count", value: formatCount(frames.dropped) },
+              { label: "Outbound payload", value: formatBytes(frames.sent_bytes) },
+              { label: "Inbound payload", value: formatBytes(frames.received_bytes) },
+              { label: "Local drop payload", value: formatBytes(frames.dropped_bytes) },
+              { label: "Local drop count", value: formatCount(frames.dropped) },
               { label: "Expired RT", value: formatCount(expiredRealtime) },
               { label: "Exceptions", value: formatCount(exceptions) },
             ]}
@@ -728,9 +1221,9 @@ function FrameSection({ frames, links, expiredRealtime, exceptions }) {
                   minWidth="12rem"
                   items={[
                     { label: "Endpoint", value: link.endpoint ?? "n/a" },
-                    { label: "Sent", value: formatCount(link.sent) },
-                    { label: "Received", value: formatCount(link.received) },
-                    { label: "Dropped", value: formatCount(link.dropped) },
+                    { label: "Outbound", value: formatCount(link.sent) },
+                    { label: "Inbound", value: formatCount(link.received) },
+                    { label: "Local drops", value: formatCount(link.dropped) },
                     { label: "Last update", value: formatLinkTime(link.at_ms) },
                     { label: "Reason", value: link.reason ?? "n/a" },
                   ]}
@@ -740,7 +1233,7 @@ function FrameSection({ frames, links, expiredRealtime, exceptions }) {
                     {link.ports.map((port) => (
                       <Inset key={port.port} className="ke95-diagnostics__port-card">
                         <Mono as="div">{port.port}</Mono>
-                        <Mono as="div">sent {formatCount(port.sent)} • recv {formatCount(port.received)}</Mono>
+                        <Mono as="div">out {formatCount(port.sent)} • in {formatCount(port.received)}</Mono>
                         <Mono as="div">
                           {formatBytes(port.sent_bytes)} • {formatBytes(port.received_bytes)}
                         </Mono>
@@ -761,9 +1254,9 @@ function MasterSection({ master, lastFailure }) {
   const stateEvents = master.state_changes.map((change) => ({
     id: `${change.at_ms}-${change.from}-${change.to}`,
     at_ms: change.at_ms,
-    level: badgeTone(STATE_TONES, change.public_state) === "ok" ? "info" : "warn",
-    title: `State ${change.public_state}`,
-    detail: `${change.from} -> ${change.to} • target ${change.runtime_target}`,
+    level: masterStateEventLevel(change.to),
+    title: masterStateChangeTitle(change),
+    detail: masterStateChangeDetail(change),
   }));
 
   const decisionEvents = master.dc_lock_decisions.map((decision) => ({
@@ -895,8 +1388,26 @@ function DomainsSection({ domains }) {
       ) : (
         <Stack>
           <SectionCopy>
-            This is the cyclic exchange view. Focus on duration for timing, invalid cycles for WKC or reply-count problems, and transport misses for bus-level delivery trouble.
+            This is the cyclic exchange view. Read the table first for current domain health, then drill into the per-domain charts when you need timing and failure context.
           </SectionCopy>
+          <SummaryGrid items={domainSummaryItems(domains)} />
+          <DataTable headers={["Domain", "State", "Health", "Cycle", "WKC", "Current issue"]}>
+            {domains.map((domain) => (
+              <tr key={`${domain.id}-summary`}>
+                <td><Mono>{domain.id}</Mono></td>
+                <td><StatusBadge tone={badgeTone(DOMAIN_TONES, domain.state)}>{domain.state}</StatusBadge></td>
+                <td><StatusBadge tone={healthTone(domain.cycle_health)}>{formatCycleHealth(domain.cycle_health)}</StatusBadge></td>
+                <td><Mono>{formatUs(domain.last_cycle_us)}</Mono></td>
+                <td><Mono>{formatWkcContext(domain)}</Mono></td>
+                <td>
+                  <div className="ke95-diagnostics__table-event">
+                    <Mono>{domain.current_issue?.title ?? "healthy"}</Mono>
+                    <Mono>{domain.current_issue?.detail ?? "healthy"}</Mono>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </DataTable>
           {domains.map((domain) => (
             <Inset key={domain.id} className="ke95-diagnostics__domain">
               <div className="ke95-toolbar">
@@ -938,24 +1449,24 @@ function DomainsSection({ domains }) {
               {(domain.last_invalid || domain.last_transport_miss || domain.stop_reason || domain.crash_reason) ? (
                 <Stack compact>
                   {domain.last_invalid ? (
-                    <Inset className="ke95-diagnostics__event ke95-diagnostics__event--warn">
+                    <Inset className="ke95-diagnostics__event">
                       <Mono>invalid • {domain.last_invalid.reason ?? "unknown"} • WKC {domain.last_invalid.actual_wkc ?? "?"}/{domain.last_invalid.expected_wkc ?? "?"}</Mono>
                     </Inset>
                   ) : null}
                   {domain.last_transport_miss ? (
-                    <Inset className="ke95-diagnostics__event ke95-diagnostics__event--danger">
+                    <Inset className="ke95-diagnostics__event">
                       <Mono>
                         transport miss • {domain.last_transport_miss.reason ?? "unknown"} • misses {domain.last_transport_miss.consecutive_miss_count ?? "?"}
                       </Mono>
                     </Inset>
                   ) : null}
                   {domain.stop_reason ? (
-                    <Inset className="ke95-diagnostics__event ke95-diagnostics__event--danger">
+                    <Inset className="ke95-diagnostics__event">
                       <Mono>stopped • {domain.stop_reason}</Mono>
                     </Inset>
                   ) : null}
                   {domain.crash_reason ? (
-                    <Inset className="ke95-diagnostics__event ke95-diagnostics__event--danger">
+                    <Inset className="ke95-diagnostics__event">
                       <Mono>crashed • {domain.crash_reason}</Mono>
                     </Inset>
                   ) : null}
@@ -977,18 +1488,23 @@ function SlavesSection({ slaves }) {
       ) : (
         <Stack compact>
           <SectionCopy>
-            Use this table to spot which slaves are not in OP, which ones carry a current master fault, and which ones needed retry or fault handling during startup and recovery.
+            This table is sorted with problem slaves first. Focus on state, active fault markers, AL error codes, and the most recent slave-local event.
           </SectionCopy>
           <SummaryGrid items={slaveSummaryItems(slaves)} />
-          <DataTable headers={["Name", "Station", "State", "Fault", "AL", "Config", "Last event"]}>
+          <DataTable headers={["Name", "Station", "State", "Current issue", "Fault", "AL", "Last event"]}>
             {slaves.map((slave) => (
               <tr key={slave.name}>
                 <td><Mono>{slave.name}</Mono></td>
                 <td><Mono>{slave.station != null ? formatHex(slave.station) : "n/a"}</Mono></td>
                 <td><StatusBadge tone={badgeTone(SLAVE_TONES, slave.al_state)}>{slave.al_state}</StatusBadge></td>
+                <td>
+                  <div className="ke95-diagnostics__table-event">
+                    <Mono>{slave.current_issue?.title ?? "healthy"}</Mono>
+                    <Mono>{slave.current_issue?.detail ?? "healthy"}</Mono>
+                  </div>
+                </td>
                 <td><Mono>{slave.fault ?? "none"}</Mono></td>
                 <td><Mono>{slave.al_error != null ? formatHex(slave.al_error) : "n/a"}</Mono></td>
-                <td><Mono>{slave.configuration_error ?? "n/a"}</Mono></td>
                 <td>
                   {slave.last_event ? (
                     <div className="ke95-diagnostics__table-event">

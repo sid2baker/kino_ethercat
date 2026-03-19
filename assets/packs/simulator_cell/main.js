@@ -71,15 +71,15 @@ function DeviceRow({ entry, position, onRename, onRemove, disabled }) {
       style={style}
       className={`ke95-simulator-cell__row${isDragging ? " ke95-simulator-cell__row--dragging" : ""}`}
     >
-      <button
-        className="ke95-simulator-cell__handle"
+      <Button
         title="Reorder"
         disabled={disabled}
+        aria-label={`Reorder device ${position + 1}`}
         {...attributes}
         {...listeners}
       >
         ::
-      </button>
+      </Button>
       <Mono>{String(position + 1).padStart(2, "0")}</Mono>
       <Input
         value={nameValue}

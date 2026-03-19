@@ -28,7 +28,7 @@ function Value({ ctx, data }) {
         <Mono as="div" className="ke95-value__current">
           {value ?? "—"}
         </Mono>
-        <Mono as="div" className="ke95-value__meta">
+        <Mono as="div">
           {updatedAt == null ? "awaiting sample time" : `updated ${updatedAt}`}
         </Mono>
       </Frame>

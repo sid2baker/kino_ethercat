@@ -28,12 +28,37 @@ defmodule KinoEtherCAT.SmartCells.SetupCellTest do
     refute Setup.retryable_scan_reason?({:configuration_failed, :missing_interface})
   end
 
-  test "should_auto_scan? only enables auto scan for a brand-new empty cell when simulator is running" do
-    assert Setup.should_auto_scan?(%{}, %{slaves: []}, fn -> true end)
-
+  test "should_auto_scan? stays disabled so setup only scans on explicit user action" do
     refute Setup.should_auto_scan?(%{}, %{slaves: []}, fn -> false end)
+    refute Setup.should_auto_scan?(%{}, %{slaves: []}, fn -> true end)
     refute Setup.should_auto_scan?(%{"transport" => "udp"}, %{slaves: []}, fn -> true end)
     refute Setup.should_auto_scan?(%{}, %{slaves: [%{"name" => "inputs"}]}, fn -> true end)
+  end
+
+  test "config_locked? reflects whether the setup config is safe to edit" do
+    refute Setup.config_locked?(%{status: :idle, master_state: :idle, master_pid: nil})
+
+    refute Setup.config_locked?(%{
+             status: :discovered,
+             master_state: :not_started,
+             master_pid: nil
+           })
+
+    refute Setup.config_locked?(%{status: :discovered, master_state: :idle, master_pid: self()})
+
+    assert Setup.config_locked?(%{status: :scanning, master_state: :idle, master_pid: nil})
+    assert Setup.config_locked?(%{status: :canceling, master_state: :idle, master_pid: nil})
+
+    assert Setup.config_locked?(%{
+             status: :discovered,
+             master_state: :preop_ready,
+             master_pid: nil
+           })
+  end
+
+  test "stopped_status keeps discovery results after cancelling a scan" do
+    assert Setup.stopped_status(%{slaves: []}) == :idle
+    assert Setup.stopped_status(%{slaves: [%{"name" => "inputs"}]}) == :discovered
   end
 
   test "discovered_slave_entry inherits simulator/runtime names on first discovery" do
