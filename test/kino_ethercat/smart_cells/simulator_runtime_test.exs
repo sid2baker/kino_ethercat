@@ -4,8 +4,9 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntimeTest do
   alias EtherCAT.Simulator
   alias EtherCAT.Simulator.Fault
   alias EtherCAT.Simulator.Slave
-  alias EtherCAT.Simulator.Udp
-  alias EtherCAT.Simulator.Udp.Fault, as: UdpFault
+  alias EtherCAT.Simulator.Transport.{Raw, Udp}
+  alias EtherCAT.Simulator.Transport.Raw.Fault, as: RawFault
+  alias EtherCAT.Simulator.Transport.Udp.Fault, as: UdpFault
   alias KinoEtherCAT.SmartCells.{SimulatorConfig, SimulatorRuntime}
 
   setup do
@@ -56,7 +57,7 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntimeTest do
     assert payload.sync_tone == "warn"
   end
 
-  test "runtime fault summary includes queued runtime and udp reply faults" do
+  test "runtime fault summary includes queued runtime and transport faults" do
     :ok = Simulator.inject_fault(Fault.drop_responses())
     :ok = Simulator.inject_fault(Fault.disconnect(:inputs) |> Fault.next(2))
     :ok = Udp.inject_fault(UdpFault.truncate() |> UdpFault.next(3))
@@ -64,12 +65,12 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntimeTest do
     payload = SimulatorRuntime.payload([], [], "udp")
 
     assert payload.faults.runtime_sticky_count == 1
-    assert payload.faults.udp_pending_count == 3
+    assert payload.faults.transport_fault_count == 3
     assert payload.faults.summary =~ "runtime"
-    assert payload.faults.summary =~ "UDP queued"
+    assert payload.faults.summary =~ "transport active"
 
     assert payload.faults.active_count >=
-             payload.faults.runtime_sticky_count + payload.faults.udp_pending_count
+             payload.faults.runtime_sticky_count + payload.faults.transport_fault_count
   end
 
   test "runtime actions clear faults and stop the simulator" do
@@ -81,6 +82,27 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntimeTest do
 
     assert %{level: "info"} = SimulatorRuntime.perform("stop_runtime")
     assert SimulatorRuntime.payload([], [], "udp").status == "offline"
+  end
+
+  test "runtime actions clear raw transport delay faults" do
+    if transport_available?("raw_socket") do
+      _ = Simulator.stop()
+
+      devices = [
+        Slave.from_driver(KinoEtherCAT.Driver.EK1100, name: :coupler),
+        Slave.from_driver(KinoEtherCAT.Driver.EL1809, name: :inputs),
+        Slave.from_driver(KinoEtherCAT.Driver.EL2809, name: :outputs)
+      ]
+
+      {:ok, _supervisor} = Simulator.start(devices: devices, raw: [interface: "veth-s0"])
+      :ok = Raw.inject_fault(RawFault.delay_response(75))
+
+      assert SimulatorRuntime.payload([], [], "raw_socket").faults.transport_fault_count == 1
+      assert %{level: "info"} = SimulatorRuntime.perform("clear_faults")
+      assert SimulatorRuntime.payload([], [], "raw_socket").faults.transport_fault_count == 0
+    else
+      assert true
+    end
   end
 
   test "payload warns when configured transport differs from the running simulator" do

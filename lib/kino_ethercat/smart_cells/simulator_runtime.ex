@@ -2,7 +2,7 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntime do
   @moduledoc false
 
   alias EtherCAT.Simulator
-  alias EtherCAT.Simulator.Udp
+  alias EtherCAT.Simulator.Transport.{Raw, Udp}
 
   @type message :: %{level: String.t(), text: String.t()} | nil
 
@@ -65,9 +65,10 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntime do
     invoke_many(
       [
         {&Simulator.clear_faults/0, []},
-        {&Udp.clear_faults/0, [optional: true]}
+        {&Udp.clear_faults/0, [optional: true]},
+        {&Raw.clear_faults/0, [optional: true]}
       ],
-      info_message("Runtime and UDP faults cleared.")
+      info_message("Runtime and transport faults cleared.")
     )
   end
 
@@ -133,7 +134,7 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntime do
         active_count: fault_counts.total,
         runtime_sticky_count: fault_counts.runtime_sticky,
         runtime_pending_count: fault_counts.runtime_pending,
-        udp_pending_count: fault_counts.udp_pending,
+        transport_fault_count: fault_counts.transport,
         summary: fault_summary(fault_counts)
       }
     }
@@ -179,7 +180,7 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntime do
         active_count: 0,
         runtime_sticky_count: 0,
         runtime_pending_count: 0,
-        udp_pending_count: 0,
+        transport_fault_count: 0,
         summary: "No active faults."
       }
     }
@@ -202,13 +203,9 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntime do
     end
   end
 
-  defp raw_transport_rows(%{interface: interface} = raw) do
-    ingress = Map.get(raw, :ingress, :primary)
-    [%{label: "Raw (#{ingress})", value: to_string(interface)}]
-  end
-
-  defp raw_transport_rows(raw) when is_map(raw) do
+  defp raw_transport_rows(%{mode: _mode} = raw) do
     raw
+    |> Map.delete(:mode)
     |> Enum.sort_by(fn {name, _} -> name end)
     |> Enum.map(fn {name, endpoint_info} ->
       interface = Map.get(endpoint_info, :interface, "active")
@@ -228,19 +225,21 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntime do
     runtime_sticky =
       if(Map.get(info, :drop_responses?, false), do: 1, else: 0) +
         if(Map.get(info, :wkc_offset, 0) != 0, do: 1, else: 0) +
+        map_size(Map.get(info, :command_wkc_offsets, %{})) +
+        map_size(Map.get(info, :logical_wkc_offsets, %{})) +
         length(Map.get(info, :disconnected, []))
 
     runtime_pending =
       length(Map.get(info, :pending_faults, [])) +
         if(is_nil(Map.get(info, :next_fault)), do: 0, else: 1)
 
-    udp_pending = length(get_in(info, [:udp, :pending_faults]) || [])
+    transport = transport_fault_count(info)
 
     %{
       runtime_sticky: runtime_sticky,
       runtime_pending: runtime_pending,
-      udp_pending: udp_pending,
-      total: runtime_sticky + runtime_pending + udp_pending
+      transport: transport,
+      total: runtime_sticky + runtime_pending + transport
     }
   end
 
@@ -249,12 +248,12 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntime do
   defp fault_summary(%{
          runtime_sticky: runtime_sticky,
          runtime_pending: runtime_pending,
-         udp_pending: udp_pending
+         transport: transport
        }) do
     []
     |> maybe_prepend(runtime_sticky > 0, "#{runtime_sticky} runtime sticky")
     |> maybe_prepend(runtime_pending > 0, "#{runtime_pending} runtime queued")
-    |> maybe_prepend(udp_pending > 0, "#{udp_pending} UDP queued")
+    |> maybe_prepend(transport > 0, "#{transport} transport active")
     |> Enum.reverse()
     |> Enum.join(" | ")
   end
@@ -323,10 +322,24 @@ defmodule KinoEtherCAT.SmartCells.SimulatorRuntime do
   defp udp_label(%{ip: ip, port: port}), do: "#{format_ip(ip)}:#{port}"
   defp udp_label(_udp), do: "disabled"
 
-  defp running_transport(%{raw: %{primary: %{}, secondary: %{}}}), do: "raw_socket_redundant"
-  defp running_transport(%{raw: %{interface: _interface}}), do: "raw_socket"
+  defp running_transport(%{raw: %{mode: :redundant}}), do: "raw_socket_redundant"
+  defp running_transport(%{raw: %{mode: :single}}), do: "raw_socket"
   defp running_transport(%{udp: %{}}), do: "udp"
   defp running_transport(_info), do: "disabled"
+
+  defp transport_fault_count(%{raw: %{mode: _mode} = raw}) do
+    raw
+    |> Map.delete(:mode)
+    |> Enum.count(fn {_name, endpoint_info} ->
+      Map.get(endpoint_info, :response_delay_ms, 0) > 0
+    end)
+  end
+
+  defp transport_fault_count(%{udp: udp}) when is_map(udp) do
+    length(Map.get(udp, :pending_faults, []))
+  end
+
+  defp transport_fault_count(_info), do: 0
 
   defp format_ip(ip) do
     ip

@@ -13,16 +13,21 @@ defmodule KinoEtherCAT.Simulator.View do
       [
         %{label: "Runtime", value: snapshot.runtime_faults.summary},
         %{label: "Next runtime", value: snapshot.runtime_faults.next_label || "none"}
-      ] ++ maybe_udp_fault_summary(snapshot.udp_faults)
+      ] ++ maybe_transport_fault_summary(snapshot.transport_faults)
     )
   end
 
-  defp maybe_udp_fault_summary(%{enabled: true} = udp_faults) do
+  defp maybe_transport_fault_summary(%{enabled: false}), do: []
+
+  defp maybe_transport_fault_summary(%{next_label: next_label} = transport_faults)
+       when is_binary(next_label) do
     [
-      %{label: "UDP", value: udp_faults.summary},
-      %{label: "Next UDP", value: udp_faults.next_label || "none"}
+      %{label: "Transport", value: transport_faults.summary},
+      %{label: "Next transport", value: next_label}
     ]
   end
 
-  defp maybe_udp_fault_summary(_udp_faults), do: []
+  defp maybe_transport_fault_summary(%{enabled: true} = transport_faults) do
+    [%{label: "Transport", value: transport_faults.summary}]
+  end
 end

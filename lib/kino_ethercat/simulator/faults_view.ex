@@ -3,8 +3,9 @@ defmodule KinoEtherCAT.Simulator.FaultsView do
 
   alias EtherCAT.Simulator
   alias EtherCAT.Simulator.Fault
-  alias EtherCAT.Simulator.Udp
-  alias EtherCAT.Simulator.Udp.Fault, as: UdpFault
+  alias EtherCAT.Simulator.Transport.{Raw, Udp}
+  alias EtherCAT.Simulator.Transport.Raw.Fault, as: RawFault
+  alias EtherCAT.Simulator.Transport.Udp.Fault, as: UdpFault
   alias KinoEtherCAT.Simulator.Snapshot
 
   @default_al_error_code 0x001B
@@ -48,16 +49,20 @@ defmodule KinoEtherCAT.Simulator.FaultsView do
     end
   end
 
-  def perform("apply_udp_fault", params) do
-    with {:ok, fault} <- build_udp_fault(params) do
+  def perform("apply_transport_fault", params) do
+    with {:ok, transport} <- resolve_transport(params),
+         {:ok, fault} <- build_transport_fault(transport, params) do
       invoke(
-        fn -> Udp.inject_fault(fault) end,
-        info_message("Applied #{UdpFault.describe(fault)}.")
+        fn -> inject_transport_fault(transport, fault) end,
+        info_message("Applied #{describe_transport_fault(transport, fault)}.")
       )
     else
-      {:error, reason} -> error_message(udp_error(reason))
+      {:error, reason} -> error_message(transport_error(reason))
     end
   end
+
+  def perform("apply_udp_fault", params),
+    do: perform("apply_transport_fault", Map.put_new(params, "transport", "udp"))
 
   def perform("inject_drop_responses", _params) do
     perform("apply_runtime_fault", %{"kind" => "drop_responses", "plan" => "immediate"})
@@ -84,7 +89,7 @@ defmodule KinoEtherCAT.Simulator.FaultsView do
   end
 
   def perform("queue_udp_fault", params) do
-    perform("apply_udp_fault", params)
+    perform("apply_transport_fault", Map.put_new(params, "transport", "udp"))
   end
 
   def perform("retreat_to_safeop", %{"slave" => slave}) do
@@ -117,9 +122,10 @@ defmodule KinoEtherCAT.Simulator.FaultsView do
     invoke_many(
       [
         {fn -> Simulator.clear_faults() end, []},
-        {fn -> Udp.clear_faults() end, [optional: true]}
+        {fn -> Udp.clear_faults() end, [optional: true]},
+        {fn -> Raw.clear_faults() end, [optional: true]}
       ],
-      info_message("Runtime and UDP faults cleared.")
+      info_message("Runtime and transport faults cleared.")
     )
   end
 
@@ -127,8 +133,18 @@ defmodule KinoEtherCAT.Simulator.FaultsView do
     invoke(fn -> Simulator.clear_faults() end, info_message("Runtime faults cleared."))
   end
 
+  def perform("clear_transport_faults", _params) do
+    invoke_many(
+      [
+        {fn -> Udp.clear_faults() end, [optional: true]},
+        {fn -> Raw.clear_faults() end, [optional: true]}
+      ],
+      info_message("Transport faults cleared.")
+    )
+  end
+
   def perform("clear_udp_faults", _params) do
-    invoke(fn -> Udp.clear_faults() end, info_message("UDP faults cleared."))
+    perform("clear_transport_faults", %{})
   end
 
   def perform(_action, _params), do: error_message("Unknown simulator action.")
@@ -271,9 +287,65 @@ defmodule KinoEtherCAT.Simulator.FaultsView do
 
   defp exchange_fault_kind?(_kind), do: false
 
+  defp resolve_transport(%{"transport" => raw_transport}) when is_binary(raw_transport) do
+    case String.trim(raw_transport) do
+      "udp" -> ensure_transport_available(:udp)
+      "raw" -> ensure_transport_available(:raw)
+      _other -> {:error, :invalid_transport}
+    end
+  end
+
+  defp resolve_transport(_params) do
+    case current_transport() do
+      {:ok, transport} -> {:ok, transport}
+      :error -> {:error, :transport_disabled}
+    end
+  end
+
+  defp ensure_transport_available(requested_transport) do
+    case current_transport() do
+      {:ok, ^requested_transport} -> {:ok, requested_transport}
+      {:ok, _other_transport} -> {:error, :transport_unavailable}
+      :error -> {:error, :transport_disabled}
+    end
+  end
+
+  defp current_transport do
+    with {:ok, info} <- Simulator.info() do
+      cond do
+        raw_transport_running?(info) -> {:ok, :raw}
+        udp_transport_running?(info) -> {:ok, :udp}
+        true -> :error
+      end
+    else
+      _error -> :error
+    end
+  end
+
+  defp build_transport_fault(:udp, params), do: build_udp_fault(params)
+  defp build_transport_fault(:raw, params), do: build_raw_fault(params)
+
+  defp inject_transport_fault(:udp, fault), do: Udp.inject_fault(fault)
+  defp inject_transport_fault(:raw, fault), do: Raw.inject_fault(fault)
+
+  defp describe_transport_fault(:udp, fault), do: UdpFault.describe(fault)
+  defp describe_transport_fault(:raw, fault), do: RawFault.describe(fault)
+
   defp build_udp_fault(params) do
     with {:ok, mode} <- parse_udp_mode(Map.get(params, "mode")) do
       apply_udp_plan(mode, params)
+    end
+  end
+
+  defp build_raw_fault(params) do
+    with {:ok, kind} <- parse_raw_transport_kind(Map.get(params, "kind")),
+         {:ok, delay_ms} <- parse_non_neg_integer(Map.get(params, "delay_ms"), 0),
+         {:ok, endpoint} <- parse_raw_selector(Map.get(params, "endpoint"), :all),
+         {:ok, from_ingress} <- parse_raw_selector(Map.get(params, "from_ingress"), :all) do
+      case kind do
+        :delay_response ->
+          {:ok, RawFault.delay_response(delay_ms, endpoint: endpoint, from_ingress: from_ingress)}
+      end
     end
   end
 
@@ -449,6 +521,18 @@ defmodule KinoEtherCAT.Simulator.FaultsView do
   defp parse_udp_script_mode("replay_previous"), do: {:ok, UdpFault.replay_previous()}
   defp parse_udp_script_mode(_mode), do: {:error, :invalid_script}
 
+  defp parse_raw_transport_kind(nil), do: {:ok, :delay_response}
+  defp parse_raw_transport_kind(""), do: {:ok, :delay_response}
+  defp parse_raw_transport_kind("delay_response"), do: {:ok, :delay_response}
+  defp parse_raw_transport_kind(_kind), do: {:error, :invalid_fault_type}
+
+  defp parse_raw_selector(nil, default), do: {:ok, default}
+  defp parse_raw_selector("", default), do: {:ok, default}
+  defp parse_raw_selector("all", _default), do: {:ok, :all}
+  defp parse_raw_selector("primary", _default), do: {:ok, :primary}
+  defp parse_raw_selector("secondary", _default), do: {:ok, :secondary}
+  defp parse_raw_selector(_value, _default), do: {:error, :invalid_selector}
+
   defp resolve_slave_name(raw_slave) when is_binary(raw_slave) do
     with {:ok, info} <- Simulator.info(),
          slave when not is_nil(slave) <-
@@ -553,6 +637,15 @@ defmodule KinoEtherCAT.Simulator.FaultsView do
 
   defp parse_non_neg_integer(_value, _default), do: {:error, :invalid_integer}
 
+  defp raw_transport_running?(info) do
+    case Map.get(info, :raw) do
+      raw when is_map(raw) -> map_size(raw) > 0
+      _other -> false
+    end
+  end
+
+  defp udp_transport_running?(info), do: is_map(Map.get(info, :udp))
+
   defp runtime_error(:invalid_command), do: "Select a valid EtherCAT command."
   defp runtime_error(:invalid_count), do: "Counts must be positive integers."
   defp runtime_error(:invalid_fault_type), do: "Select a runtime fault."
@@ -568,14 +661,19 @@ defmodule KinoEtherCAT.Simulator.FaultsView do
 
   defp runtime_error(other), do: "Runtime fault build failed: #{inspect(other)}"
 
-  defp udp_error(:invalid_count), do: "UDP fault counts must be positive integers."
-  defp udp_error(:invalid_fault_type), do: "Select a UDP reply fault."
-  defp udp_error(:invalid_plan), do: "Select a valid UDP fault plan."
+  defp transport_error(:invalid_count), do: "Transport fault counts must be positive integers."
+  defp transport_error(:invalid_fault_type), do: "Select a valid transport fault."
+  defp transport_error(:invalid_integer), do: "Transport values must be decimal or 0x-prefixed hex."
+  defp transport_error(:invalid_plan), do: "Select a valid transport fault plan."
+  defp transport_error(:invalid_selector), do: "Select a valid raw transport endpoint or ingress."
+  defp transport_error(:invalid_transport), do: "Select a known simulator transport."
+  defp transport_error(:transport_disabled), do: "Transport fault injection is unavailable."
+  defp transport_error(:transport_unavailable), do: "The selected transport is not active."
 
-  defp udp_error(:invalid_script),
+  defp transport_error(:invalid_script),
     do: "UDP scripts must be a comma or space separated list of valid reply modes."
 
-  defp udp_error(other), do: "UDP fault build failed: #{inspect(other)}"
+  defp transport_error(other), do: "Transport fault build failed: #{inspect(other)}"
 
   defp info_message(text), do: %{level: "info", text: text}
   defp error_message(text), do: %{level: "error", text: text}

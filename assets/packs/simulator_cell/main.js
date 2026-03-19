@@ -168,6 +168,11 @@ function SimpleModeContent({ snapshot }) {
             <li>Evaluate this cell to start the simulator workspace.</li>
             <li>Use the EtherCAT Setup smart cell. It will detect the running simulator transport.</li>
             <li>Evaluate the generated setup cell to move from PREOP to OP.</li>
+            <li>
+              Write notebook cells with <Mono>EtherCAT.Simulator.Fault</Mono> plus{" "}
+              <Mono>EtherCAT.Simulator.Transport.Udp.Fault</Mono> or{" "}
+              <Mono>EtherCAT.Simulator.Transport.Raw.Fault</Mono> when you want scripted drills.
+            </li>
             <li>Enable Expert mode if you want to rename devices, reorder the ring, or add connections.</li>
           </ol>
         </Stack>

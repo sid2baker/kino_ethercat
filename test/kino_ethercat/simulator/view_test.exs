@@ -32,14 +32,14 @@ defmodule KinoEtherCAT.Simulator.ViewTest do
     assert Enum.map(payload.slaves, & &1.name) == ["coupler", "inputs", "outputs"]
     assert Enum.find(payload.summary, &(&1.label == "Slaves")).value == "3"
     assert payload.runtime_faults.active_count == 0
-    assert payload.udp_faults.enabled
-    assert payload.udp_faults.active_count == 0
+    assert payload.transport_faults.enabled
+    assert payload.transport_faults.transport == "udp"
+    assert payload.transport_faults.active_count == 0
 
     assert payload.fault_summary == [
              %{label: "Runtime", value: "No runtime faults."},
              %{label: "Next runtime", value: "none"},
-             %{label: "UDP", value: "No queued UDP reply faults."},
-             %{label: "Next UDP", value: "none"}
+             %{label: "Transport", value: "No queued UDP reply faults."}
            ]
   end
 
@@ -57,8 +57,8 @@ defmodule KinoEtherCAT.Simulator.ViewTest do
     payload = View.payload()
 
     assert Enum.find(payload.summary, &(&1.label == "Transport")).value == "disabled"
-    assert Enum.all?(payload.summary, &(&1.label != "UDP faults"))
-    assert payload.udp_faults.enabled == false
+    assert Enum.all?(payload.summary, &(&1.label != "Transport faults"))
+    assert payload.transport_faults.enabled == false
 
     assert payload.fault_summary == [
              %{label: "Runtime", value: "No runtime faults."},
@@ -82,6 +82,8 @@ defmodule KinoEtherCAT.Simulator.ViewTest do
 
       assert Enum.find(payload.summary, &(&1.label == "Raw (primary)")).value == "veth-s0"
       assert Enum.find(payload.summary, &(&1.label == "Topology")).value == "linear"
+      assert payload.transport_faults.transport == "raw"
+      assert payload.transport_faults.mode == "single"
     else
       assert true
     end
@@ -109,6 +111,8 @@ defmodule KinoEtherCAT.Simulator.ViewTest do
       assert Enum.find(payload.summary, &(&1.label == "Raw (primary)")).value == "veth-s0"
       assert Enum.find(payload.summary, &(&1.label == "Raw (secondary)")).value == "veth-s1"
       assert Enum.find(payload.summary, &(&1.label == "Topology")).value == "redundant"
+      assert payload.transport_faults.transport == "raw"
+      assert payload.transport_faults.mode == "redundant"
     else
       assert true
     end

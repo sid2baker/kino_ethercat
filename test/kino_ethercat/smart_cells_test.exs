@@ -1,7 +1,13 @@
 defmodule KinoEtherCAT.SmartCellsTest do
   use ExUnit.Case, async: true
 
-  alias KinoEtherCAT.SmartCells.{Setup, Simulator, SimulatorConfig, SlaveExplorer, Visualizer}
+  alias KinoEtherCAT.SmartCells.{
+    Setup,
+    Simulator,
+    SimulatorConfig,
+    SlaveExplorer,
+    Visualizer
+  }
 
   test "setup cell persists static startup code from discovered slaves" do
     source =

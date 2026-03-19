@@ -3,7 +3,8 @@ defmodule KinoEtherCAT.Simulator.Snapshot do
 
   alias EtherCAT.Simulator
   alias EtherCAT.Simulator.Fault
-  alias EtherCAT.Simulator.Udp.Fault, as: UdpFault
+  alias EtherCAT.Simulator.Transport.Raw.Fault, as: RawFault
+  alias EtherCAT.Simulator.Transport.Udp.Fault, as: UdpFault
 
   @spec payload(map() | nil) :: map()
   def payload(message \\ nil) do
@@ -21,7 +22,7 @@ defmodule KinoEtherCAT.Simulator.Snapshot do
     connections = Map.get(info, :connections, [])
     subscriptions = Map.get(info, :subscriptions, [])
     runtime_faults = runtime_faults_payload(info)
-    udp_faults = udp_faults_payload(Map.get(info, :udp))
+    transport_faults = transport_faults_payload(info)
 
     %{
       title: "EtherCAT Simulator",
@@ -35,9 +36,10 @@ defmodule KinoEtherCAT.Simulator.Snapshot do
             %{label: "Connections", value: Integer.to_string(length(connections))},
             %{label: "Subscriptions", value: Integer.to_string(length(subscriptions))},
             %{label: "Runtime faults", value: Integer.to_string(runtime_faults.active_count)}
-          ] ++ maybe_udp_fault_summary(udp_faults),
+          ] ++ maybe_transport_fault_summary(transport_faults),
       runtime_faults: runtime_faults,
-      udp_faults: udp_faults,
+      transport_faults: transport_faults,
+      udp_faults: legacy_udp_faults_payload(transport_faults),
       slave_options: Enum.map(slaves, &Atom.to_string(&1.name)),
       slaves: Enum.map(slaves, &slave_payload/1),
       connections: Enum.map(connections, &connection_payload/1),
@@ -47,7 +49,7 @@ defmodule KinoEtherCAT.Simulator.Snapshot do
 
   defp offline_payload(reason, message) do
     runtime_faults = offline_runtime_faults()
-    udp_faults = offline_udp_faults()
+    transport_faults = offline_transport_faults()
 
     %{
       title: "EtherCAT Simulator",
@@ -63,7 +65,8 @@ defmodule KinoEtherCAT.Simulator.Snapshot do
         %{label: "Runtime faults", value: "0"}
       ],
       runtime_faults: runtime_faults,
-      udp_faults: udp_faults,
+      transport_faults: transport_faults,
+      udp_faults: legacy_udp_faults_payload(transport_faults),
       slave_options: [],
       slaves: [],
       connections: [],
@@ -151,39 +154,85 @@ defmodule KinoEtherCAT.Simulator.Snapshot do
     }
   end
 
-  defp udp_faults_payload(%{} = udp) do
+  defp transport_faults_payload(info) do
+    cond do
+      raw_transport_running?(info) ->
+        raw_transport_faults_payload(Map.fetch!(info, :raw))
+
+      udp_transport_running?(info) ->
+        udp_transport_faults_payload(Map.fetch!(info, :udp))
+
+      true ->
+        offline_transport_faults()
+    end
+  end
+
+  defp udp_transport_faults_payload(%{} = udp) do
     pending_faults = Map.get(udp, :pending_faults, [])
 
     %{
       enabled: true,
+      transport: "udp",
+      title: "UDP reply faults",
       endpoint: udp_label(udp),
       last_response_captured: Map.get(udp, :last_response_captured?, false),
       next_label: udp_wrapper_label(Map.get(udp, :next_fault)),
       pending_labels: Enum.map(pending_faults, &UdpFault.describe/1),
+      endpoints: [],
+      mode: nil,
       active_count: length(pending_faults),
       summary: udp_fault_summary(pending_faults, Map.get(udp, :next_fault))
     }
   end
 
-  defp udp_faults_payload(_udp), do: offline_udp_faults()
+  defp raw_transport_faults_payload(%{} = raw) do
+    mode = Map.get(raw, :mode, :single)
+    endpoints = raw_endpoint_payloads(raw)
 
-  defp offline_udp_faults do
+    active_endpoints =
+      Enum.filter(endpoints, fn endpoint ->
+        endpoint.response_delay_ms > 0
+      end)
+
+    %{
+      enabled: true,
+      transport: "raw",
+      title: "Raw transport faults",
+      endpoint: nil,
+      last_response_captured: false,
+      next_label: nil,
+      pending_labels: [],
+      endpoints: endpoints,
+      mode: Atom.to_string(mode),
+      active_count: length(active_endpoints),
+      summary: raw_fault_summary(active_endpoints, mode)
+    }
+  end
+
+  defp offline_transport_faults do
     %{
       enabled: false,
+      transport: "disabled",
+      title: "Transport faults",
       endpoint: "disabled",
       last_response_captured: false,
       next_label: nil,
       pending_labels: [],
+      endpoints: [],
+      mode: nil,
       active_count: 0,
-      summary: "UDP disabled."
+      summary: "Transport fault injection unavailable."
     }
   end
 
-  defp maybe_udp_fault_summary(%{enabled: true, active_count: active_count}) do
-    [%{label: "UDP faults", value: Integer.to_string(active_count)}]
+  defp legacy_udp_faults_payload(%{transport: "udp"} = transport_faults), do: transport_faults
+  defp legacy_udp_faults_payload(_transport_faults), do: offline_transport_faults()
+
+  defp maybe_transport_fault_summary(%{enabled: true, active_count: active_count}) do
+    [%{label: "Transport faults", value: Integer.to_string(active_count)}]
   end
 
-  defp maybe_udp_fault_summary(_udp_faults), do: []
+  defp maybe_transport_fault_summary(_transport_faults), do: []
 
   defp transport_summary(info) do
     udp = Map.get(info, :udp)
@@ -202,19 +251,42 @@ defmodule KinoEtherCAT.Simulator.Snapshot do
     end
   end
 
-  # Single raw endpoint: flat map with :interface key
-  defp raw_transport_rows(%{interface: interface} = raw) do
-    ingress = Map.get(raw, :ingress, :primary)
-    [%{label: "Raw (#{ingress})", value: to_string(interface)}]
-  end
-
-  # Per-ingress raw endpoints: nested map with :primary/:secondary keys
-  defp raw_transport_rows(raw) when is_map(raw) do
+  defp raw_transport_rows(%{mode: _mode} = raw) do
     raw
+    |> Map.delete(:mode)
     |> Enum.sort_by(fn {name, _} -> name end)
     |> Enum.map(fn {name, endpoint_info} ->
       interface = Map.get(endpoint_info, :interface, "active")
       %{label: "Raw (#{name})", value: to_string(interface)}
+    end)
+  end
+
+  defp raw_transport_running?(info) do
+    case Map.get(info, :raw) do
+      raw when is_map(raw) -> map_size(raw) > 0
+      _other -> false
+    end
+  end
+
+  defp udp_transport_running?(info), do: is_map(Map.get(info, :udp))
+
+  defp raw_endpoint_payloads(raw) do
+    raw
+    |> Map.delete(:mode)
+    |> Enum.sort_by(fn {endpoint, _info} -> endpoint end)
+    |> Enum.map(fn {endpoint, endpoint_info} ->
+      response_delay_ms = Map.get(endpoint_info, :response_delay_ms, 0)
+      from_ingress = Map.get(endpoint_info, :response_delay_from_ingress, :all)
+
+      %{
+        key: Atom.to_string(endpoint),
+        endpoint: Atom.to_string(endpoint),
+        interface: to_string(Map.get(endpoint_info, :interface, "active")),
+        response_delay_ms: response_delay_ms,
+        response_delay_from_ingress: Atom.to_string(from_ingress),
+        active: response_delay_ms > 0,
+        label: RawFault.describe({:delay_response, endpoint, response_delay_ms, from_ingress})
+      }
     end)
   end
 
@@ -317,6 +389,19 @@ defmodule KinoEtherCAT.Simulator.Snapshot do
   defp udp_wrapper_label({:corrupt_next_response, mode}), do: UdpFault.describe(mode)
   defp udp_wrapper_label(nil), do: nil
   defp udp_wrapper_label(other), do: UdpFault.describe(other)
+
+  defp raw_fault_summary([], mode) do
+    case mode do
+      :redundant -> "No active raw endpoint delays."
+      _other -> "No active raw response delays."
+    end
+  end
+
+  defp raw_fault_summary(active_endpoints, _mode) do
+    active_endpoints
+    |> Enum.map(& &1.label)
+    |> Enum.join(" | ")
+  end
 
   defp udp_label(%{ip: ip, port: port}), do: "#{format_ip(ip)}:#{port}"
   defp udp_label(_udp), do: "disabled"
