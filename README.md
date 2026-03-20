@@ -26,7 +26,7 @@ Add `kino_ethercat` to a Livebook notebook:
 
 ```elixir
 Mix.install([
-  {:kino_ethercat, "~> 0.3.3"}
+  {:kino_ethercat, "~> 0.4.0"}
 ])
 ```
 

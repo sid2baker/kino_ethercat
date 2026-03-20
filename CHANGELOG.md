@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-03-20
+
+### Added
+
+- A new `examples/02_redundant_replug_watch.livemd` notebook for redundant replug and transport-fault observation flows
+
+### Changed
+
+- The library now depends on `ethercat ~> 0.4.0` and aligns the slave capture plus simulator fault tooling with that release line
+- The diagnostics surface now gives bus-level transport visibility, link-state event history, and stronger task-manager feedback during runtime troubleshooting
+- The setup, simulator, and introduction flow now push more of the EtherCAT bring-up path through the smart cells, with more stable transport defaults and scan control
+- The slave explorer and simulator fault tools were reorganized around capture-driven inspection and direct slave or bus fault injection workflows
+
+### Fixed
+
+- Slave explorer field editing and fullscreen widget spacing are more stable during longer Livebook sessions
+- Widget log routing and runtime control surfaces are aligned so bus-scoped events stay visible in the relevant panels
+
 ## [0.3.3] - 2026-03-12
 
 ### Changed

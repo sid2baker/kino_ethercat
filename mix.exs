@@ -1,7 +1,7 @@
 defmodule KinoEtherCAT.MixProject do
   use Mix.Project
 
-  @version "0.3.3"
+  @version "0.4.0"
   @source_url "https://github.com/sid2baker/kino_ethercat"
 
   def project do
@@ -72,6 +72,7 @@ defmodule KinoEtherCAT.MixProject do
         "README.md",
         "examples/README.md",
         "examples/01_ethercat_introduction.livemd",
+        "examples/02_redundant_replug_watch.livemd",
         "CHANGELOG.md",
         "LICENSE"
       ],
@@ -85,6 +86,7 @@ defmodule KinoEtherCAT.MixProject do
           KinoEtherCAT.Runtime.Slave,
           KinoEtherCAT.Runtime.Domain,
           KinoEtherCAT.Runtime.Bus,
+          KinoEtherCAT.Runtime.BusResource,
           KinoEtherCAT.Runtime.DC
         ],
         Teaching: [
@@ -133,7 +135,7 @@ defmodule KinoEtherCAT.MixProject do
         {:ethercat, path: "../ethercat"}
 
       _ ->
-        {:ethercat, "~> 0.3.0"}
+        {:ethercat, "~> 0.4.0"}
     end
   end
 

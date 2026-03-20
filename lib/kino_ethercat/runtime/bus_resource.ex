@@ -1,5 +1,9 @@
 defmodule KinoEtherCAT.Runtime.BusResource do
-  @moduledoc false
+  @moduledoc """
+  Renderable reference to the current EtherCAT bus runtime.
+
+  This is returned by `KinoEtherCAT.bus/0` and `KinoEtherCAT.Runtime.bus/0`.
+  """
 
   defstruct [:ref]
 

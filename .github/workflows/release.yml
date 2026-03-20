@@ -1,0 +1,102 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish Hex release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Erlang and Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "28.1"
+          elixir-version: "1.19.1"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: assets/package-lock.json
+
+      - name: Install Hex and Rebar
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Install asset dependencies
+        working-directory: assets
+        run: npm ci
+
+      - name: Check Hex API key is configured
+        run: |
+          if [ -z "$HEX_API_KEY" ]; then
+            echo "HEX_API_KEY secret is not configured" >&2
+            exit 1
+          fi
+
+      - name: Check tag matches package version
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          version="${TAG_NAME#v}"
+          package_version="$(mix eval --no-compile 'IO.write(Mix.Project.config()[:version])')"
+
+          if [ "$version" != "$package_version" ]; then
+            echo "Tag ${version} does not match mix.exs version ${package_version}" >&2
+            exit 1
+          fi
+
+      - name: Build frontend assets
+        working-directory: assets
+        run: npm run build
+
+      - name: Check generated assets are committed
+        run: git diff --exit-code
+
+      - name: Run tests
+        env:
+          MIX_ENV: test
+        run: mix do compile --warnings-as-errors, test --warnings-as-errors
+
+      - name: Check formatting
+        env:
+          MIX_ENV: dev
+        run: mix format --check-formatted
+
+      - name: Build docs
+        env:
+          MIX_ENV: dev
+        run: mix docs --warnings-as-errors --formatter html
+
+      - name: Build Hex package
+        env:
+          MIX_ENV: dev
+        run: mix hex.build
+
+      - name: Dry-run Hex publish
+        env:
+          MIX_ENV: dev
+        run: mix hex.publish --dry-run
+
+      - name: Publish package and docs to Hex
+        env:
+          MIX_ENV: dev
+        run: mix hex.publish --yes
